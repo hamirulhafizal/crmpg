@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./contexts/auth-context";
+import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
+import ViewTransitions from "./components/ViewTransitions";
+import ClientScripts from "./components/ClientScripts";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,45 +40,26 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ms">
-      <head>
+    <html lang="ms" suppressHydrationWarning>
+      <head suppressHydrationWarning>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
         <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
         <link rel="icon" href="/favicon.ico" type="image/x-icon" />
-        <link rel="preload" href="https://cdn.tailwindcss.com" as="script" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#2563eb" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="PG CRM" />
+        <link rel="apple-touch-icon" href="/icons/image.png" />
         <link rel="dns-prefetch" href="https://app.nocodb.com" />
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
-        <script src="https://cdn.tailwindcss.com"></script>
-        
-        {/* Google Analytics */}
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-HN3HP90WZY"></script>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-HN3HP90WZY');
-            `,
-          }}
-        />
-        {/* Google Tag Manager */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-              })(window,document,'script','dataLayer','GTM-T6KDG8SJ');
-            `,
-          }}
-        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         {/* Google Tag Manager (noscript) */}
         <noscript>
@@ -86,7 +70,11 @@ export default function RootLayout({
             style={{ display: 'none', visibility: 'hidden' }}
           />
         </noscript>
+        
         <AuthProvider>
+          <ServiceWorkerRegistration />
+          <ViewTransitions />
+          <ClientScripts />
           {children}
         </AuthProvider>
       </body>
