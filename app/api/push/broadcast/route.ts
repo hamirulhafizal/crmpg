@@ -45,31 +45,57 @@ export async function POST(request: Request) {
       })
     }
 
-    // Prepare notification payload
+    // Filter out subscriptions without valid endpoints and keys
+    const validSubscriptions = subscriptions.filter(
+      (subData) => 
+        subData.subscription?.endpoint &&
+        subData.subscription?.keys?.p256dh &&
+        subData.subscription?.keys?.auth
+    )
+
+    if (validSubscriptions.length === 0) {
+      return NextResponse.json({
+        success: true,
+        sent: 0,
+        failed: 0,
+        total: subscriptions.length,
+        message: 'No valid subscriptions found (missing endpoint or keys)',
+      })
+    }
+
+    // Determine the base URL for navigation
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001"
+    const navigateUrl = `${baseUrl}/dashboard`
+
+    // Prepare notification payload in Declarative Web Push format (RFC 8030)
     const payload = JSON.stringify({
-      title,
-      body: message,
-      icon: '/icons/image.png',
-      badge: '/icons/image.png',
-      tag: 'broadcast-notification',
-      data: {
-        url: '/dashboard',
-        timestamp: Date.now(),
+      web_push: "8030", // Indicates RFC 8030 declarative format
+      notification: {
+        title,
+        navigate_url: navigateUrl,
+        body: message,
+        icon: `${baseUrl}/icons/image.png`,
+        badge: `${baseUrl}/icons/image.png`,
+        tag: 'broadcast-notification',
+        sound: 'default',
       },
     })
 
-    // Send notification to all subscriptions
+    // Send notification to all valid subscriptions
     const results = await Promise.allSettled(
-      subscriptions.map((subData) =>
-        webpush.sendNotification(subData.subscription, payload).catch((error) => {
+      validSubscriptions.map((subData) => {
+        // We've already validated that endpoint and keys exist
+        // web-push library accepts PushSubscriptionJSON format
+        const subscription = subData.subscription
+        return webpush.sendNotification(subscription as any, payload).catch((error) => {
           // Return error info instead of throwing
           return {
             error: error.message,
             statusCode: error.statusCode,
-            endpoint: subData.subscription.endpoint,
+            endpoint: subscription.endpoint,
           }
         })
-      )
+      })
     )
 
     // Count successes and failures
@@ -82,10 +108,12 @@ export async function POST(request: Request) {
         sent++
       } else {
         failed++
+        // For rejected promises, check if we returned an error object from catch
+        // Otherwise use the rejection reason
         const errorMsg =
-          typeof result.value === 'object' && result.value?.error
-            ? result.value.error
-            : result.reason?.message || 'Unknown error'
+          result.reason && typeof result.reason === 'object' && 'error' in result.reason
+            ? (result.reason as { error: string }).error
+            : result.reason?.message || String(result.reason) || 'Unknown error'
         errors.push(`Subscription ${index + 1}: ${errorMsg}`)
       }
     })
@@ -94,7 +122,7 @@ export async function POST(request: Request) {
       success: true,
       sent,
       failed,
-      total: subscriptions.length,
+      total: validSubscriptions.length,
       errors: errors.slice(0, 10), // Limit errors to first 10
     })
   } catch (error: any) {
