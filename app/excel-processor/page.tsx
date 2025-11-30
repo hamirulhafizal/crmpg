@@ -45,12 +45,15 @@ export default function ExcelProcessorPage() {
   const [customPrompt, setCustomPrompt] = useState<string>(DEFAULT_PROMPT_TEMPLATE)
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const [promptSaved, setPromptSaved] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login')
     }
   }, [user, loading, router])
+
 
   // Initialize IndexedDB and load stored files
   useEffect(() => {
@@ -115,6 +118,49 @@ export default function ExcelProcessorPage() {
   const resetToDefaultPrompt = () => {
     if (confirm('Reset to default prompt? This will overwrite your custom prompt.')) {
       setCustomPrompt(DEFAULT_PROMPT_TEMPLATE)
+    }
+  }
+
+  const handleImportToGoogleContacts = async () => {
+    if (processedData.length === 0) {
+      setError('No processed data to import')
+      return
+    }
+
+    setIsImporting(true)
+    setImportResult(null)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/google-contacts/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          processedData,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || result.details || 'Failed to import contacts')
+      }
+
+      setImportResult({
+        success: true,
+        message: result.message || `Successfully imported ${result.results?.created || 0} contacts`,
+      })
+    } catch (err: any) {
+      console.error('Import error:', err)
+      setError(err.message || 'Failed to import contacts to Google')
+      setImportResult({
+        success: false,
+        message: err.message || 'Import failed',
+      })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -801,18 +847,56 @@ export default function ExcelProcessorPage() {
               <h3 className="text-lg font-semibold text-slate-900">
                 Processed Results ({processedData.length} rows)
               </h3>
-              {downloadUrl && (
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={handleDownload}
-                  className="px-6 py-2 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center gap-2"
+                  onClick={handleImportToGoogleContacts}
+                  disabled={isImporting}
+                  className="px-6 py-2 bg-purple-600 text-white font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download Excel
+                  {isImporting ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Import to Google Contacts
+                    </>
+                  )}
                 </button>
-              )}
+                {downloadUrl && (
+                  <button
+                    onClick={handleDownload}
+                    className="px-6 py-2 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Excel
+                  </button>
+                )}
+              </div>
             </div>
+            
+            {importResult && (
+              <div className={`mb-4 p-4 rounded-lg ${
+                importResult.success 
+                  ? 'bg-green-50 border border-green-200' 
+                  : 'bg-red-50 border border-red-200'
+              }`}>
+                <p className={`text-sm ${
+                  importResult.success ? 'text-green-800' : 'text-red-800'
+                }`}>
+                  {importResult.message}
+                </p>
+              </div>
+            )}
             
             {/* Preview Table */}
             <div className="overflow-x-auto">
