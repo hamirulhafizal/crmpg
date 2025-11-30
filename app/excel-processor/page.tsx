@@ -763,6 +763,27 @@ export default function ExcelProcessorPage() {
               >
                 {isProcessing ? 'Processing...' : 'Process with OpenAI'}
               </button>
+
+              {/* Progress Section - shown below button when processing */}
+              {isProcessing && (
+                <div className="space-y-2 pt-4 border-t border-slate-200">
+                  <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                    <span>Progress</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-blue-600 h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  {totalRows > 0 && (
+                    <p className="text-sm text-slate-600 text-center">
+                      Processing row {currentRow} of {totalRows}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -772,30 +793,6 @@ export default function ExcelProcessorPage() {
             </div>
           )}
         </div>
-
-        {/* Progress Section */}
-        {isProcessing && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-slate-200/50">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Processing</h3>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
-                <span>Progress</span>
-                <span>{progress}%</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                <div
-                  className="bg-blue-600 h-full transition-all duration-300 rounded-full"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              {totalRows > 0 && (
-                <p className="text-sm text-slate-600 text-center">
-                  Processing row {currentRow} of {totalRows}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Results Section */}
         {processedData.length > 0 && !isProcessing && (

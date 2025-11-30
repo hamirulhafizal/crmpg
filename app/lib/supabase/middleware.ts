@@ -40,7 +40,8 @@ export async function updateSession(request: NextRequest) {
     !user &&
     (request.nextUrl.pathname.startsWith('/dashboard') ||
       request.nextUrl.pathname.startsWith('/profile') ||
-      request.nextUrl.pathname.startsWith('/pwa-test'))
+      request.nextUrl.pathname.startsWith('/pwa-test') ||
+      request.nextUrl.pathname.startsWith('/excel-processor'))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

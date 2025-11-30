@@ -64,6 +64,15 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
             <div className="flex items-center gap-3">
+              <Link
+                href="/excel-processor"
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Excel Processor
+              </Link>
               <PWAInstallButton />
               <button
                 onClick={handleSignOut}
@@ -77,9 +86,9 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex flex-col gap-5 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-slate-200/50">
+        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
           <h2 className="text-3xl font-semibold text-slate-900 mb-2">
             Welcome back{user.user_metadata?.full_name ? `, ${user.user_metadata.full_name}` : ''}!
           </h2>
@@ -135,13 +144,29 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* PWA Features Card */}
-        <div className="hidden bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold text-slate-900">PWA Features</h3>
-            <PWAInstallButton />
-          </div>
+        {/* Tools Card */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
+          <h3 className="text-xl font-semibold text-slate-900 mb-6">Tools</h3>
           <div className="space-y-3">
+            <Link
+              href="/excel-processor"
+              className="block px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-blue-200"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div>
+                    <span className="font-semibold text-slate-900">Excel Processor</span>
+                    <p className="text-xs text-slate-600">Upload Excel/CSV and process with OpenAI</p>
+                  </div>
+                </div>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
             <Link
               href="/pwa-test/push"
               className="block px-4 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98]"
@@ -153,11 +178,6 @@ export default function DashboardPage() {
                 </svg>
               </div>
             </Link>
-          </div>
-          <div className="mt-4 pt-4 border-t border-slate-200">
-            <p className="text-sm text-slate-600">
-              Install this app to your device for offline access, faster loading, and a native app-like experience.
-            </p>
           </div>
         </div>
       </main>
