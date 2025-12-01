@@ -6,6 +6,20 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
+import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
+
+declare global {
+  interface Window {
+    googleContactsIntegration?: {
+      signIn: () => void
+      signOut: () => void
+      importContacts: (data: ProcessedRow[]) => Promise<void>
+      isSignedIn: () => boolean
+      isLoading: () => boolean
+      isInitialized: () => boolean
+    }
+  }
+}
 
 interface ProcessedRow {
   [key: string]: any
@@ -47,6 +61,10 @@ export default function ExcelProcessorPage() {
   const [promptSaved, setPromptSaved] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [editingCell, setEditingCell] = useState<{ rowIdx: number; key: string } | null>(null)
+  const [editedData, setEditedData] = useState<ProcessedRow[]>([])
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false)
+  const [isCheckingConnection, setIsCheckingConnection] = useState(true)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -54,6 +72,19 @@ export default function ExcelProcessorPage() {
     }
   }, [user, loading, router])
 
+  // Check Google Contacts connection status
+  useEffect(() => {
+    if (typeof window !== 'undefined' && user) {
+      checkGoogleConnection()
+    }
+  }, [user])
+
+  const handleImportResult = (result: { success: boolean; message: string }) => {
+    setImportResult(result)
+    if (!result.success) {
+      setError(result.message)
+    }
+  }
 
   // Initialize IndexedDB and load stored files
   useEffect(() => {
@@ -74,6 +105,46 @@ export default function ExcelProcessorPage() {
       initStorage()
     }
   }, [user])
+
+  const checkGoogleConnection = () => {
+    setIsCheckingConnection(true)
+    // Check every 500ms until Google API is initialized
+    const checkInterval = setInterval(() => {
+      if (window.googleContactsIntegration?.isInitialized()) {
+        const connected = window.googleContactsIntegration.isSignedIn()
+        setIsGoogleConnected(connected)
+        setIsCheckingConnection(false)
+        clearInterval(checkInterval)
+      }
+    }, 500)
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      clearInterval(checkInterval)
+      setIsCheckingConnection(false)
+      if (!window.googleContactsIntegration?.isInitialized()) {
+        setIsGoogleConnected(false)
+      }
+    }, 10000)
+  }
+
+  const handleConnectGoogleContacts = () => {
+    if (window.googleContactsIntegration) {
+      window.googleContactsIntegration.signIn()
+    } else {
+      setError('Google Contacts integration not ready. Please refresh the page.')
+    }
+  }
+
+  const handleConnectionChange = (connected: boolean) => {
+    setIsGoogleConnected(connected)
+    if (connected) {
+      setImportResult({
+        success: true,
+        message: 'Successfully connected to Google Contacts! You can now import contacts.',
+      })
+    }
+  }
 
   const loadStoredFiles = async () => {
     try {
@@ -121,9 +192,63 @@ export default function ExcelProcessorPage() {
     }
   }
 
+  const handleCellEdit = (rowIdx: number, key: string, value: any) => {
+    const newEditedData = [...editedData]
+    newEditedData[rowIdx] = {
+      ...newEditedData[rowIdx],
+      [key]: value,
+    }
+    setEditedData(newEditedData)
+    setProcessedData(newEditedData) // Update processed data as well
+  }
+
+  const handleCellBlur = () => {
+    setEditingCell(null)
+  }
+
+  const handleCellFocus = (rowIdx: number, key: string) => {
+    setEditingCell({ rowIdx, key })
+  }
+
+  const getOrderedColumns = (firstRow: ProcessedRow): string[] => {
+    const keys = Object.keys(firstRow)
+    // Move SaveName or SAVENAME to first position
+    const saveNameKey = keys.find(k => 
+      k.toLowerCase() === 'savename' || 
+      k.toLowerCase() === 'save_name' ||
+      k === 'SaveName' ||
+      k === 'SAVENAME'
+    )
+    
+    if (saveNameKey) {
+      return [saveNameKey, ...keys.filter(k => k !== saveNameKey)]
+    }
+    // If no SaveName, move SenderName to first
+    const senderNameKey = keys.find(k => 
+      k.toLowerCase() === 'sendername' || 
+      k === 'SenderName'
+    )
+    if (senderNameKey) {
+      return [senderNameKey, ...keys.filter(k => k !== senderNameKey)]
+    }
+    return keys
+  }
+
   const handleImportToGoogleContacts = async () => {
-    if (processedData.length === 0) {
+    const dataToImport = editedData.length > 0 ? editedData : processedData
+    
+    if (dataToImport.length === 0) {
       setError('No processed data to import')
+      return
+    }
+
+    // Check connection first
+    if (!isGoogleConnected || !window.googleContactsIntegration?.isSignedIn()) {
+      setError('Please connect your Google account first using the "Connect Google Contacts" button.')
+      setImportResult({
+        success: false,
+        message: 'Google Contacts not connected. Please connect first.',
+      })
       return
     }
 
@@ -132,26 +257,12 @@ export default function ExcelProcessorPage() {
     setError(null)
 
     try {
-      const response = await fetch('/api/google-contacts/import', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          processedData,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || result.details || 'Failed to import contacts')
+      // Use client-side Google Contacts integration
+      if (window.googleContactsIntegration) {
+        await window.googleContactsIntegration.importContacts(dataToImport)
+      } else {
+        throw new Error('Google Contacts integration not available. Please refresh the page.')
       }
-
-      setImportResult({
-        success: true,
-        message: result.message || `Successfully imported ${result.results?.created || 0} contacts`,
-      })
     } catch (err: any) {
       console.error('Import error:', err)
       setError(err.message || 'Failed to import contacts to Google')
@@ -189,6 +300,7 @@ export default function ExcelProcessorPage() {
       setFileName(selectedFile.name)
       setError(null)
       setProcessedData([])
+      setEditedData([])
       setDownloadUrl(null)
       
       // Save file to IndexedDB
@@ -238,6 +350,7 @@ export default function ExcelProcessorPage() {
       setFileName(droppedFile.name)
       setError(null)
       setProcessedData([])
+      setEditedData([])
       setDownloadUrl(null)
       
       // Save file to IndexedDB
@@ -248,10 +361,12 @@ export default function ExcelProcessorPage() {
   const handleRemoveFile = () => {
     setFile(null)
     setFileName('')
-    setProcessedData([])
-    setDownloadUrl(null)
-    setProgress(0)
-    setError(null)
+      setProcessedData([])
+      setEditedData([])
+      setDownloadUrl(null)
+      setProgress(0)
+      setError(null)
+      setEditingCell(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -267,6 +382,7 @@ export default function ExcelProcessorPage() {
     setProgress(0)
     setError(null)
     setProcessedData([])
+    setEditedData([])
     setDownloadUrl(null)
     setCurrentRow(0)
 
@@ -348,6 +464,7 @@ export default function ExcelProcessorPage() {
       }
 
       setProcessedData(processedRows)
+      setEditedData(processedRows) // Initialize edited data
 
       // Step 3: Generate Excel file
       setProgress(95)
@@ -405,6 +522,7 @@ export default function ExcelProcessorPage() {
       setFile(null)
       setFileName('')
       setProcessedData([])
+      setEditedData([])
       setDownloadUrl(null)
     } catch (err: any) {
       console.error('Failed to clear storage:', err)
@@ -414,14 +532,46 @@ export default function ExcelProcessorPage() {
     }
   }
 
-  const handleDownload = () => {
-    if (downloadUrl) {
+  const handleDownload = async () => {
+    // Use editedData if available, otherwise use processedData
+    const dataToDownload = editedData.length > 0 ? editedData : processedData
+    
+    if (dataToDownload.length === 0) {
+      setError('No data to download')
+      return
+    }
+
+    try {
+      // Regenerate Excel file from current (possibly edited) data
+      const generateResponse = await fetch('/api/excel/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          data: dataToDownload,
+          originalHeaders: [],
+        }),
+      })
+
+      if (!generateResponse.ok) {
+        throw new Error('Failed to generate Excel file')
+      }
+
+      const blob = await generateResponse.blob()
+      const url = URL.createObjectURL(blob)
+      
       const link = document.createElement('a')
-      link.href = downloadUrl
+      link.href = url
       link.download = fileName.replace(/\.[^/.]+$/, '') + '_processed.xlsx'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      
+      // Clean up the URL after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 100)
+    } catch (err: any) {
+      setError('Failed to download file: ' + err.message)
     }
   }
 
@@ -477,6 +627,12 @@ export default function ExcelProcessorPage() {
           </div>
         </div>
       </header>
+
+      {/* Google Contacts Integration Component */}
+      <GoogleContactsIntegration
+        onConnectionChange={handleConnectionChange}
+        onImportResult={handleImportResult}
+      />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -672,6 +828,7 @@ export default function ExcelProcessorPage() {
                                 setFileName(loadedFile.name)
                                 if (storedFile.processedData) {
                                   setProcessedData(storedFile.processedData)
+                                  setEditedData(storedFile.processedData) // Initialize edited data
                                   // Generate download URL if processed data exists
                                   const generateResponse = await fetch('/api/excel/generate', {
                                     method: 'POST',
@@ -684,6 +841,7 @@ export default function ExcelProcessorPage() {
                                   }
                                 } else {
                                   setProcessedData([])
+                                  setEditedData([])
                                   setDownloadUrl(null)
                                 }
                                 setError(null)
@@ -708,6 +866,7 @@ export default function ExcelProcessorPage() {
                                     setFile(null)
                                     setFileName('')
                                     setProcessedData([])
+                                    setEditedData([])
                                     setDownloadUrl(null)
                                   }
                                 } catch (err: any) {
@@ -848,9 +1007,31 @@ export default function ExcelProcessorPage() {
                 Processed Results ({processedData.length} rows)
               </h3>
               <div className="flex items-center gap-3">
+                {!isGoogleConnected && !isCheckingConnection && (
+                  <button
+                    onClick={handleConnectGoogleContacts}
+                    className="px-6 py-2 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Connect Google Contacts
+                  </button>
+                )}
+                {isGoogleConnected && (
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Connected</span>
+                  </div>
+                )}
                 <button
                   onClick={handleImportToGoogleContacts}
-                  disabled={isImporting}
+                  disabled={isImporting || !isGoogleConnected}
                   className="px-6 py-2 bg-purple-600 text-white font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   {isImporting ? (
@@ -870,7 +1051,7 @@ export default function ExcelProcessorPage() {
                     </>
                   )}
                 </button>
-                {downloadUrl && (
+                {(processedData.length > 0 || editedData.length > 0) && (
                   <button
                     onClick={handleDownload}
                     className="px-6 py-2 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center gap-2"
@@ -898,38 +1079,79 @@ export default function ExcelProcessorPage() {
               </div>
             )}
             
-            {/* Preview Table */}
+            {/* Editable Table */}
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {Object.keys(processedData[0] || {}).map((key) => (
-                      <th
-                        key={key}
-                        className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase tracking-wider"
-                      >
-                        {key}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-200">
-                  {processedData.slice(0, 10).map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      {Object.values(row).map((value: any, cellIdx) => (
-                        <td key={cellIdx} className="px-4 py-3 text-sm text-slate-900">
-                          {value !== null && value !== undefined ? String(value) : '-'}
-                        </td>
+              {(() => {
+                const dataToDisplay = editedData.length > 0 ? editedData : processedData
+                if (dataToDisplay.length === 0) return null
+                
+                return (
+                  <>
+                    <table className="min-w-full divide-y divide-slate-200 border border-slate-200">
+                      <thead className="bg-slate-50 sticky top-0 z-10">
+                        <tr>
+                          {getOrderedColumns(dataToDisplay[0]).map((key) => (
+                          <th
+                            key={key}
+                            className="px-4 py-3 text-left text-xs font-semibold text-slate-900 uppercase tracking-wider border-r border-slate-200"
+                          >
+                            {key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200">
+                      {dataToDisplay.map((row, rowIdx) => (
+                        <tr key={rowIdx} className="hover:bg-slate-50">
+                          {getOrderedColumns(row).map((key) => {
+                            const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.key === key
+                            const value = row[key]
+                            const displayValue = value !== null && value !== undefined ? String(value) : ''
+                            
+                            return (
+                              <td
+                                key={key}
+                                className="px-2 py-2 text-sm border-r border-slate-100"
+                                onDoubleClick={() => handleCellFocus(rowIdx, key)}
+                              >
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={displayValue}
+                                    onChange={(e) => handleCellEdit(rowIdx, key, e.target.value)}
+                                    onBlur={handleCellBlur}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.currentTarget.blur()
+                                      }
+                                      if (e.key === 'Escape') {
+                                        setEditingCell(null)
+                                      }
+                                    }}
+                                    className="w-full px-2 py-1 text-sm text-slate-900 bg-white border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div 
+                                    className="min-h-[32px] px-2 py-1 cursor-text hover:bg-blue-50 rounded transition-colors text-slate-900 font-medium"
+                                    title="Double-click to edit"
+                                  >
+                                    {displayValue || '-'}
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {processedData.length > 10 && (
-                <p className="text-sm text-slate-600 mt-4 text-center">
-                  Showing first 10 rows. Download the full file to see all {processedData.length} rows.
-                </p>
-              )}
+                    </tbody>
+                  </table>
+                    <p className="text-xs text-slate-500 mt-2">
+                      💡 Double-click any cell to edit. Press Enter to save, Escape to cancel.
+                    </p>
+                  </>
+                )
+              })()}
             </div>
           </div>
         )}

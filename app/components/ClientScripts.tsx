@@ -48,6 +48,9 @@ export default function ClientScripts() {
           })(window,document,'script','dataLayer','GTM-T6KDG8SJ');
         `}
       </Script>
+
+      {/* Google Identity Services - Loaded dynamically by GoogleContactsIntegration */}
+      {/* Google API Client - Loaded dynamically by GoogleContactsIntegration */}
     </>
   )
 }
