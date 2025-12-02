@@ -75,7 +75,7 @@ export default function RootLayout({
           <ServiceWorkerRegistration />
           <ViewTransitions />
           <ClientScripts />
-          {children}
+        {children}
         </AuthProvider>
       </body>
     </html>

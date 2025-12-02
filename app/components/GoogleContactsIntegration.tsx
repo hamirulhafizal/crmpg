@@ -77,16 +77,17 @@ export default function GoogleContactsIntegration({
 
     const initialize = async () => {
       try {
-        await Promise.all([loadGIS(), loadGapi()])
-
         if (!CLIENT_ID) {
-          console.warn('Google Contacts Client ID not configured')
+          console.warn('Google Contacts Client ID not configured. Set NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID in environment variables.')
+          setIsInitialized(true) // Mark as initialized even without credentials so UI can show error
           return
         }
 
+        await Promise.all([loadGIS(), loadGapi()])
+
         // Initialize gapi client
         await window.gapi.client.init({
-          apiKey: API_KEY,
+          apiKey: API_KEY || undefined, // API key is optional for OAuth flow
           discoveryDocs: ['https://people.googleapis.com/$discovery/rest?version=v1'],
         })
 
@@ -97,24 +98,41 @@ export default function GoogleContactsIntegration({
             scope: SCOPES,
             callback: (tokenResponse: any) => {
               if (tokenResponse.access_token) {
+                // Set the token in gapi client
+                window.gapi.client.setToken({
+                  access_token: tokenResponse.access_token,
+                })
                 setIsSignedIn(true)
                 onConnectionChange?.(true)
+              } else if (tokenResponse.error) {
+                console.error('Google OAuth error:', tokenResponse.error)
+                onImportResult?.({
+                  success: false,
+                  message: `Google OAuth error: ${tokenResponse.error}`,
+                })
               }
             },
           })
           setTokenClient(client)
+        } else {
+          console.error('Google Identity Services not loaded')
         }
 
         // Check if user is already signed in
         const token = window.gapi.client.getToken()
-        if (token) {
+        if (token && token.access_token) {
           setIsSignedIn(true)
           onConnectionChange?.(true)
         }
 
         setIsInitialized(true)
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to initialize Google API:', error)
+        setIsInitialized(true) // Mark as initialized so UI can show error
+        onImportResult?.({
+          success: false,
+          message: `Failed to initialize Google API: ${error.message || 'Unknown error'}`,
+        })
       }
     }
 
@@ -122,16 +140,34 @@ export default function GoogleContactsIntegration({
   }, [CLIENT_ID, API_KEY, SCOPES, onConnectionChange])
 
   const signIn = useCallback(() => {
-    if (!tokenClient) {
+    if (!CLIENT_ID) {
       onImportResult?.({
         success: false,
-        message: 'Google API not initialized. Please refresh the page.',
+        message: 'Google Contacts Client ID not configured. Please set NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID in environment variables.',
       })
       return
     }
 
-    tokenClient.requestAccessToken({ prompt: 'consent' })
-  }, [tokenClient, onImportResult])
+    if (!tokenClient) {
+      onImportResult?.({
+        success: false,
+        message: 'Google API not initialized. Please wait a moment and try again, or refresh the page.',
+      })
+      console.error('Token client not available. Is Google API loaded?')
+      return
+    }
+
+    try {
+      // Request access token with consent prompt
+      tokenClient.requestAccessToken({ prompt: 'consent' })
+    } catch (error: any) {
+      console.error('Error requesting access token:', error)
+      onImportResult?.({
+        success: false,
+        message: `Failed to connect: ${error.message || 'Unknown error'}`,
+      })
+    }
+  }, [tokenClient, CLIENT_ID, onImportResult])
 
   const signOut = useCallback(() => {
     const token = window.gapi?.client?.getToken()
@@ -287,14 +323,33 @@ export default function GoogleContactsIntegration({
   // Expose methods via window object for use in parent component
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      ;(window as any).googleContactsIntegration = {
+      const integration = {
         signIn,
         signOut,
         importContacts,
         isSignedIn: () => isSignedIn,
         isLoading: () => isLoading,
         isInitialized: () => isInitialized,
+        getStatus: () => ({
+          isInitialized,
+          isSignedIn,
+          isLoading,
+          hasClientId: !!CLIENT_ID,
+          hasApiKey: !!API_KEY,
+          hasGoogle: !!window.google,
+          hasGapi: !!window.gapi,
+        }),
       }
+      
+      ;(window as any).googleContactsIntegration = integration
+      
+      // Log status for debugging
+      console.log('GoogleContactsIntegration exposed to window:', {
+        isInitialized,
+        hasClientId: !!CLIENT_ID,
+        hasGoogle: !!window.google,
+        hasGapi: !!window.gapi,
+      })
     }
 
     return () => {
@@ -302,7 +357,7 @@ export default function GoogleContactsIntegration({
         delete (window as any).googleContactsIntegration
       }
     }
-  }, [signIn, signOut, importContacts, isSignedIn, isLoading, isInitialized])
+  }, [signIn, signOut, importContacts, isSignedIn, isLoading, isInitialized, CLIENT_ID, API_KEY])
 
   return null // This component doesn't render anything
 }
