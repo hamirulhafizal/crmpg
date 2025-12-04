@@ -1,3 +1,14 @@
+/**
+ * Google Contacts Import API Route
+ * 
+ * NOTE: This route is kept for backward compatibility but should NOT be used.
+ * The Excel Processor page uses client-side OAuth integration directly via
+ * GoogleContactsIntegration component, which imports contacts to the logged-in
+ * user's Google Contacts using their OAuth token.
+ * 
+ * This server-side route should only be used if client-side integration fails
+ * and you need server-side OAuth flow as a fallback.
+ */
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { cookies } from 'next/headers'
@@ -179,52 +190,17 @@ export async function POST(request: Request) {
       }
     }
 
-    // Method 2: Fall back to service account if OAuth not available
-    let targetUserEmail: string | undefined = undefined
+    // No fallback to service account - we only use OAuth (user consent)
+    // Contacts should be imported to the logged-in user's Google Contacts, not a service account
     if (!auth) {
-      const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
-      const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
-      const serviceAccountKeyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE
-      targetUserEmail = process.env.GOOGLE_CONTACTS_TARGET_USER_EMAIL
-
-      if (serviceAccountKeyFile) {
-        try {
-          const fs = await import('fs/promises')
-          const path = await import('path')
-          const keyData = await fs.readFile(path.resolve(process.cwd(), serviceAccountKeyFile), 'utf-8')
-          const keyJson = JSON.parse(keyData)
-          
-          auth = new google.auth.JWT({
-            email: keyJson.client_email,
-            key: keyJson.private_key,
-            scopes: ['https://www.googleapis.com/auth/contacts'],
-            subject: targetUserEmail || undefined,
-          })
-        } catch (fileError: any) {
-          return NextResponse.json(
-            { 
-              error: 'Failed to load service account key file',
-              details: fileError.message
-            },
-            { status: 500 }
-          )
-        }
-      } else if (serviceAccountEmail && serviceAccountKey) {
-        auth = new google.auth.JWT({
-          email: serviceAccountEmail,
-          key: serviceAccountKey.replace(/\\n/g, '\n'),
-          scopes: ['https://www.googleapis.com/auth/contacts'],
-          subject: targetUserEmail || undefined,
-        })
-      } else {
-        return NextResponse.json(
-          { 
-            error: 'Google authentication not configured',
-            details: 'Please connect your Google account using the "Connect Google Contacts" button, or configure a service account in environment variables.'
-          },
-          { status: 401 }
-        )
-      }
+      return NextResponse.json(
+        { 
+          error: 'Google authentication not available',
+          details: 'Please connect your Google account using the "Connect Google Contacts" button on the Excel Processor page. This will use client-side OAuth to import contacts to your personal Google Contacts.',
+          note: 'This API route should not be called directly. Use the client-side Google Contacts integration instead.'
+        },
+        { status: 401 }
+      )
     }
 
     const people = google.people({
@@ -268,11 +244,7 @@ export async function POST(request: Request) {
         let errorMessage = batchError.message || 'Unknown error'
         
         if (errorMessage.includes('unauthorized_client')) {
-          if (authMethod === 'oauth') {
-            errorMessage = 'OAuth authentication failed. Please reconnect your Google account using the "Connect Google Contacts" button. Make sure GOOGLE_CONTACTS_CLIENT_ID and GOOGLE_CONTACTS_CLIENT_SECRET are correctly configured.'
-          } else {
-            errorMessage = 'Service account authentication failed. Please use OAuth instead by clicking "Connect Google Contacts" button, or ensure service account has domain-wide delegation enabled with the contacts scope.'
-          }
+          errorMessage = 'OAuth authentication failed. Please reconnect your Google account using the "Connect Google Contacts" button. Make sure GOOGLE_CONTACTS_CLIENT_ID and GOOGLE_CONTACTS_CLIENT_SECRET are correctly configured.'
         } else if (errorMessage.includes('invalid_grant')) {
           errorMessage = 'Authorization expired or revoked. Please reconnect your Google account using the "Connect Google Contacts" button.'
         } else if (errorMessage.includes('insufficient_permission') || errorMessage.includes('permission_denied')) {
@@ -290,11 +262,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const userInfo = targetUserEmail || 'your Google Contacts'
     return NextResponse.json({
       success: results.created > 0,
       results,
-      message: `Successfully imported ${results.created} contacts to ${userInfo}. ${results.failed} failed.`,
+      message: `Successfully imported ${results.created} contacts to your Google Contacts. ${results.failed} failed.`,
     })
   } catch (error: any) {
     console.error('Google Contacts import error:', error)
