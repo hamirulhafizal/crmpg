@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
@@ -168,7 +168,7 @@ export default function ExcelProcessorPage() {
     }
   }
 
-  const handleConnectionChange = (connected: boolean) => {
+  const handleConnectionChange = useCallback((connected: boolean) => {
     setIsGoogleConnected(connected)
     if (connected) {
       setImportResult({
@@ -176,7 +176,7 @@ export default function ExcelProcessorPage() {
         message: 'Successfully connected to Google Contacts! You can now import contacts.',
       })
     }
-  }
+  }, [])
 
   const loadStoredFiles = async () => {
     try {

@@ -32,14 +32,19 @@ export default function GoogleContactsIntegration({
   const [isSignedIn, setIsSignedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [tokenClient, setTokenClient] = useState<any>(null)
+  const [initializationStarted, setInitializationStarted] = useState(false)
 
   const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID || ''
   const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || ''
   const SCOPES = 'https://www.googleapis.com/auth/contacts'
 
-  // Load Google API scripts
+  // Load Google API scripts - Only run once
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (initializationStarted) return // Prevent multiple initializations
+    if (isInitialized) return // Already initialized
+
+    setInitializationStarted(true)
 
     // Load Google Identity Services
     const loadGIS = () => {
@@ -47,6 +52,27 @@ export default function GoogleContactsIntegration({
         return Promise.resolve()
       }
       return new Promise((resolve, reject) => {
+        // Check if script already exists
+        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
+        if (existingScript) {
+          // Wait for it to load
+          const checkInterval = setInterval(() => {
+            if (window.google?.accounts) {
+              clearInterval(checkInterval)
+              resolve(undefined)
+            }
+          }, 100)
+          setTimeout(() => {
+            clearInterval(checkInterval)
+            if (window.google?.accounts) {
+              resolve(undefined)
+            } else {
+              reject(new Error('GIS script loaded but not available'))
+            }
+          }, 5000)
+          return
+        }
+
         const script = document.createElement('script')
         script.src = 'https://accounts.google.com/gsi/client'
         script.async = true
@@ -59,10 +85,31 @@ export default function GoogleContactsIntegration({
 
     // Load Google API Client
     const loadGapi = () => {
-      if (window.gapi?.client) {
+      if (window.gapi?.client && window.gapi.client.getToken) {
         return Promise.resolve()
       }
       return new Promise((resolve, reject) => {
+        // Check if script already exists
+        const existingScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]')
+        if (existingScript) {
+          // Wait for it to load
+          const checkInterval = setInterval(() => {
+            if (window.gapi?.client) {
+              clearInterval(checkInterval)
+              window.gapi.load('client', resolve)
+            }
+          }, 100)
+          setTimeout(() => {
+            clearInterval(checkInterval)
+            if (window.gapi?.client) {
+              window.gapi.load('client', resolve)
+            } else {
+              reject(new Error('GAPI script loaded but not available'))
+            }
+          }, 5000)
+          return
+        }
+
         const script = document.createElement('script')
         script.src = 'https://apis.google.com/js/api.js'
         script.async = true
@@ -85,7 +132,44 @@ export default function GoogleContactsIntegration({
 
         await Promise.all([loadGIS(), loadGapi()])
 
-        // Initialize gapi client
+        // Check if gapi.client is already initialized to prevent re-initialization
+        if (window.gapi?.client && window.gapi.client.getToken) {
+          // Already initialized, just check token
+          const token = window.gapi.client.getToken()
+          if (token && token.access_token) {
+            setIsSignedIn(true)
+            onConnectionChange?.(true)
+          }
+          
+          // Initialize token client if not already done
+          if (!tokenClient && window.google?.accounts?.oauth2) {
+            const client = window.google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID,
+              scope: SCOPES,
+              callback: (tokenResponse: any) => {
+                if (tokenResponse.access_token) {
+                  window.gapi.client.setToken({
+                    access_token: tokenResponse.access_token,
+                  })
+                  setIsSignedIn(true)
+                  onConnectionChange?.(true)
+                } else if (tokenResponse.error) {
+                  console.error('Google OAuth error:', tokenResponse.error)
+                  onImportResult?.({
+                    success: false,
+                    message: `Google OAuth error: ${tokenResponse.error}`,
+                  })
+                }
+              },
+            })
+            setTokenClient(client)
+          }
+          
+          setIsInitialized(true)
+          return
+        }
+
+        // Initialize gapi client only if not already initialized
         await window.gapi.client.init({
           apiKey: API_KEY || undefined, // API key is optional for OAuth flow
           discoveryDocs: ['https://people.googleapis.com/$discovery/rest?version=v1'],
@@ -137,7 +221,8 @@ export default function GoogleContactsIntegration({
     }
 
     initialize()
-  }, [CLIENT_ID, API_KEY, SCOPES, onConnectionChange])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty dependency array - only run once on mount
 
   const signIn = useCallback(() => {
     if (!CLIENT_ID) {
