@@ -186,6 +186,7 @@ export default function GoogleContactsIntegration({
                 window.gapi.client.setToken({
                   access_token: tokenResponse.access_token,
                 })
+                console.log('Google OAuth token set successfully')
                 setIsSignedIn(true)
                 onConnectionChange?.(true)
               } else if (tokenResponse.error) {
@@ -205,8 +206,11 @@ export default function GoogleContactsIntegration({
         // Check if user is already signed in
         const token = window.gapi.client.getToken()
         if (token && token.access_token) {
+          console.log('Found existing Google OAuth token')
           setIsSignedIn(true)
           onConnectionChange?.(true)
+        } else {
+          console.log('No existing Google OAuth token found')
         }
 
         setIsInitialized(true)
@@ -346,6 +350,17 @@ export default function GoogleContactsIntegration({
       setIsLoading(true)
 
       try {
+        // Verify token is set
+        const token = window.gapi?.client?.getToken()
+        if (!token || !token.access_token) {
+          throw new Error('No access token available. Please reconnect your Google account using the "Connect Google Contacts" button.')
+        }
+
+        // Verify gapi client is initialized
+        if (!window.gapi?.client?.people) {
+          throw new Error('Google People API not initialized. Please refresh the page and try again.')
+        }
+
         const results = {
           total: processedData.length,
           created: 0,
@@ -358,6 +373,13 @@ export default function GoogleContactsIntegration({
           const row = processedData[i]
           try {
             const contact = mapToGoogleContact(row)
+
+            // Verify we have required fields
+            if (!contact.names || contact.names.length === 0) {
+              results.failed++
+              results.errors.push(`Row ${i + 1}: Missing name field (SenderName or Name required)`)
+              continue
+            }
 
             // Use createContact API
             const response = await window.gapi.client.people.people.createContact({
@@ -377,9 +399,20 @@ export default function GoogleContactsIntegration({
             }
           } catch (error: any) {
             results.failed++
-            results.errors.push(
-              `Row ${i + 1}: ${error.message || error.error?.message || 'Unknown error'}`
-            )
+            const errorMessage = error.message || error.error?.message || error.statusText || 'Unknown error'
+            
+            // Provide user-friendly error messages
+            let friendlyMessage = errorMessage
+            if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
+              friendlyMessage = 'Authentication failed. Please reconnect your Google account using the "Connect Google Contacts" button.'
+            } else if (errorMessage.includes('403') || errorMessage.includes('permission')) {
+              friendlyMessage = 'Permission denied. Please ensure you granted contacts access during authorization.'
+            } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+              friendlyMessage = 'Rate limit exceeded. Please wait a moment and try again.'
+            }
+            
+            results.errors.push(`Row ${i + 1}: ${friendlyMessage}`)
+            console.error(`Failed to create contact for row ${i + 1}:`, error)
           }
         }
 
@@ -394,9 +427,30 @@ export default function GoogleContactsIntegration({
         })
       } catch (error: any) {
         console.error('Import error:', error)
+        console.error('Error details:', {
+          message: error.message,
+          error: error.error,
+          status: error.status,
+          statusText: error.statusText,
+          response: error.response,
+        })
+        
+        let errorMessage = error.message || 'Failed to import contacts to Google'
+        
+        // Provide more specific error messages
+        if (error.status === 401 || error.message?.includes('401') || error.message?.includes('unauthorized')) {
+          errorMessage = 'Authentication failed. Your Google access token may have expired. Please reconnect your Google account using the "Connect Google Contacts" button.'
+        } else if (error.status === 403 || error.message?.includes('403') || error.message?.includes('permission')) {
+          errorMessage = 'Permission denied. Please ensure you granted contacts access during authorization. Try disconnecting and reconnecting your Google account.'
+        } else if (error.status === 429 || error.message?.includes('429') || error.message?.includes('rate limit')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment and try again.'
+        } else if (error.message?.includes('token')) {
+          errorMessage = 'Access token issue. Please reconnect your Google account using the "Connect Google Contacts" button.'
+        }
+        
         onImportResult?.({
           success: false,
-          message: error.message || 'Failed to import contacts to Google',
+          message: errorMessage,
         })
       } finally {
         setIsLoading(false)
