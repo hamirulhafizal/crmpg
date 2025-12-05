@@ -18,9 +18,64 @@ interface ProcessedRow {
   Name?: string
   SenderName?: string
   FirstName?: string
+  savename?: string
+  SaveName?: string
+  SAVENAME?: string
+  'D.O.B'?: string
+  'D.O.B.'?: string
+  DOB?: string
+  Birthday?: string
   Email?: string
   Phone?: string
   Telephone?: string
+}
+
+function parseBirthday(dateStr: string): { year?: number; month: number; day: number } | null {
+  if (!dateStr || typeof dateStr !== 'string') return null
+  
+  const trimmed = dateStr.trim()
+  if (!trimmed) return null
+
+  // Try different date formats
+  // Format: YYYY-MM-DD
+  let match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (match) {
+    return {
+      year: parseInt(match[1], 10),
+      month: parseInt(match[2], 10),
+      day: parseInt(match[3], 10),
+    }
+  }
+
+  // Format: DD/MM/YYYY or MM/DD/YYYY
+  match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (match) {
+    const part1 = parseInt(match[1], 10)
+    const part2 = parseInt(match[2], 10)
+    const year = parseInt(match[3], 10)
+    
+    // Try to determine if it's DD/MM or MM/DD (assume DD/MM if day > 12)
+    if (part1 > 12) {
+      return { year, month: part2, day: part1 }
+    } else if (part2 > 12) {
+      return { year, month: part1, day: part2 }
+    } else {
+      // Ambiguous, default to DD/MM
+      return { year, month: part2, day: part1 }
+    }
+  }
+
+  // Format: DD-MM-YYYY
+  match = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (match) {
+    return {
+      year: parseInt(match[3], 10),
+      month: parseInt(match[2], 10),
+      day: parseInt(match[1], 10),
+    }
+  }
+
+  return null
 }
 
 function mapToGoogleContact(row: ProcessedRow): any {
@@ -28,19 +83,21 @@ function mapToGoogleContact(row: ProcessedRow): any {
     names: [],
     emailAddresses: [],
     phoneNumbers: [],
+    birthdays: [],
   }
 
-  // Map names - Use SenderName as First Name (givenName)
+  // Map names - Priority: savename > SenderName > FirstName
+  const saveName = row.savename || row['savename'] || row.SaveName || row['SaveName'] || row.SAVENAME || row['SAVENAME'] || ''
   const senderName = row.SenderName || row['SenderName'] || ''
-  const firstName = row.FirstName || row['FirstName'] || ''
+  const firstName = row.FirstName || row['FirstName'] || row['First Name'] || ''
   const fullName = row.Name || row['Name'] || ''
   
-  // Use SenderName as First Name (givenName)
-  const givenName = senderName || firstName || ''
+  // Use savename as First Name (givenName), fallback to SenderName or FirstName
+  const givenName = saveName || senderName || firstName || ''
   
   // Extract last name from full name if available
   let familyName = ''
-  if (fullName && !senderName) {
+  if (fullName && !saveName && !senderName) {
     const nameParts = fullName.split(' ')
     if (nameParts.length > 1) {
       familyName = nameParts.slice(1).join(' ')
@@ -49,14 +106,25 @@ function mapToGoogleContact(row: ProcessedRow): any {
   
   if (givenName || fullName) {
     contact.names.push({
-      displayName: fullName || senderName || firstName || '',
-      givenName: givenName, // SenderName is used as First Name
+      displayName: fullName || saveName || senderName || firstName || '',
+      givenName: givenName, // savename is used as First Name
       familyName: familyName,
     })
   }
 
+  // Map birthday - Priority: D.O.B > DOB > Birthday
+  const dob = row['D.O.B'] || row['D.O.B.'] || row.DOB || row['DOB'] || row.Birthday || row['Birthday'] || row.birthday || ''
+  if (dob) {
+    const birthdayDate = parseBirthday(dob)
+    if (birthdayDate) {
+      contact.birthdays.push({
+        date: birthdayDate,
+      })
+    }
+  }
+
   // Map email
-  const email = row.Email || row.email || row['E-mail'] || row['E-Mail'] || ''
+  const email = row.Email || row.email || row['E-mail'] || row['E-Mail'] || row['E-mail 1 - Value'] || ''
   if (email) {
     contact.emailAddresses.push({
       value: email,
@@ -65,7 +133,7 @@ function mapToGoogleContact(row: ProcessedRow): any {
   }
 
   // Map phone
-  const phone = row.Phone || row.Telephone || row['Phone Number'] || row.phone || ''
+  const phone = row.Phone || row.Telephone || row['Phone Number'] || row.phone || row['Phone 1 - Value'] || ''
   if (phone) {
     contact.phoneNumbers.push({
       value: phone,
@@ -229,7 +297,7 @@ export async function POST(request: Request) {
         const response = await people.people.batchCreateContacts({
           requestBody: {
             contacts: batch,
-            readMask: 'names,emailAddresses,phoneNumbers',
+            readMask: 'names,emailAddresses,phoneNumbers,birthdays',
           },
         })
 

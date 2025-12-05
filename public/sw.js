@@ -2,12 +2,13 @@
 const CACHE_NAME = 'public-gold-crm-v2';
 const urlsToCache = [
   '/',
-  '/dashboard',
-  '/login',
-  '/register',
   '/manifest.json',
   '/favicon.ico',
 ];
+// Note: We don't cache /dashboard, /login, /register, etc. because:
+// 1. They require authentication checks (middleware redirects)
+// 2. They're dynamic and shouldn't be cached
+// 3. Service worker bypasses them to avoid redirect issues
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
@@ -55,18 +56,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // CRITICAL: Skip auth callback routes - they must go directly to network
-  // These routes handle OAuth redirects and must not be intercepted
+  // CRITICAL: Skip routes that require authentication or handle redirects
+  // These routes must go directly to network to avoid interfering with middleware redirects
   const url = new URL(event.request.url);
   if (
+    // Auth routes (OAuth callbacks, login, etc.)
     url.pathname.startsWith('/auth/') ||
     url.pathname.startsWith('/api/auth/') ||
     url.pathname === '/login' ||
     url.pathname === '/register' ||
     url.pathname === '/forgot-password' ||
-    url.pathname === '/reset-password'
+    url.pathname === '/reset-password' ||
+    // Protected routes (may redirect based on auth status)
+    url.pathname.startsWith('/dashboard') ||
+    url.pathname.startsWith('/profile') ||
+    url.pathname.startsWith('/pwa-test') ||
+    url.pathname.startsWith('/excel-processor') ||
+    // API routes (should always go to network)
+    url.pathname.startsWith('/api/')
   ) {
-    // Let auth routes bypass service worker completely
+    // Let these routes bypass service worker completely
     return;
   }
 

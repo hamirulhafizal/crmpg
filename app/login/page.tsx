@@ -49,20 +49,44 @@ export default function LoginPage() {
     setMessage(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log('Attempting email/password login for:', email)
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('Login error:', error)
+        throw error
+      }
 
+      console.log('Login successful:', data)
+      
+      // Wait a moment for session to be set
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       // Redirect to dashboard on success
       router.push('/dashboard')
+      router.refresh() // Refresh to ensure session is loaded
     } catch (error: any) {
+      console.error('Login failed:', error)
+      
+      // Provide more specific error messages
+      let errorMessage = error.message || 'Invalid email or password. Please try again.'
+      
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('CORS')) {
+        errorMessage = 'Unable to connect to authentication server. Please check: 1) Supabase project is not paused, 2) Environment variables are set correctly, 3) Try using Google OAuth login instead.'
+      } else if (error.message?.includes('Invalid login credentials')) {
+        errorMessage = 'Invalid email or password. Please check your credentials or use "Forgot password?" to reset.'
+      } else if (error.message?.includes('Email not confirmed')) {
+        errorMessage = 'Please check your email and confirm your account before signing in.'
+      }
+      
       setMessage({
         type: 'error',
-        text: error.message || 'Invalid email or password. Please try again.',
+        text: errorMessage,
       })
+    } finally {
       setLoading(false)
     }
   }

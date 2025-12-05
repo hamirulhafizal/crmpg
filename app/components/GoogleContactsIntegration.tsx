@@ -14,6 +14,13 @@ interface ProcessedRow {
   Name?: string
   SenderName?: string
   FirstName?: string
+  savename?: string
+  SaveName?: string
+  SAVENAME?: string
+  'D.O.B'?: string
+  'D.O.B.'?: string
+  DOB?: string
+  Birthday?: string
   Email?: string
   Phone?: string
   Telephone?: string
@@ -32,201 +39,164 @@ export default function GoogleContactsIntegration({
   const [isSignedIn, setIsSignedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [tokenClient, setTokenClient] = useState<any>(null)
-  const [initializationStarted, setInitializationStarted] = useState(false)
 
   const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID || ''
   const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || ''
   const SCOPES = 'https://www.googleapis.com/auth/contacts'
+  // Official discovery doc URL from Google's quickstart guide
+  const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/people/v1/rest'
 
-  // Load Google API scripts - Only run once
+  // Initialize Google APIs - following official quickstart pattern
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (initializationStarted) return // Prevent multiple initializations
-    if (isInitialized) return // Already initialized
+    if (isInitialized) return
 
-    setInitializationStarted(true)
+    let gapiInited = false
+    let gisInited = false
 
-    // Load Google Identity Services
-    const loadGIS = () => {
-      if (window.google?.accounts) {
-        return Promise.resolve()
+    // Callback after api.js is loaded (from quickstart guide)
+    const gapiLoaded = () => {
+      if (window.gapi && window.gapi.load) {
+        window.gapi.load('client', initializeGapiClient)
       }
-      return new Promise((resolve, reject) => {
-        // Check if script already exists
-        const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
-        if (existingScript) {
-          // Wait for it to load
-          const checkInterval = setInterval(() => {
-            if (window.google?.accounts) {
-              clearInterval(checkInterval)
-              resolve(undefined)
-            }
-          }, 100)
-          setTimeout(() => {
-            clearInterval(checkInterval)
-            if (window.google?.accounts) {
-              resolve(undefined)
-            } else {
-              reject(new Error('GIS script loaded but not available'))
-            }
-          }, 5000)
-          return
-        }
-
-        const script = document.createElement('script')
-        script.src = 'https://accounts.google.com/gsi/client'
-        script.async = true
-        script.defer = true
-        script.onload = () => resolve(undefined)
-        script.onerror = () => reject(new Error('Failed to load Google Identity Services'))
-        document.head.appendChild(script)
-      })
     }
 
-    // Load Google API Client
-    const loadGapi = () => {
-      if (window.gapi?.client && window.gapi.client.getToken) {
-        return Promise.resolve()
-      }
-      return new Promise((resolve, reject) => {
-        // Check if script already exists
-        const existingScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]')
-        if (existingScript) {
-          // Wait for it to load
-          const checkInterval = setInterval(() => {
-            if (window.gapi?.client) {
-              clearInterval(checkInterval)
-              window.gapi.load('client', resolve)
-            }
-          }, 100)
-          setTimeout(() => {
-            clearInterval(checkInterval)
-            if (window.gapi?.client) {
-              window.gapi.load('client', resolve)
-            } else {
-              reject(new Error('GAPI script loaded but not available'))
-            }
-          }, 5000)
-          return
-        }
-
-        const script = document.createElement('script')
-        script.src = 'https://apis.google.com/js/api.js'
-        script.async = true
-        script.defer = true
-        script.onload = () => {
-          window.gapi.load('client', resolve)
-        }
-        script.onerror = () => reject(new Error('Failed to load Google API'))
-        document.head.appendChild(script)
-      })
-    }
-
-    const initialize = async () => {
+    // Callback after the API client is loaded (from quickstart guide)
+    const initializeGapiClient = async () => {
       try {
         if (!CLIENT_ID) {
-          console.warn('Google Contacts Client ID not configured. Set NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID in environment variables.')
-          setIsInitialized(true) // Mark as initialized even without credentials so UI can show error
-          return
-        }
-
-        await Promise.all([loadGIS(), loadGapi()])
-
-        // Check if gapi.client is already initialized to prevent re-initialization
-        if (window.gapi?.client && window.gapi.client.getToken) {
-          // Already initialized, just check token
-          const token = window.gapi.client.getToken()
-          if (token && token.access_token) {
-            setIsSignedIn(true)
-            onConnectionChange?.(true)
-          }
-          
-          // Initialize token client if not already done
-          if (!tokenClient && window.google?.accounts?.oauth2) {
-            const client = window.google.accounts.oauth2.initTokenClient({
-              client_id: CLIENT_ID,
-              scope: SCOPES,
-              callback: (tokenResponse: any) => {
-                if (tokenResponse.access_token) {
-                  window.gapi.client.setToken({
-                    access_token: tokenResponse.access_token,
-                  })
-                  setIsSignedIn(true)
-                  onConnectionChange?.(true)
-                } else if (tokenResponse.error) {
-                  console.error('Google OAuth error:', tokenResponse.error)
-                  onImportResult?.({
-                    success: false,
-                    message: `Google OAuth error: ${tokenResponse.error}`,
-                  })
-                }
-              },
-            })
-            setTokenClient(client)
-          }
-          
+          console.warn('Google Contacts Client ID not configured')
           setIsInitialized(true)
           return
         }
 
-        // Initialize gapi client only if not already initialized
         await window.gapi.client.init({
-          apiKey: API_KEY || undefined, // API key is optional for OAuth flow
-          discoveryDocs: ['https://people.googleapis.com/$discovery/rest?version=v1'],
+          apiKey: API_KEY || undefined,
+          discoveryDocs: [DISCOVERY_DOC],
         })
 
-        // Initialize token client
-        if (window.google?.accounts?.oauth2) {
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: (tokenResponse: any) => {
-              if (tokenResponse.access_token) {
-                // Set the token in gapi client
-                window.gapi.client.setToken({
-                  access_token: tokenResponse.access_token,
-                })
-                console.log('Google OAuth token set successfully')
-                setIsSignedIn(true)
-                onConnectionChange?.(true)
-              } else if (tokenResponse.error) {
-                console.error('Google OAuth error:', tokenResponse.error)
-                onImportResult?.({
-                  success: false,
-                  message: `Google OAuth error: ${tokenResponse.error}`,
-                })
-              }
-            },
-          })
-          setTokenClient(client)
-        } else {
-          console.error('Google Identity Services not loaded')
-        }
-
-        // Check if user is already signed in
-        const token = window.gapi.client.getToken()
-        if (token && token.access_token) {
-          console.log('Found existing Google OAuth token')
-          setIsSignedIn(true)
-          onConnectionChange?.(true)
-        } else {
-          console.log('No existing Google OAuth token found')
-        }
-
-        setIsInitialized(true)
+        gapiInited = true
+        maybeEnableButtons()
       } catch (error: any) {
-        console.error('Failed to initialize Google API:', error)
-        setIsInitialized(true) // Mark as initialized so UI can show error
-        onImportResult?.({
-          success: false,
-          message: `Failed to initialize Google API: ${error.message || 'Unknown error'}`,
-        })
+        console.error('Failed to initialize gapi client:', error)
+        setIsInitialized(true) // Mark as initialized even on error
       }
     }
 
-    initialize()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Empty dependency array - only run once on mount
+    // Callback after Google Identity Services are loaded (from quickstart guide)
+    const gisLoaded = () => {
+      if (window.google?.accounts?.oauth2) {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: (tokenResponse: any) => {
+            if (tokenResponse.access_token) {
+              window.gapi.client.setToken({
+                access_token: tokenResponse.access_token,
+              })
+              setIsSignedIn(true)
+              onConnectionChange?.(true)
+            } else if (tokenResponse.error) {
+              console.error('Google OAuth error:', tokenResponse.error)
+              onImportResult?.({
+                success: false,
+                message: `Google OAuth error: ${tokenResponse.error}`,
+              })
+            }
+          },
+        })
+        setTokenClient(client)
+        gisInited = true
+        maybeEnableButtons()
+      }
+    }
+
+    // Enable buttons after all libraries are loaded (from quickstart guide)
+    const maybeEnableButtons = () => {
+      if (gapiInited && gisInited) {
+        // Check if user is already signed in
+        const token = window.gapi?.client?.getToken()
+        if (token && token.access_token) {
+          setIsSignedIn(true)
+          onConnectionChange?.(true)
+        }
+        setIsInitialized(true)
+      }
+    }
+
+    // Load scripts following quickstart pattern
+    const loadScripts = () => {
+      // Load Google API Client Library
+      const gapiScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]')
+      if (!gapiScript) {
+        const script1 = document.createElement('script')
+        script1.src = 'https://apis.google.com/js/api.js'
+        script1.async = true
+        script1.defer = true
+        script1.onload = gapiLoaded
+        script1.onerror = () => {
+          console.error('Failed to load Google API script')
+          setIsInitialized(true)
+        }
+        document.head.appendChild(script1)
+      } else {
+        // Script already exists, wait for it to load
+        if (window.gapi && window.gapi.load) {
+          gapiLoaded()
+        } else {
+          const checkInterval = setInterval(() => {
+            if (window.gapi && window.gapi.load) {
+              clearInterval(checkInterval)
+              gapiLoaded()
+            }
+          }, 100)
+          setTimeout(() => {
+            clearInterval(checkInterval)
+            if (!window.gapi) {
+              console.error('GAPI not available after script load')
+              setIsInitialized(true)
+            }
+          }, 5000)
+        }
+      }
+
+      // Load Google Identity Services
+      const gisScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
+      if (!gisScript) {
+        const script2 = document.createElement('script')
+        script2.src = 'https://accounts.google.com/gsi/client'
+        script2.async = true
+        script2.defer = true
+        script2.onload = gisLoaded
+        script2.onerror = () => {
+          console.error('Failed to load Google Identity Services script')
+          setIsInitialized(true)
+        }
+        document.head.appendChild(script2)
+      } else {
+        // Script already exists
+        if (window.google?.accounts?.oauth2) {
+          gisLoaded()
+        } else {
+          const checkInterval = setInterval(() => {
+            if (window.google?.accounts?.oauth2) {
+              clearInterval(checkInterval)
+              gisLoaded()
+            }
+          }, 100)
+          setTimeout(() => {
+            clearInterval(checkInterval)
+            if (!window.google) {
+              console.error('Google Identity Services not available after script load')
+              setIsInitialized(true)
+            }
+          }, 5000)
+        }
+      }
+    }
+
+    loadScripts()
+  }, [CLIENT_ID, API_KEY, SCOPES, DISCOVERY_DOC, isInitialized, onConnectionChange, onImportResult])
 
   const signIn = useCallback(() => {
     if (!CLIENT_ID) {
@@ -242,13 +212,18 @@ export default function GoogleContactsIntegration({
         success: false,
         message: 'Google API not initialized. Please wait a moment and try again, or refresh the page.',
       })
-      console.error('Token client not available. Is Google API loaded?')
       return
     }
 
     try {
-      // Request access token with consent prompt
-      tokenClient.requestAccessToken({ prompt: 'consent' })
+      // Following quickstart pattern
+      if (window.gapi.client.getToken() === null) {
+        // Prompt for consent
+        tokenClient.requestAccessToken({ prompt: 'consent' })
+      } else {
+        // Skip consent for existing session
+        tokenClient.requestAccessToken({ prompt: '' })
+      }
     } catch (error: any) {
       console.error('Error requesting access token:', error)
       onImportResult?.({
@@ -269,24 +244,74 @@ export default function GoogleContactsIntegration({
     }
   }, [onConnectionChange])
 
+  const parseBirthday = useCallback((dateStr: string): { year?: number; month: number; day: number } | null => {
+    if (!dateStr || typeof dateStr !== 'string') return null
+    
+    const trimmed = dateStr.trim()
+    if (!trimmed) return null
+
+    // Try different date formats
+    // Format: YYYY-MM-DD
+    let match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (match) {
+      return {
+        year: parseInt(match[1], 10),
+        month: parseInt(match[2], 10),
+        day: parseInt(match[3], 10),
+      }
+    }
+
+    // Format: DD/MM/YYYY or MM/DD/YYYY
+    match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (match) {
+      const part1 = parseInt(match[1], 10)
+      const part2 = parseInt(match[2], 10)
+      const year = parseInt(match[3], 10)
+      
+      // Try to determine if it's DD/MM or MM/DD (assume DD/MM if day > 12)
+      if (part1 > 12) {
+        return { year, month: part2, day: part1 }
+      } else if (part2 > 12) {
+        return { year, month: part1, day: part2 }
+      } else {
+        // Ambiguous, default to DD/MM
+        return { year, month: part2, day: part1 }
+      }
+    }
+
+    // Format: DD-MM-YYYY
+    match = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+    if (match) {
+      return {
+        year: parseInt(match[3], 10),
+        month: parseInt(match[2], 10),
+        day: parseInt(match[1], 10),
+      }
+    }
+
+    return null
+  }, [])
+
   const mapToGoogleContact = useCallback((row: ProcessedRow): any => {
     const contact: any = {
       names: [],
       emailAddresses: [],
       phoneNumbers: [],
+      birthdays: [],
     }
 
-    // Map names - Use SenderName as First Name (givenName)
+    // Map names - Priority: savename > SenderName > FirstName
+    const saveName = row.savename || row['savename'] || row.SaveName || row['SaveName'] || row.SAVENAME || row['SAVENAME'] || ''
     const senderName = row.SenderName || row['SenderName'] || ''
-    const firstName = row.FirstName || row['FirstName'] || ''
+    const firstName = row.FirstName || row['FirstName'] || row['First Name'] || ''
     const fullName = row.Name || row['Name'] || ''
 
-    // Use SenderName as First Name (givenName)
-    const givenName = senderName || firstName || ''
+    // Use savename as First Name (givenName), fallback to SenderName or FirstName
+    const givenName = saveName || senderName || firstName || ''
 
     // Extract last name from full name if available
     let familyName = ''
-    if (fullName && !senderName) {
+    if (fullName && !saveName && !senderName) {
       const nameParts = fullName.split(' ')
       if (nameParts.length > 1) {
         familyName = nameParts.slice(1).join(' ')
@@ -295,14 +320,25 @@ export default function GoogleContactsIntegration({
 
     if (givenName || fullName) {
       contact.names.push({
-        displayName: fullName || senderName || firstName || '',
-        givenName: givenName,
+        displayName: fullName || saveName || senderName || firstName || '',
+        givenName: givenName, // savename is used as First Name
         familyName: familyName,
       })
     }
 
+    // Map birthday - Priority: D.O.B > DOB > Birthday
+    const dob = row['D.O.B'] || row['D.O.B.'] || row.DOB || row['DOB'] || row.Birthday || row['Birthday'] || row.birthday || ''
+    if (dob) {
+      const birthdayDate = parseBirthday(dob)
+      if (birthdayDate) {
+        contact.birthdays.push({
+          date: birthdayDate,
+        })
+      }
+    }
+
     // Map email
-    const email = row.Email || row.email || row['E-mail'] || row['E-Mail'] || ''
+    const email = row.Email || row.email || row['E-mail'] || row['E-Mail'] || row['E-mail 1 - Value'] || ''
     if (email) {
       contact.emailAddresses.push({
         value: email,
@@ -311,7 +347,7 @@ export default function GoogleContactsIntegration({
     }
 
     // Map phone
-    const phone = row.Phone || row.Telephone || row['Phone Number'] || row.phone || ''
+    const phone = row.Phone || row.Telephone || row['Phone Number'] || row.phone || row['Phone 1 - Value'] || ''
     if (phone) {
       // Clean phone number format
       let cleanPhone = String(phone).replace(/\D/g, '') // Remove non-digits
@@ -327,7 +363,7 @@ export default function GoogleContactsIntegration({
     }
 
     return contact
-  }, [])
+  }, [parseBirthday])
 
   const importContacts = useCallback(
     async (processedData: ProcessedRow[]) => {
@@ -350,14 +386,19 @@ export default function GoogleContactsIntegration({
       setIsLoading(true)
 
       try {
+        // Verify gapi client is initialized
+        if (!window.gapi?.client) {
+          throw new Error('Google API client not initialized. Please refresh the page and try again.')
+        }
+
         // Verify token is set
         const token = window.gapi?.client?.getToken()
         if (!token || !token.access_token) {
           throw new Error('No access token available. Please reconnect your Google account using the "Connect Google Contacts" button.')
         }
 
-        // Verify gapi client is initialized
-        if (!window.gapi?.client?.people) {
+        // Verify People API is loaded (from quickstart pattern)
+        if (!window.gapi.client.people) {
           throw new Error('Google People API not initialized. Please refresh the page and try again.')
         }
 
@@ -368,10 +409,13 @@ export default function GoogleContactsIntegration({
           errors: [] as string[],
         }
 
-        // Import contacts one by one (Google doesn't allow bulk createContact)
+        // Import contacts one by one using People API (from quickstart pattern)
         for (let i = 0; i < processedData.length; i++) {
           const row = processedData[i]
           try {
+
+            console.log('row--->', row)
+
             const contact = mapToGoogleContact(row)
 
             // Verify we have required fields
@@ -381,7 +425,7 @@ export default function GoogleContactsIntegration({
               continue
             }
 
-            // Use createContact API
+            // Use createContact API (from quickstart pattern)
             const response = await window.gapi.client.people.people.createContact({
               resource: contact,
             })
@@ -399,19 +443,8 @@ export default function GoogleContactsIntegration({
             }
           } catch (error: any) {
             results.failed++
-            const errorMessage = error.message || error.error?.message || error.statusText || 'Unknown error'
-            
-            // Provide user-friendly error messages
-            let friendlyMessage = errorMessage
-            if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
-              friendlyMessage = 'Authentication failed. Please reconnect your Google account using the "Connect Google Contacts" button.'
-            } else if (errorMessage.includes('403') || errorMessage.includes('permission')) {
-              friendlyMessage = 'Permission denied. Please ensure you granted contacts access during authorization.'
-            } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
-              friendlyMessage = 'Rate limit exceeded. Please wait a moment and try again.'
-            }
-            
-            results.errors.push(`Row ${i + 1}: ${friendlyMessage}`)
+            const errorMessage = error.message || error.error?.message || 'Unknown error'
+            results.errors.push(`Row ${i + 1}: ${errorMessage}`)
             console.error(`Failed to create contact for row ${i + 1}:`, error)
           }
         }
@@ -427,30 +460,9 @@ export default function GoogleContactsIntegration({
         })
       } catch (error: any) {
         console.error('Import error:', error)
-        console.error('Error details:', {
-          message: error.message,
-          error: error.error,
-          status: error.status,
-          statusText: error.statusText,
-          response: error.response,
-        })
-        
-        let errorMessage = error.message || 'Failed to import contacts to Google'
-        
-        // Provide more specific error messages
-        if (error.status === 401 || error.message?.includes('401') || error.message?.includes('unauthorized')) {
-          errorMessage = 'Authentication failed. Your Google access token may have expired. Please reconnect your Google account using the "Connect Google Contacts" button.'
-        } else if (error.status === 403 || error.message?.includes('403') || error.message?.includes('permission')) {
-          errorMessage = 'Permission denied. Please ensure you granted contacts access during authorization. Try disconnecting and reconnecting your Google account.'
-        } else if (error.status === 429 || error.message?.includes('429') || error.message?.includes('rate limit')) {
-          errorMessage = 'Rate limit exceeded. Please wait a moment and try again.'
-        } else if (error.message?.includes('token')) {
-          errorMessage = 'Access token issue. Please reconnect your Google account using the "Connect Google Contacts" button.'
-        }
-        
         onImportResult?.({
           success: false,
-          message: errorMessage,
+          message: error.message || 'Failed to import contacts to Google',
         })
       } finally {
         setIsLoading(false)
@@ -477,18 +489,21 @@ export default function GoogleContactsIntegration({
           hasApiKey: !!API_KEY,
           hasGoogle: !!window.google,
           hasGapi: !!window.gapi,
+          hasPeopleAPI: !!window.gapi?.client?.people,
         }),
       }
-      
+
       ;(window as any).googleContactsIntegration = integration
-      
-      // Log status for debugging
-      console.log('GoogleContactsIntegration exposed to window:', {
-        isInitialized,
-        hasClientId: !!CLIENT_ID,
-        hasGoogle: !!window.google,
-        hasGapi: !!window.gapi,
-      })
+
+      // console.log('GoogleContactsIntegration exposed to window:', {
+      //   isInitialized,
+      //   isSignedIn,
+      //   hasClientId: !!CLIENT_ID,
+      //   hasApiKey: !!API_KEY,
+      //   hasGoogle: !!window.google,
+      //   hasGapi: !!window.gapi,
+      //   hasPeopleAPI: !!window.gapi?.client?.people,
+      // })
     }
 
     return () => {
@@ -500,4 +515,3 @@ export default function GoogleContactsIntegration({
 
   return null // This component doesn't render anything
 }
-
