@@ -43,7 +43,7 @@ export default function ExcelProcessorPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   const [file, setFile] = useState<File | null>(null)
   const [fileName, setFileName] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -61,10 +61,12 @@ export default function ExcelProcessorPage() {
   const [promptSaved, setPromptSaved] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
-  const [editingCell, setEditingCell] = useState<{ rowIdx: number; key: string } | null>(null)
   const [editedData, setEditedData] = useState<ProcessedRow[]>([])
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
   const [isCheckingConnection, setIsCheckingConnection] = useState(true)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
+  const [dialogFormData, setDialogFormData] = useState<ProcessedRow | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -78,6 +80,32 @@ export default function ExcelProcessorPage() {
       checkGoogleConnection()
     }
   }, [user])
+
+  // Handle dialog keyboard shortcuts and body scroll lock
+  useEffect(() => {
+    if (isDialogOpen) {
+      // Prevent body scroll when dialog is open
+      document.body.style.overflow = 'hidden'
+      
+      // Handle Escape key to close dialog
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setIsDialogOpen(false)
+          setEditingRowIndex(null)
+          setDialogFormData(null)
+        }
+      }
+      
+      window.addEventListener('keydown', handleEscape)
+      
+      return () => {
+        document.body.style.overflow = ''
+        window.removeEventListener('keydown', handleEscape)
+      }
+    } else {
+      document.body.style.overflow = ''
+    }
+  }, [isDialogOpen])
 
   const handleImportResult = (result: { success: boolean; message: string }) => {
     setImportResult(result)
@@ -224,40 +252,84 @@ export default function ExcelProcessorPage() {
     }
   }
 
-  const handleCellEdit = (rowIdx: number, key: string, value: any) => {
-    const newEditedData = [...editedData]
-    newEditedData[rowIdx] = {
-      ...newEditedData[rowIdx],
-      [key]: value,
+  const handleRowClick = (rowIdx: number) => {
+    const dataToDisplay = editedData.length > 0 ? editedData : processedData
+    if (dataToDisplay.length === 0 || rowIdx >= dataToDisplay.length) {
+      console.error('Invalid row index:', rowIdx, 'Total rows:', dataToDisplay.length)
+      return
     }
-    setEditedData(newEditedData)
-    setProcessedData(newEditedData) // Update processed data as well
+    const rowData = { ...dataToDisplay[rowIdx] }
+    
+    // Use View Transitions API if supported
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        setDialogFormData(rowData)
+        setEditingRowIndex(rowIdx)
+        setIsDialogOpen(true)
+      })
+    } else {
+      // Fallback for browsers without View Transitions support
+      setDialogFormData(rowData)
+      setEditingRowIndex(rowIdx)
+      setIsDialogOpen(true)
+    }
   }
 
-  const handleCellBlur = () => {
-    setEditingCell(null)
+  const handleDialogClose = () => {
+    // Use View Transitions API if supported
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        setIsDialogOpen(false)
+        setEditingRowIndex(null)
+        setDialogFormData(null)
+      })
+    } else {
+      // Fallback for browsers without View Transitions support
+      setIsDialogOpen(false)
+      setEditingRowIndex(null)
+      setDialogFormData(null)
+    }
   }
 
-  const handleCellFocus = (rowIdx: number, key: string) => {
-    setEditingCell({ rowIdx, key })
+  const handleDialogFieldChange = (key: string, value: any) => {
+    if (dialogFormData) {
+      setDialogFormData({
+        ...dialogFormData,
+        [key]: value,
+      })
+    }
+  }
+
+  const handleDialogSave = () => {
+    if (editingRowIndex !== null && dialogFormData) {
+      const newEditedData = [...editedData]
+      if (newEditedData.length === 0) {
+        // Initialize editedData from processedData if empty
+        newEditedData.push(...processedData)
+      }
+      newEditedData[editingRowIndex] = dialogFormData
+      setEditedData(newEditedData)
+      setProcessedData(newEditedData)
+      handleDialogClose()
+    }
   }
 
   const getOrderedColumns = (firstRow: ProcessedRow): string[] => {
     const keys = Object.keys(firstRow)
     // Move SaveName or SAVENAME to first position
-    const saveNameKey = keys.find(k => 
-      k.toLowerCase() === 'savename' || 
+    const saveNameKey = keys.find(k =>
+      k.toLowerCase() === 'savename' ||
       k.toLowerCase() === 'save_name' ||
       k === 'SaveName' ||
       k === 'SAVENAME'
     )
-    
+
     if (saveNameKey) {
       return [saveNameKey, ...keys.filter(k => k !== saveNameKey)]
     }
     // If no SaveName, move SenderName to first
-    const senderNameKey = keys.find(k => 
-      k.toLowerCase() === 'sendername' || 
+    const senderNameKey = keys.find(k =>
+      k.toLowerCase() === 'sendername' ||
       k === 'SenderName'
     )
     if (senderNameKey) {
@@ -268,7 +340,7 @@ export default function ExcelProcessorPage() {
 
   const handleImportToGoogleContacts = async () => {
     const dataToImport = editedData.length > 0 ? editedData : processedData
-    
+
     if (dataToImport.length === 0) {
       setError('No processed data to import')
       return
@@ -316,7 +388,7 @@ export default function ExcelProcessorPage() {
         'application/vnd.ms-excel', // .xls
         'text/csv', // .csv
       ]
-      
+
       if (!validTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(xlsx|xls|csv)$/i)) {
         setError('Please upload a valid Excel file (.xlsx, .xls) or CSV file')
         return
@@ -334,7 +406,7 @@ export default function ExcelProcessorPage() {
       setProcessedData([])
       setEditedData([])
       setDownloadUrl(null)
-      
+
       // Save file to IndexedDB
       saveFileToStorage(selectedFile)
     }
@@ -359,7 +431,7 @@ export default function ExcelProcessorPage() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     const droppedFile = e.dataTransfer.files[0]
     if (droppedFile) {
       const validTypes = [
@@ -367,7 +439,7 @@ export default function ExcelProcessorPage() {
         'application/vnd.ms-excel',
         'text/csv',
       ]
-      
+
       if (!validTypes.includes(droppedFile.type) && !droppedFile.name.match(/\.(xlsx|xls|csv)$/i)) {
         setError('Please upload a valid Excel file (.xlsx, .xls) or CSV file')
         return
@@ -384,7 +456,7 @@ export default function ExcelProcessorPage() {
       setProcessedData([])
       setEditedData([])
       setDownloadUrl(null)
-      
+
       // Save file to IndexedDB
       saveFileToStorage(droppedFile)
     }
@@ -398,7 +470,6 @@ export default function ExcelProcessorPage() {
       setDownloadUrl(null)
       setProgress(0)
       setError(null)
-      setEditingCell(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -443,7 +514,7 @@ export default function ExcelProcessorPage() {
 
       // Step 2: Process each row with OpenAI
       const processedRows: ProcessedRow[] = []
-      
+
       for (let i = 0; i < rows.length; i++) {
         setCurrentRow(i + 1)
         setProgress(Math.round(((i + 1) / rows.length) * 90)) // 90% for processing
@@ -521,7 +592,7 @@ export default function ExcelProcessorPage() {
       const url = URL.createObjectURL(blob)
       setDownloadUrl(url)
       setProgress(100)
-      
+
       // Update stored file with processed data
       if (file) {
         try {
@@ -567,7 +638,7 @@ export default function ExcelProcessorPage() {
   const handleDownload = async () => {
     // Use editedData if available, otherwise use processedData
     const dataToDownload = editedData.length > 0 ? editedData : processedData
-    
+
     if (dataToDownload.length === 0) {
       setError('No data to download')
       return
@@ -592,14 +663,14 @@ export default function ExcelProcessorPage() {
 
       const blob = await generateResponse.blob()
       const url = URL.createObjectURL(blob)
-      
+
       const link = document.createElement('a')
       link.href = url
       link.download = fileName.replace(/\.[^/.]+$/, '') + '_processed.xlsx'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      
+
       // Clean up the URL after a delay
       setTimeout(() => URL.revokeObjectURL(url), 100)
     } catch (err: any) {
@@ -646,15 +717,15 @@ export default function ExcelProcessorPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
               <Link
                 href="/dashboard"
-                className="text-slate-600 hover:text-slate-900 transition-colors"
+                className="text-slate-600 hover:text-slate-900 transition-colors text-sm sm:text-base"
               >
                 ← Back to Dashboard
               </Link>
-              <h1 className="text-2xl font-semibold text-slate-900">Excel Processor</h1>
+              <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Excel Processor</h1>
             </div>
           </div>
         </div>
@@ -667,14 +738,14 @@ export default function ExcelProcessorPage() {
       />
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         {/* Prompt Editor Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-slate-200/50">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-semibold text-slate-900">OpenAI Prompt Configuration</h3>
+        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 border border-slate-200/50">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">
+            <h3 className="text-lg sm:text-xl font-semibold text-slate-900">OpenAI Prompt Configuration</h3>
             <button
               onClick={() => setShowPromptEditor(!showPromptEditor)}
-              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center gap-2 w-full sm:w-auto"
             >
               {showPromptEditor ? (
                 <>
@@ -693,7 +764,7 @@ export default function ExcelProcessorPage() {
               )}
             </button>
           </div>
-          
+
           {showPromptEditor && (
             <div className="space-y-4">
               <div className="bg-slate-50 p-4 rounded-lg">
@@ -704,21 +775,21 @@ export default function ExcelProcessorPage() {
                   The prompt defines how OpenAI processes each row. Make sure to include instructions for the JSON output format you expect.
                 </p>
               </div>
-              
+
               <textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 className="w-full h-96 p-4 border border-slate-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
                 placeholder="Enter your custom prompt..."
                 spellCheck={false}
-                style={{color:"black"}}
+                style={{ color: "black" }}
               />
-              
-              <div className="flex items-center justify-between">
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={resetToDefaultPrompt}
-                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200"
+                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200 w-full sm:w-auto"
                   >
                     Reset to Default
                   </button>
@@ -734,13 +805,13 @@ export default function ExcelProcessorPage() {
                   )}
                   <button
                     onClick={saveCustomPrompt}
-                    className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all duration-200 active:scale-[0.98]"
+                    className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all duration-200 active:scale-[0.98] w-full sm:w-auto"
                   >
                     Save Prompt
                   </button>
                 </div>
               </div>
-              
+
               {customPrompt !== DEFAULT_PROMPT_TEMPLATE && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <p className="text-sm text-blue-800">
@@ -750,7 +821,7 @@ export default function ExcelProcessorPage() {
               )}
             </div>
           )}
-          
+
           {!showPromptEditor && customPrompt !== DEFAULT_PROMPT_TEMPLATE && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-800">
@@ -762,13 +833,13 @@ export default function ExcelProcessorPage() {
 
         {/* Storage Stats Section */}
         {storageStats && (
-          <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border border-slate-200/50">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 mb-6 sm:mb-8 border border-slate-200/50">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
               <h3 className="text-lg font-semibold text-slate-900">Storage Information</h3>
               <button
                 onClick={handleClearStorage}
                 disabled={isDeleting || storedFiles.length === 0}
-                className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full sm:w-auto"
               >
                 {isDeleting ? (
                   <>
@@ -788,22 +859,22 @@ export default function ExcelProcessorPage() {
                 )}
               </button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <p className="text-sm text-slate-600 mb-1">Available Storage</p>
-                <p className="text-lg font-semibold text-slate-900">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-lg">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Available Storage</p>
+                <p className="text-base sm:text-lg font-semibold text-slate-900">
                   {storage.formatBytes(storageStats.quota - storageStats.usage)}
                 </p>
               </div>
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <p className="text-sm text-slate-600 mb-1">Used Storage</p>
-                <p className="text-lg font-semibold text-slate-900">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-lg">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Used Storage</p>
+                <p className="text-base sm:text-lg font-semibold text-slate-900">
                   {storage.formatBytes(storageStats.usage)}
                 </p>
               </div>
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <p className="text-sm text-slate-600 mb-1">Total Storage</p>
-                <p className="text-lg font-semibold text-slate-900">
+              <div className="p-3 sm:p-4 bg-slate-50 rounded-lg">
+                <p className="text-xs sm:text-sm text-slate-600 mb-1">Total Storage</p>
+                <p className="text-base sm:text-lg font-semibold text-slate-900">
                   {storage.formatBytes(storageStats.quota)}
                 </p>
               </div>
@@ -831,7 +902,7 @@ export default function ExcelProcessorPage() {
                   {storedFiles.length} file{storedFiles.length !== 1 ? 's' : ''} stored
                 </p>
               </div>
-              
+
               {/* Stored Files List */}
               {storedFiles.length > 0 && (
                 <div className="mt-3">
@@ -846,12 +917,12 @@ export default function ExcelProcessorPage() {
                           <p className="text-sm font-medium text-slate-900 truncate">
                             {storedFile.fileName}
                           </p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-slate-500 break-words">
                             {storage.formatBytes(storedFile.size)} • {new Date(storedFile.uploadedAt).toLocaleDateString()} {new Date(storedFile.uploadedAt).toLocaleTimeString()}
                             {storedFile.processedData && ` • ${storedFile.processedData.length} rows processed`}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 ml-3">
+                        <div className="flex items-center gap-2 ml-2 sm:ml-3 flex-shrink-0">
                           <button
                             onClick={async () => {
                               try {
@@ -921,14 +992,14 @@ export default function ExcelProcessorPage() {
         )}
 
         {/* Upload Section */}
-        <div id="upload-section" className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-slate-200/50">
-          <h2 className="text-xl font-semibold text-slate-900 mb-6">Upload Excel File</h2>
-          
+        <div id="upload-section" className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 border border-slate-200/50">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">Upload Excel File</h2>
+
           {!file ? (
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              className="border-2 border-dashed border-slate-300 rounded-xl p-12 text-center hover:border-blue-400 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-slate-300 rounded-xl p-6 sm:p-12 text-center hover:border-blue-400 transition-colors cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
             >
               <input
@@ -951,10 +1022,10 @@ export default function ExcelProcessorPage() {
                   strokeLinejoin="round"
                 />
               </svg>
-              <p className="text-lg text-slate-600 mb-2">
+              <p className="text-base sm:text-lg text-slate-600 mb-2">
                 Click to upload or drag and drop
               </p>
-              <p className="text-sm text-slate-500">
+              <p className="text-xs sm:text-sm text-slate-500">
                 Excel files (.xlsx, .xls) or CSV files up to 10MB
               </p>
             </div>
@@ -992,7 +1063,7 @@ export default function ExcelProcessorPage() {
                   </svg>
                 </button>
               </div>
-              
+
               <button
                 onClick={handleProcess}
                 disabled={isProcessing}
@@ -1033,12 +1104,12 @@ export default function ExcelProcessorPage() {
 
         {/* Results Section */}
         {processedData.length > 0 && !isProcessing && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-slate-200/50">
-            <div className="flex items-center justify-between mb-6">
+          <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 border border-slate-200/50">
+            <div className="flex flex-col gap-4 mb-4 sm:mb-6">
               <h3 className="text-lg font-semibold text-slate-900">
                 Processed Results ({processedData.length} rows)
               </h3>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                 {!isGoogleConnected && !isCheckingConnection && (
                   <>
                     <button
@@ -1052,13 +1123,13 @@ export default function ExcelProcessorPage() {
                         }
                         handleConnectGoogleContacts(e)
                       }}
-                      className="px-6 py-2 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
+                      className="px-4 sm:px-6 py-2 bg-blue-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
                     >
                       <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                       </svg>
                       Connect Google Contacts
                     </button>
@@ -1090,7 +1161,7 @@ export default function ExcelProcessorPage() {
                 <button
                   onClick={handleImportToGoogleContacts}
                   disabled={isImporting || !isGoogleConnected}
-                  className="px-6 py-2 bg-purple-600 text-white font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  className="px-4 sm:px-6 py-2 bg-purple-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
                 >
                   {isImporting ? (
                     <>
@@ -1112,7 +1183,7 @@ export default function ExcelProcessorPage() {
                 {(processedData.length > 0 || editedData.length > 0) && (
                   <button
                     onClick={handleDownload}
-                    className="px-6 py-2 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center gap-2"
+                    className="px-4 sm:px-6 py-2 bg-green-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1122,98 +1193,378 @@ export default function ExcelProcessorPage() {
                 )}
               </div>
             </div>
-            
+
             {importResult && (
-              <div className={`mb-4 p-4 rounded-lg ${
-                importResult.success 
-                  ? 'bg-green-50 border border-green-200' 
+              <div className={`mb-4 p-4 rounded-lg ${importResult.success
+                  ? 'bg-green-50 border border-green-200'
                   : 'bg-red-50 border border-red-200'
-              }`}>
-                <p className={`text-sm ${
-                  importResult.success ? 'text-green-800' : 'text-red-800'
                 }`}>
+                <p className={`text-sm ${importResult.success ? 'text-green-800' : 'text-red-800'
+                  }`}>
                   {importResult.message}
                 </p>
               </div>
             )}
-            
+
             {/* Editable Table */}
-            <div className="overflow-x-auto">
-              {(() => {
-                const dataToDisplay = editedData.length > 0 ? editedData : processedData
-                if (dataToDisplay.length === 0) return null
-                
-                return (
-                  <>
-                    <table className="min-w-full divide-y divide-slate-200 border border-slate-200">
-                      <thead className="bg-slate-50 sticky top-0 z-10">
-                        <tr>
-                          {getOrderedColumns(dataToDisplay[0]).map((key) => (
-                          <th
-                            key={key}
-                            className="px-4 py-3 text-left text-xs font-semibold text-slate-900 uppercase tracking-wider border-r border-slate-200"
-                          >
-                            {key}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-slate-200">
-                      {dataToDisplay.map((row, rowIdx) => (
-                        <tr key={rowIdx} className="hover:bg-slate-50">
-                          {getOrderedColumns(row).map((key) => {
-                            const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.key === key
-                            const value = row[key]
-                            const displayValue = value !== null && value !== undefined ? String(value) : ''
-                            
-                            return (
-                              <td
-                                key={key}
-                                className="px-2 py-2 text-sm border-r border-slate-100"
-                                onDoubleClick={() => handleCellFocus(rowIdx, key)}
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle px-4 sm:px-0">
+                {(() => {
+                  const dataToDisplay = editedData.length > 0 ? editedData : processedData
+                  if (dataToDisplay.length === 0) return null
+
+                  return (
+                    <>
+
+                      <p className="text-xs text-slate-500 my-2 sm:px-0">
+                        💡 Click any row to edit.
+                      </p>
+
+                      <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg">
+                        <table className="min-w-full divide-y divide-slate-200 border border-slate-200">
+                          <thead className="bg-slate-50 sticky top-0 z-10">
+                            <tr>
+                              {getOrderedColumns(dataToDisplay[0]).map((key) => (
+                                <th
+                                  key={key}
+                                  className="px-2 sm:px-4 py-2 sm:py-3 text-left text-xs font-semibold text-slate-900 uppercase tracking-wider border-r border-slate-200 whitespace-nowrap"
+                                >
+                                  {key}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-200">
+                            {dataToDisplay.map((row, rowIdx) => (
+                              <tr 
+                                key={rowIdx} 
+                                className="hover:bg-blue-50 cursor-pointer transition-colors active:bg-blue-100 select-none group"
+                                style={{ 
+                                  viewTransitionName: isDialogOpen && editingRowIndex === rowIdx ? 'dialog-transition' : undefined 
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleRowClick(rowIdx)
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    handleRowClick(rowIdx)
+                                  }
+                                }}
                               >
-                                {isEditing ? (
-                                  <input
-                                    type="text"
-                                    value={displayValue}
-                                    onChange={(e) => handleCellEdit(rowIdx, key, e.target.value)}
-                                    onBlur={handleCellBlur}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.currentTarget.blur()
-                                      }
-                                      if (e.key === 'Escape') {
-                                        setEditingCell(null)
-                                      }
-                                    }}
-                                    className="w-full px-2 py-1 text-sm text-slate-900 bg-white border border-blue-400 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    autoFocus
-                                  />
-                                ) : (
-                                  <div 
-                                    className="min-h-[32px] px-2 py-1 cursor-text hover:bg-blue-50 rounded transition-colors text-slate-900 font-medium"
-                                    title="Double-click to edit"
-                                  >
-                                    {displayValue || '-'}
-                                  </div>
-                                )}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                    <p className="text-xs text-slate-500 mt-2">
-                      💡 Double-click any cell to edit. Press Enter to save, Escape to cancel.
-                    </p>
-                  </>
-                )
-              })()}
+                                {getOrderedColumns(row).map((key) => {
+                                  const value = row[key]
+                                  const displayValue = value !== null && value !== undefined ? String(value) : ''
+
+                                  return (
+                                    <td
+                                      key={key}
+                                      className="px-1 sm:px-2 py-2 text-xs sm:text-sm border-r border-slate-100"
+                                    >
+                                      <div className="min-h-[28px] sm:min-h-[32px] px-1 sm:px-2 py-1 text-slate-900 font-medium truncate max-w-[200px] sm:max-w-none group-hover:text-blue-700">
+                                        {displayValue || '-'}
+                                      </div>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
             </div>
           </div>
         )}
+
+        {/* Edit Row Dialog */}
+        {isDialogOpen && editingRowIndex !== null && dialogFormData && (
+          <>
+            {/* Backdrop - closes dialog on click */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+              onClick={handleDialogClose}
+            />
+
+            {/* Dialog - Mobile: Full screen with view transition */}
+            <div className="fixed inset-0 z-50 sm:hidden">
+              <div
+                className="absolute inset-0 bg-white rounded-t-3xl shadow-2xl"
+                style={{ viewTransitionName: 'dialog-transition' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Mobile Header */}
+                <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between z-10">
+                  <h2 className="text-lg font-semibold text-slate-900">Edit Row {editingRowIndex + 1}</h2>
+                  <button
+                    onClick={handleDialogClose}
+                    className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Mobile Content */}
+                <div className="overflow-y-auto h-[calc(100vh-140px)] px-4 py-4">
+                  <div className="space-y-4">
+                    {getOrderedColumns(dialogFormData).map((key) => {
+                      const value = dialogFormData[key]
+                      const displayValue = value !== null && value !== undefined ? String(value) : ''
+                      const isLongText = displayValue.length > 100
+
+                      return (
+                        <div key={key} className="space-y-2">
+                          <label className="block text-sm font-medium text-slate-700">
+                            {key}
+                          </label>
+                          {isLongText ? (
+                            <textarea
+                              value={displayValue}
+                              onChange={(e) => handleDialogFieldChange(key, e.target.value)}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 resize-y min-h-[100px]"
+                              placeholder={`Enter ${key}`}
+                              rows={4}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={displayValue}
+                              onChange={(e) => handleDialogFieldChange(key, e.target.value)}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900"
+                              placeholder={`Enter ${key}`}
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Mobile Footer */}
+                <div className="sticky bottom-0 bg-white border-t border-slate-200 px-4 py-4 flex justify-end">
+                  <button
+                    onClick={handleDialogSave}
+                    className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Dialog - Desktop: Sidebar with view transition */}
+            <div className="hidden sm:block fixed inset-y-0 right-0 z-50">
+              <div
+                className="h-full bg-white shadow-2xl w-[30vw] max-w-[500px]"
+                style={{ viewTransitionName: 'dialog-transition' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Desktop Header */}
+                <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
+                  <h2 className="text-xl font-semibold text-slate-900">Edit Row {editingRowIndex + 1}</h2>
+                  <button
+                    onClick={handleDialogClose}
+                    className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Desktop Content */}
+                <div className="overflow-y-auto h-[calc(100vh-140px)] px-6 py-6">
+                  <div className="space-y-4">
+                    {getOrderedColumns(dialogFormData).map((key) => {
+                      const value = dialogFormData[key]
+                      const displayValue = value !== null && value !== undefined ? String(value) : ''
+                      const isLongText = displayValue.length > 100
+
+                      return (
+                        <div key={key} className="space-y-2">
+                          <label className="block text-sm font-medium text-slate-700">
+                            {key}
+                          </label>
+                          {isLongText ? (
+                            <textarea
+                              value={displayValue}
+                              onChange={(e) => handleDialogFieldChange(key, e.target.value)}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 resize-y min-h-[100px]"
+                              placeholder={`Enter ${key}`}
+                              rows={4}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={displayValue}
+                              onChange={(e) => handleDialogFieldChange(key, e.target.value)}
+                              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900"
+                              placeholder={`Enter ${key}`}
+                            />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Desktop Footer */}
+                <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 flex justify-end">
+                  <button
+                    onClick={handleDialogSave}
+                    className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </main>
+
+      {/* View Transitions CSS */}
+      <style jsx global>{`
+        /* View Transitions - Enlarging animation */
+        @supports (view-transition-name: none) {
+          /* Default transition duration */
+          ::view-transition-group(*),
+          ::view-transition-old(*),
+          ::view-transition-new(*) {
+            animation-duration: 500ms;
+            animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
+
+          /* Enlarging animation for dialog transition */
+          ::view-transition-group(dialog-transition) {
+            animation-duration: 500ms;
+            animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
+
+          ::view-transition-old(dialog-transition),
+          ::view-transition-new(dialog-transition) {
+            animation-duration: 500ms;
+            animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+          }
+
+          /* Old view (row) - shrink and fade out */
+          ::view-transition-old(dialog-transition) {
+            animation-name: shrink-fade-out;
+            z-index: 1;
+          }
+
+          /* New view (dialog) - enlarge and fade in */
+          ::view-transition-new(dialog-transition) {
+            animation-name: enlarge-fade-in;
+            z-index: 2;
+          }
+
+          /* Keyframes for enlarging effect - smooth scale up */
+          @keyframes enlarge-fade-in {
+            from {
+              opacity: 0;
+              transform: scale(0.3);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+
+          @keyframes shrink-fade-out {
+            from {
+              opacity: 1;
+              transform: scale(1);
+            }
+            to {
+              opacity: 0;
+              transform: scale(0.3);
+            }
+          }
+
+          /* Mobile: Drawer swipe-up animation (like Instagram comments) */
+          @media (max-width: 640px) {
+            ::view-transition-group(dialog-transition),
+            ::view-transition-old(dialog-transition),
+            ::view-transition-new(dialog-transition) {
+              animation-duration: 350ms;
+              animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+            }
+
+            ::view-transition-new(dialog-transition) {
+              animation-name: swipe-up-mobile;
+            }
+
+            ::view-transition-old(dialog-transition) {
+              animation-name: swipe-down-mobile;
+            }
+
+            @keyframes swipe-up-mobile {
+              from {
+                opacity: 0;
+                transform: translateY(100%);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+
+            @keyframes swipe-down-mobile {
+              from {
+                opacity: 1;
+                transform: translateY(0);
+              }
+              to {
+                opacity: 0;
+                transform: translateY(100%);
+              }
+            }
+          }
+
+          /* Desktop: Sidebar transition with right-side enlarging */
+          @media (min-width: 640px) {
+            ::view-transition-new(dialog-transition) {
+              animation-name: enlarge-fade-in-desktop;
+            }
+
+            ::view-transition-old(dialog-transition) {
+              animation-name: shrink-fade-out-desktop;
+            }
+
+            @keyframes enlarge-fade-in-desktop {
+              from {
+                opacity: 0;
+                transform: scale(0.4) translateX(30px);
+              }
+              to {
+                opacity: 1;
+                transform: scale(1) translateX(0);
+              }
+            }
+
+            @keyframes shrink-fade-out-desktop {
+              from {
+                opacity: 1;
+                transform: scale(1) translateX(0);
+              }
+              to {
+                opacity: 0;
+                transform: scale(0.4) translateX(30px);
+              }
+            }
+          }
+        }
+      `}</style>
     </div>
   )
 }
