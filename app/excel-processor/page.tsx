@@ -68,6 +68,7 @@ export default function ExcelProcessorPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
   const [dialogFormData, setDialogFormData] = useState<ProcessedRow | null>(null)
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
 
   // Update transition names synchronously before paint (useLayoutEffect runs before browser paint)
   useLayoutEffect(() => {
@@ -369,6 +370,56 @@ export default function ExcelProcessorPage() {
     }
   }
 
+  const handleRowSelect = (rowIdx: number) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(rowIdx)) {
+        newSet.delete(rowIdx)
+      } else {
+        newSet.add(rowIdx)
+      }
+      return newSet
+    })
+  }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const dataToDisplay = editedData.length > 0 ? editedData : processedData
+      setSelectedRows(new Set(dataToDisplay.map((_, idx) => idx)))
+    } else {
+      setSelectedRows(new Set())
+    }
+  }
+
+  const handleBulkDelete = () => {
+    if (selectedRows.size === 0) return
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${selectedRows.size} row${selectedRows.size > 1 ? 's' : ''}? This action cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    const dataToDisplay = editedData.length > 0 ? editedData : processedData
+    const indicesToDelete = Array.from(selectedRows).sort((a, b) => b - a) // Sort descending to delete from end
+    
+    // Create new array without selected rows
+    let newData = [...dataToDisplay]
+    indicesToDelete.forEach(idx => {
+      newData.splice(idx, 1)
+    })
+
+    // Renumber rows starting from 1
+    newData = newData.map((row, idx) => ({
+      ...row,
+      row_number: idx + 1,
+    }))
+
+    setEditedData(newData)
+    setProcessedData(newData)
+    setSelectedRows(new Set())
+  }
+
   const getOrderedColumns = (firstRow: ProcessedRow): string[] => {
     const keys = Object.keys(firstRow)
     // Move SaveName or SAVENAME to first position
@@ -461,6 +512,7 @@ export default function ExcelProcessorPage() {
       setError(null)
       setProcessedData([])
       setEditedData([])
+      setSelectedRows(new Set())
       setDownloadUrl(null)
 
       // Save file to IndexedDB
@@ -511,6 +563,7 @@ export default function ExcelProcessorPage() {
       setError(null)
       setProcessedData([])
       setEditedData([])
+      setSelectedRows(new Set())
       setDownloadUrl(null)
 
       // Save file to IndexedDB
@@ -523,6 +576,7 @@ export default function ExcelProcessorPage() {
     setFileName('')
       setProcessedData([])
       setEditedData([])
+      setSelectedRows(new Set())
       setDownloadUrl(null)
       setProgress(0)
       setError(null)
@@ -624,6 +678,7 @@ export default function ExcelProcessorPage() {
 
       setProcessedData(processedRows)
       setEditedData(processedRows) // Initialize edited data
+      setSelectedRows(new Set()) // Clear selections when new data is processed
 
       // Step 3: Generate Excel file
       setProgress(95)
@@ -682,6 +737,7 @@ export default function ExcelProcessorPage() {
       setFileName('')
       setProcessedData([])
       setEditedData([])
+      setSelectedRows(new Set())
       setDownloadUrl(null)
     } catch (err: any) {
       console.error('Failed to clear storage:', err)
@@ -1252,17 +1308,30 @@ export default function ExcelProcessorPage() {
                     </>
                   )}
                 </button>
-                {(processedData.length > 0 || editedData.length > 0) && (
-                  <button
-                    onClick={handleDownload}
-                    className="px-4 sm:px-6 py-2 bg-green-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
-                  >
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download Excel
-                  </button>
-                )}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  {selectedRows.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      className="px-4 sm:px-6 py-2 bg-red-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete Selected ({selectedRows.size})
+                    </button>
+                  )}
+                  {(processedData.length > 0 || editedData.length > 0) && (
+                    <button
+                      onClick={handleDownload}
+                      className="px-4 sm:px-6 py-2 bg-green-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download Excel
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1289,13 +1358,23 @@ export default function ExcelProcessorPage() {
                     <>
 
                       <p className="text-xs text-slate-500 my-2 sm:px-0">
-                        💡 Click any row to edit.
+                        💡 Click any row to edit. Use checkboxes to select multiple rows for bulk deletion.
                       </p>
 
                       <div className="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg">
                         <table className="min-w-full divide-y divide-slate-200 border border-slate-200">
                           <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr>
+                              <th className="px-2 sm:px-4 py-2 sm:py-3 text-left border-r border-slate-200 w-12">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRows.size > 0 && selectedRows.size === dataToDisplay.length}
+                                  onChange={(e) => handleSelectAll(e.target.checked)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
+                                  aria-label="Select all rows"
+                                />
+                              </th>
                               {getOrderedColumns(dataToDisplay[0]).map((key) => (
                                 <th
                                   key={key}
@@ -1310,8 +1389,12 @@ export default function ExcelProcessorPage() {
                             {dataToDisplay.map((row, rowIdx) => (
                               <tr 
                                 key={rowIdx} 
-                                className="hover:bg-blue-50 cursor-pointer transition-colors active:bg-blue-100 select-none group"
+                                className={`hover:bg-blue-50 cursor-pointer transition-colors active:bg-blue-100 select-none group ${selectedRows.has(rowIdx) ? 'bg-blue-100' : ''}`}
                                 onClick={(e) => {
+                                  // Don't open dialog if clicking checkbox
+                                  if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
+                                    return
+                                  }
                                   e.preventDefault()
                                   e.stopPropagation()
                                   handleRowClick(rowIdx)
@@ -1325,6 +1408,19 @@ export default function ExcelProcessorPage() {
                                   }
                                 }}
                               >
+                                <td 
+                                  className="px-2 sm:px-4 py-2 border-r border-slate-100"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRows.has(rowIdx)}
+                                    onChange={() => handleRowSelect(rowIdx)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
+                                    aria-label={`Select row ${rowIdx + 1}`}
+                                  />
+                                </td>
                                 {getOrderedColumns(row).map((key) => {
                                   const value = row[key]
                                   const displayValue = value !== null && value !== undefined ? String(value) : ''
