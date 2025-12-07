@@ -61,6 +61,7 @@ export default function ExcelProcessorPage() {
   const [promptSaved, setPromptSaved] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [editedData, setEditedData] = useState<ProcessedRow[]>([])
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
   const [isCheckingConnection, setIsCheckingConnection] = useState(true)
@@ -160,6 +161,12 @@ export default function ExcelProcessorPage() {
     if (!result.success) {
       setError(result.message)
     }
+    // Reset progress when import completes
+    setImportProgress({ current: 0, total: 0 })
+  }
+
+  const handleImportProgress = (current: number, total: number) => {
+    setImportProgress({ current, total })
   }
 
   // Initialize IndexedDB and load stored files
@@ -407,6 +414,7 @@ export default function ExcelProcessorPage() {
     setIsImporting(true)
     setImportResult(null)
     setError(null)
+    setImportProgress({ current: 0, total: dataToImport.length })
 
     try {
       // Use client-side Google Contacts integration
@@ -783,6 +791,7 @@ export default function ExcelProcessorPage() {
       <GoogleContactsIntegration
         onConnectionChange={handleConnectionChange}
         onImportResult={handleImportResult}
+        onImportProgress={handleImportProgress}
       />
 
       {/* Main Content */}
@@ -1209,15 +1218,30 @@ export default function ExcelProcessorPage() {
                 <button
                   onClick={handleImportToGoogleContacts}
                   disabled={isImporting || !isGoogleConnected}
-                  className="px-4 sm:px-6 py-2 bg-purple-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 w-full sm:w-auto"
+                  className="px-4 sm:px-6 py-2 bg-purple-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 w-full sm:w-auto relative overflow-hidden"
                 >
                   {isImporting ? (
                     <>
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin h-5 w-5 relative z-10" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Importing...
+                      <span className="relative z-10 whitespace-nowrap">
+                        {importProgress.total > 0 
+                          ? `Importing ${importProgress.current}/${importProgress.total} (${Math.round((importProgress.current / importProgress.total) * 100)}%)`
+                          : 'Importing...'}
+                      </span>
+                      {importProgress.total > 0 && (
+                        <>
+                          <div 
+                            className="absolute inset-0 bg-purple-700 transition-all duration-300 ease-out"
+                            style={{ 
+                              width: `${(importProgress.current / importProgress.total) * 100}%`,
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-transparent" />
+                        </>
+                      )}
                     </>
                   ) : (
                     <>

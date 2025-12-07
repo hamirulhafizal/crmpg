@@ -29,11 +29,13 @@ interface ProcessedRow {
 interface GoogleContactsIntegrationProps {
   onConnectionChange?: (connected: boolean) => void
   onImportResult?: (result: { success: boolean; message: string }) => void
+  onImportProgress?: (current: number, total: number) => void
 }
 
 export default function GoogleContactsIntegration({
   onConnectionChange,
   onImportResult,
+  onImportProgress,
 }: GoogleContactsIntegrationProps) {
   const [isInitialized, setIsInitialized] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
@@ -422,6 +424,8 @@ export default function GoogleContactsIntegration({
             if (!contact.names || contact.names.length === 0) {
               results.failed++
               results.errors.push(`Row ${i + 1}: Missing name field (SenderName or Name required)`)
+              // Report progress even for skipped rows
+              onImportProgress?.(i + 1, processedData.length)
               continue
             }
 
@@ -437,6 +441,9 @@ export default function GoogleContactsIntegration({
               results.errors.push(`Row ${i + 1}: Failed to create contact`)
             }
 
+            // Report progress after each contact
+            onImportProgress?.(i + 1, processedData.length)
+
             // Add small delay to avoid rate limiting
             if (i < processedData.length - 1) {
               await new Promise((resolve) => setTimeout(resolve, 500))
@@ -446,6 +453,8 @@ export default function GoogleContactsIntegration({
             const errorMessage = error.message || error.error?.message || 'Unknown error'
             results.errors.push(`Row ${i + 1}: ${errorMessage}`)
             console.error(`Failed to create contact for row ${i + 1}:`, error)
+            // Report progress even on error
+            onImportProgress?.(i + 1, processedData.length)
           }
         }
 
@@ -468,7 +477,7 @@ export default function GoogleContactsIntegration({
         setIsLoading(false)
       }
     },
-    [isInitialized, isSignedIn, mapToGoogleContact, onImportResult]
+    [isInitialized, isSignedIn, mapToGoogleContact, onImportResult, onImportProgress]
   )
 
   // Expose methods via window object for use in parent component
