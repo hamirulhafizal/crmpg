@@ -20,7 +20,7 @@ You MUST return a JSON object with the following keys:
 2. Ethnicity - (Malay/Chinese/Indian/Other)
 3. Gender - (Male/Female)
 4. Age - (calculate from D.O.B. if provided, otherwise estimate from name)
-5. Prefix - En, Pn, Cik, Tn -- if(age > 28, En or Pn) else ( Tn, Cik )
+5. Prefix - (based on gender and age)  En (for male) , Pn (for female) , Cik (for female), Tn (for male) -- if(age > 28, En or Pn) else ( Tn, Cik ) 
 6. FirstName - without common prefix name like muhd, mohamad, nur, noor, siti, nurul, nur, ahmad and others that common on malaysia
 7. SenderName - Prefix + FirstName
 8. SaveName - {{PGCode}} - {{SenderName}}
