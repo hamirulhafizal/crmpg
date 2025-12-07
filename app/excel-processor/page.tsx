@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
@@ -67,6 +67,54 @@ export default function ExcelProcessorPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
   const [dialogFormData, setDialogFormData] = useState<ProcessedRow | null>(null)
+
+  // Update transition names synchronously before paint (useLayoutEffect runs before browser paint)
+  useLayoutEffect(() => {
+    if (!isDialogOpen) return
+
+    const mobileQuery = window.matchMedia('(max-width: 639px)')
+    const desktopQuery = window.matchMedia('(min-width: 640px)')
+    
+    // Find dialog elements
+    const mobileDialog = document.querySelector('[data-dialog="mobile"]') as HTMLElement
+    const desktopDialog = document.querySelector('[data-dialog="desktop"]') as HTMLElement
+
+    if (mobileDialog && desktopDialog) {
+      if (mobileQuery.matches) {
+        mobileDialog.style.viewTransitionName = 'dialog-transition'
+        desktopDialog.style.viewTransitionName = 'none'
+      } else if (desktopQuery.matches) {
+        desktopDialog.style.viewTransitionName = 'dialog-transition'
+        mobileDialog.style.viewTransitionName = 'none'
+      }
+    }
+  }, [isDialogOpen])
+
+  // Update transition names on resize
+  useEffect(() => {
+    if (!isDialogOpen) return
+
+    const updateTransitionNames = () => {
+      const mobileQuery = window.matchMedia('(max-width: 639px)')
+      const desktopQuery = window.matchMedia('(min-width: 640px)')
+      
+      const mobileDialog = document.querySelector('[data-dialog="mobile"]') as HTMLElement
+      const desktopDialog = document.querySelector('[data-dialog="desktop"]') as HTMLElement
+
+      if (mobileDialog && desktopDialog) {
+        if (mobileQuery.matches) {
+          mobileDialog.style.viewTransitionName = 'dialog-transition'
+          desktopDialog.style.viewTransitionName = 'none'
+        } else if (desktopQuery.matches) {
+          desktopDialog.style.viewTransitionName = 'dialog-transition'
+          mobileDialog.style.viewTransitionName = 'none'
+        }
+      }
+    }
+
+    window.addEventListener('resize', updateTransitionNames)
+    return () => window.removeEventListener('resize', updateTransitionNames)
+  }, [isDialogOpen])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -1239,9 +1287,6 @@ export default function ExcelProcessorPage() {
                               <tr 
                                 key={rowIdx} 
                                 className="hover:bg-blue-50 cursor-pointer transition-colors active:bg-blue-100 select-none group"
-                                style={{ 
-                                  viewTransitionName: isDialogOpen && editingRowIndex === rowIdx ? 'dialog-transition' : undefined 
-                                }}
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
@@ -1296,8 +1341,8 @@ export default function ExcelProcessorPage() {
             {/* Dialog - Mobile: Full screen with view transition */}
             <div className="fixed inset-0 z-50 sm:hidden">
               <div
+                data-dialog="mobile"
                 className="absolute inset-0 bg-white rounded-t-3xl shadow-2xl"
-                style={{ viewTransitionName: 'dialog-transition' }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Mobile Header */}
@@ -1364,8 +1409,8 @@ export default function ExcelProcessorPage() {
             {/* Dialog - Desktop: Sidebar with view transition */}
             <div className="hidden sm:block fixed inset-y-0 right-0 z-50">
               <div
+                data-dialog="desktop"
                 className="h-full bg-white shadow-2xl w-[30vw] max-w-[500px]"
-                style={{ viewTransitionName: 'dialog-transition' }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Desktop Header */}

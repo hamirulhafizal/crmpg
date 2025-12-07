@@ -165,11 +165,21 @@ class IndexedDBStorage {
     persisted: boolean
   }> {
     try {
+      // Check if Storage API is available
+      if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.estimate) {
+        console.warn('Storage API not available in this environment')
+        return {
+          quota: 0,
+          usage: 0,
+          persisted: false,
+        }
+      }
+
       // Get storage estimate
       const estimate = await navigator.storage.estimate()
       
       // Check if persistent storage is granted
-      const persisted = navigator.storage && navigator.storage.persisted
+      const persisted = navigator.storage.persisted
         ? await navigator.storage.persisted()
         : false
 
@@ -191,7 +201,7 @@ class IndexedDBStorage {
 
   async requestPersistentStorage(): Promise<boolean> {
     try {
-      if (navigator.storage && navigator.storage.persist) {
+      if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
         const persisted = await navigator.storage.persist()
         return persisted
       }
