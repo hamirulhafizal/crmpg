@@ -1,0 +1,290 @@
+# USTAZ AI WHATSAPP API DOCUMENTATION
+
+## Environment Configuration
+```
+WS_API_ENDPOINT=https://ustazai.my/
+WS_API_KEY=
+```
+
+## Base URL
+```
+https://ustazai.my/
+```
+
+---
+
+## API ENDPOINTS
+
+### 1. Send Message API
+**Method:** `POST | GET`  
+**Endpoint:** `https://ustazai.my/send-message`
+
+**Parameters:**
+- `api_key` (string, Required: Yes) - API Key
+- `sender` (string, Required: Yes) - Number of your device
+- `number` (string, Required: Yes) - Recipient number ex 60172888xxxx|60162888xxxx
+- `message` (string, Required: Yes) - Message to be sent
+
+**Example JSON Request (POST):**
+```json
+{
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "sender": "60162888xxxx",
+  "number": "60162888xxxx",
+  "message": "Hello World"
+}
+```
+
+**Example URL Request (GET):**
+```
+https://ustazai.my/send-message?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&sender=60162888xxxx&number=60162888xxxx&message=Hello
+```
+
+**Note:** WhatsApp Business tidak stabil. Disarankan menggunakan WhatsApp biasa untuk kestabilan yang lebih baik.
+
+---
+
+### 2. Send Media API
+**Method:** `POST | GET`  
+**Endpoint:** `https://ustazai.my/send-media`
+
+**Parameters:**
+- `api_key` (string, Required: Yes) - API Key
+- `sender` (string, Required: Yes) - Number of your device
+- `number` (string, Required: Yes) - Recipient number ex 60172888xxxx|60162888xxxx
+- `media_type` (string, Required: Yes) - Allow: image, video, audio, document
+- `caption` (string, Required: No) - Caption/message
+- `url` (string, Required: Yes) - URL of media, must be direct link
+
+**Example JSON Request (POST):**
+```json
+{
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "sender": "60162888xxxx",
+  "number": "60162888xxxx",
+  "media_type": "image",
+  "caption": "Hello World",
+  "url": "https://example.com/image.jpg"
+}
+```
+
+**Example URL Request (GET):**
+```
+https://ustazai.my/send-media?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&sender=60162888xxxx&number=60162888xxxx&media_type=image&caption=Hello&url=https://example.com/image.jpg
+```
+
+**Important:** Make sure the URL is a direct link, not a link from Google Drive or other cloud storage.
+
+---
+
+### 3. Generate QR Code API
+**Method:** `POST`  
+**Endpoint:** `https://ustazai.my/generate-qr`
+
+**Parameters:**
+- `device` (string, Required: Yes) - Number of your device
+- `api_key` (string, Required: Yes) - API Key
+- `force` (boolean, Required: No) - If true, when device does not exist, it will be created
+
+**Example JSON Request:**
+```json
+{
+  "device": "60162888xxxx",
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "force": true
+}
+```
+
+**Response Scenarios:**
+
+1. **Processing Response:**
+```json
+{
+  "status": "processing",
+  "message": "Processing"
+}
+```
+*Note: If processing like above, you need to hit the endpoint again to get the result*
+
+2. **QR Code Generated:**
+```json
+{
+  "status": false,
+  "qrcode": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARQAAAEUCAYAAADqcM15AAAAAKlEQVR4AewaftIAABIb",
+  "message": "Please scann qrcode"
+}
+```
+*Note: The qrcode is base64 encoded. After scanning the qrcode, you need to hit the endpoint again to get the last response.*
+
+3. **Device Already Connected:**
+```json
+{
+  "status": false,
+  "msg": "Device already connected!"
+}
+```
+
+4. **Failed Response:**
+```json
+{
+  "status": false,
+  "msg": "Invalid data!",
+  "errors": {} // list of errors
+}
+```
+
+---
+
+### 4. Device Info API
+**Method:** `POST | GET`  
+**Endpoint:** `https://ustazai.my/info-device`
+
+**Parameters:**
+- `api_key` (string, Required: Yes) - API Key
+- `number` (string, Required: Yes) - Any number ex 60123xxxx
+
+**Example JSON Request (POST):**
+```json
+{
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "number": "601156747399"
+}
+```
+
+**Example URL Request (GET):**
+```
+https://ustazai.my/info-device?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&number=601156747399
+```
+
+**Example Response:**
+```json
+{
+  "status": true,
+  "info": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "body": "60123xxxxxx",
+      "webhook": null,
+      "status": "Disconnect",
+      "created_at": "2024-08-16T11:07:27.000000Z",
+      "updated_at": "2024-08-16T11:07:27.000000Z",
+      "message_sent": 0,
+      "reply_when": "Personal",
+      "wh_read": 0,
+      "reject_call": 0,
+      "wh_typing": 0
+    }
+  ]
+}
+```
+
+---
+
+### 5. Create Device API
+**Method:** `POST | GET`  
+**Endpoint:** `https://ustazai.my/create-device`
+
+**Parameters:**
+- `api_key` (string, Required: Yes) - User API Key
+- `sender` (string, Required: Yes) - Sender ID (must be unique and at least 8 characters)
+- `urlwebhook` (string, Required: No) - Webhook URL for incoming message callbacks
+
+**Example JSON Request (POST):**
+```json
+{
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "sender": "6017xxxxxxx",
+  "urlwebhook": "https://yourdomain.com/webhook"
+}
+```
+
+**Example URL Request (GET):**
+```
+https://ustazai.my/create-device?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&sender=6017xxxxxxx&urlwebhook=https://yourdomain.com/webhook
+```
+
+---
+
+### 6. Check Number API
+**Method:** `POST | GET`  
+**Endpoint:** `https://ustazai.my/check-number`
+
+**Parameters:**
+- `api_key` (string, Required: Yes) - API Key
+- `sender` (string, Required: Yes) - Your number ex 60123xxxx
+- `number` (string, Required: Yes) - Any number ex 60123xxxx
+
+**Example JSON Request (POST):**
+```json
+{
+  "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll",
+  "sender": "60123xxxxx",
+  "number": "60132xxxxx"
+}
+```
+
+**Example URL Request (GET):**
+```
+https://ustazai.my/check-number?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&sender=60123xxxxx&number=60132xxxxx
+```
+
+**Example Response:**
+```json
+{
+  "status": true,
+  "msg": {
+    "exists": true,
+    "jid": "201111347197@s.whatsapp.net"
+  }
+}
+```
+
+---
+
+## Additional API Endpoints Available
+
+The following endpoints are also available in the API documentation:
+- Send Poll Message
+- Send Sticker
+- Send Button
+- Send List Message
+- Send Location
+- Send Vcard
+- Disconnect device
+- Create User
+- User Info
+- Example Webhook
+
+*Note: Detailed documentation for these endpoints can be found in the USTAZ AI API documentation portal.*
+
+---
+
+## Usage Notes
+
+1. All endpoints support both POST (with JSON body) and GET (with query parameters) methods
+2. The API key must be included in every request
+3. Phone numbers should be in international format (e.g., 60123456789)
+4. For media endpoints, ensure URLs are direct links, not cloud storage links
+5. QR code generation requires polling - check the endpoint multiple times until you get the final response
+6. Device status can be checked using the Device Info API
+
+---
+
+## Quick Reference
+
+**Get WhatsApp Status:**
+```
+https://ustazai.my/info-device?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&number=601156747399
+```
+
+**Send Message:**
+```
+https://ustazai.my/send-message?api_key=kPow7uZLfxBof0b6aqbFVv4Ac582ll&sender=YOUR_DEVICE&number=RECIPIENT&message=YOUR_MESSAGE
+```
+
+**Generate QR Code:**
+```
+POST https://ustazai.my/generate-qr
+Body: {"device": "YOUR_DEVICE", "api_key": "kPow7uZLfxBof0b6aqbFVv4Ac582ll", "force": true}
+```

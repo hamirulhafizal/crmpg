@@ -42,7 +42,8 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/profile') ||
       request.nextUrl.pathname.startsWith('/pwa-test') ||
       request.nextUrl.pathname.startsWith('/excel-processor') ||
-      request.nextUrl.pathname.startsWith('/customers'))
+      request.nextUrl.pathname.startsWith('/customers') ||
+      request.nextUrl.pathname.startsWith('/whatsapp-services'))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
