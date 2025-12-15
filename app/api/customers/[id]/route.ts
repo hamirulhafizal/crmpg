@@ -4,7 +4,7 @@ import { createClient } from '@/app/lib/supabase/server'
 // GET /api/customers/[id] - Get single customer
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function GET(
       )
     }
 
-    const { id } = await params
+    const { id } = await context.params
 
     const { data, error } = await supabase
       .from('customers')
@@ -55,7 +55,7 @@ export async function GET(
 // PUT /api/customers/[id] - Update customer
 export async function PUT(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -70,7 +70,7 @@ export async function PUT(
       )
     }
 
-    const { id } = await params
+    const { id } = await context.params
     const body = await request.json()
 
     // Prepare update data
@@ -130,7 +130,7 @@ export async function PUT(
 // DELETE /api/customers/[id] - Delete customer
 export async function DELETE(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -145,7 +145,7 @@ export async function DELETE(
       )
     }
 
-    const { id } = await params
+    const { id } = await context.params
 
     const { error } = await supabase
       .from('customers')
