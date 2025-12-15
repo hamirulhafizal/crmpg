@@ -48,6 +48,8 @@ export default function WhatsAppServicesPage() {
   const [isSending, setIsSending] = useState(false)
   const [messageTemplate, setMessageTemplate] = useState('Selamat Hari Jadi, {SenderName}! Semoga panjang umur, murah rezeki, dan bahagia selalu! 🎉🎂')
   const [settings, setSettings] = useState<any>(null)
+  const [scheduledTime, setScheduledTime] = useState('08:00')
+  const [autoSendEnabled, setAutoSendEnabled] = useState(true)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -149,6 +151,14 @@ export default function WhatsAppServicesPage() {
       setSettings(result)
       if (result.default_template) {
         setMessageTemplate(result.default_template)
+      }
+      if (result.send_time) {
+        // Convert TIME format (HH:MM:SS) to input format (HH:MM)
+        const timeParts = result.send_time.split(':')
+        setScheduledTime(`${timeParts[0]}:${timeParts[1]}`)
+      }
+      if (result.auto_send_enabled !== undefined) {
+        setAutoSendEnabled(result.auto_send_enabled)
       }
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -358,6 +368,11 @@ export default function WhatsAppServicesPage() {
 
   const handleSaveSettings = async () => {
     try {
+      // Convert HH:MM to HH:MM:SS format for database
+      const timeValue = scheduledTime.includes(':') 
+        ? `${scheduledTime}:00` 
+        : `${scheduledTime}:00:00`
+
       const response = await fetch('/api/whatsapp/settings', {
         method: 'PUT',
         headers: {
@@ -365,6 +380,8 @@ export default function WhatsAppServicesPage() {
         },
         body: JSON.stringify({
           default_template: messageTemplate,
+          send_time: timeValue,
+          auto_send_enabled: autoSendEnabled,
         }),
       })
 
@@ -372,6 +389,7 @@ export default function WhatsAppServicesPage() {
 
       if (result.success) {
         alert('Settings saved successfully')
+        await loadSettings() // Reload to get updated settings
       } else {
         setError(result.error || 'Failed to save settings')
       }
@@ -675,10 +693,53 @@ export default function WhatsAppServicesPage() {
         {/* Birthday Automation Section */}
         {connection && connection.device_status === 'Connected' && (
           <>
-            {/* Message Template */}
+            {/* Automation Settings */}
             <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Message Template</h2>
-              <div className="space-y-4">
+              <h2 className="text-xl font-semibold text-slate-900 mb-4">Birthday Automation Settings</h2>
+              <div className="space-y-6">
+                {/* Auto-Send Toggle */}
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Enable Automatic Birthday Messages
+                    </label>
+                    <p className="text-xs text-slate-500">
+                      Automatically send birthday wishes at your scheduled time
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoSendEnabled}
+                      onChange={(e) => setAutoSendEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                {/* Scheduled Time */}
+                {autoSendEnabled && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Scheduled Time (Malaysia Time)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <div className="text-sm text-slate-600">
+                        <p className="font-medium">Birthday messages will be sent automatically at {scheduledTime} Malaysia time</p>
+                        <p className="text-xs text-slate-500 mt-1">The system checks every hour and sends messages at your scheduled time</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Message Template */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Birthday Message Template
@@ -694,11 +755,12 @@ export default function WhatsAppServicesPage() {
                     Variables: {'{'}SenderName{'}'}, {'{'}Name{'}'}, {'{'}Age{'}'}, {'{'}SaveName{'}'}, {'{'}PGCode{'}'}
                   </p>
                 </div>
+
                 <button
                   onClick={handleSaveSettings}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Save Template
+                  Save Settings
                 </button>
               </div>
             </div>
@@ -827,3 +889,4 @@ export default function WhatsAppServicesPage() {
     </div>
   )
 }
+

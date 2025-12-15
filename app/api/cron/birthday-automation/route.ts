@@ -21,9 +21,10 @@ export async function GET(request: Request) {
     const now = new Date()
     const malaysiaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' }))
     const currentHour = malaysiaTime.getHours()
+    const currentMinute = malaysiaTime.getMinutes()
     const currentDate = malaysiaTime.toISOString().split('T')[0]
 
-    // Get all users with auto-send enabled and matching send time
+    // Get all users with auto-send enabled
     const { data: settings, error: settingsError } = await supabase
       .from('whatsapp_settings')
       .select('user_id, send_time, default_template')
@@ -47,10 +48,16 @@ export async function GET(request: Request) {
     // Process each user
     for (const setting of settings || []) {
       try {
-        // Check if it's time to send (within the hour)
-        const sendHour = parseInt(setting.send_time.split(':')[0])
-        if (currentHour !== sendHour) {
-          continue // Skip if not the right hour
+        // Parse scheduled time (format: HH:MM:SS or HH:MM)
+        const timeParts = setting.send_time.split(':')
+        const sendHour = parseInt(timeParts[0])
+        const sendMinute = parseInt(timeParts[1] || '0')
+        
+        // Check if it's time to send (must match both hour and minute)
+        // Allow a 1-minute window (current minute should be sendMinute or sendMinute+1)
+        // This accounts for slight timing differences
+        if (currentHour !== sendHour || (currentMinute !== sendMinute && currentMinute !== sendMinute + 1)) {
+          continue // Skip if not the right time
         }
 
         // Get user's WhatsApp connection
@@ -200,3 +207,4 @@ export async function GET(request: Request) {
     )
   }
 }
+
