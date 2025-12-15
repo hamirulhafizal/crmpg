@@ -640,7 +640,11 @@ export default function WhatsAppServicesPage() {
                 disabled={isConnecting || !senderNumber || !apiKey}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
               >
-                {isConnecting ? 'Connecting...' : connection && connection.device_status !== 'Connected' ? 'Reconnect WhatsApp' : 'Connect WhatsApp'}
+                {isConnecting
+                  ? 'Connecting...'
+                  : connection && 'device_status' in connection && (connection as any)?.device_status !== 'Connected'
+                  ? 'Reconnect WhatsApp'
+                  : 'Connect WhatsApp'}
               </button>
             </div>
           )}
