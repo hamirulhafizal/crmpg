@@ -18,7 +18,7 @@ You MUST return a JSON object with the following keys:
 
 1. row_number: {{rowNumber}},
 2. Ethnicity - (Malay/Chinese/Indian/Other)
-3. Gender - (Male/Female)
+3. Gender - (Male/Female) if name contains Bin then it male, if Binti/Bte then it female
 4. Age - (calculate from D.O.B. if provided, otherwise estimate from name)
 5. Prefix - (based on gender and age)  En (for male) , Pn (for female) , Cik (for female), Tn (for male) -- if(age > 28, En or Pn) else ( Tn, Cik ) 
 6. FirstName - without common prefix name like muhd, mohamad, nur, noor, siti, nurul, nur, ahmad and others that common on malaysia
