@@ -18,24 +18,28 @@ export async function GET(request: Request) {
     // Get query parameters
     const { searchParams } = new URL(request.url)
     const days = parseInt(searchParams.get('days') || '7')
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    const adminMode = searchParams.get('admin') === 'true'
 
-    const targetDate = new Date(date)
-    const endDate = new Date(targetDate)
+    // Get current date (normalized to start of day for comparison)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const endDate = new Date(today)
     endDate.setDate(endDate.getDate() + days)
 
-    // Format dates for SQL
-    const startDateStr = targetDate.toISOString().split('T')[0]
-    const endDateStr = endDate.toISOString().split('T')[0]
-
-    // Get customers with birthdays in the date range
-    // We need to check if DOB month/day matches within the range
-    const { data: customers, error } = await supabase
+    // Get all customers with DOB and phone
+    // If admin mode, get all customers; otherwise, filter by user_id
+    let query = supabase
       .from('customers')
       .select('*')
-      .eq('user_id', user.id)
       .not('dob', 'is', null)
       .not('phone', 'is', null)
+    
+    // Only filter by user_id if not in admin mode
+    if (!adminMode) {
+      query = query.eq('user_id', user.id)
+    }
+
+    const { data: customers, error } = await query
 
     if (error) {
       console.error('Error fetching customers:', error)
@@ -45,40 +49,70 @@ export async function GET(request: Request) {
       )
     }
 
-    // Filter customers by birthday date range
+    if (!customers || customers.length === 0) {
+      return NextResponse.json({
+        birthdays: [],
+        today_count: 0,
+        upcoming_count: 0,
+      })
+    }
+
+    // Helper function to normalize date (remove time component)
+    const normalizeDate = (date: Date) => {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    }
+
+    // Helper function to check if birthday falls within range
+    const isBirthdayInRange = (dob: Date, startDate: Date, endDate: Date) => {
+      const currentYear = startDate.getFullYear()
+      const nextYear = currentYear + 1
+      
+      // Create birthday date for current year
+      const birthdayThisYear = new Date(currentYear, dob.getMonth(), dob.getDate())
+      const normalizedBirthdayThisYear = normalizeDate(birthdayThisYear)
+      
+      // Create birthday date for next year (in case range crosses year boundary)
+      const birthdayNextYear = new Date(nextYear, dob.getMonth(), dob.getDate())
+      const normalizedBirthdayNextYear = normalizeDate(birthdayNextYear)
+      
+      const normalizedStart = normalizeDate(startDate)
+      const normalizedEnd = normalizeDate(endDate)
+
+      // Check if birthday falls within range (for this year or next year)
+      return (
+        (normalizedBirthdayThisYear >= normalizedStart && normalizedBirthdayThisYear <= normalizedEnd) ||
+        (normalizedBirthdayNextYear >= normalizedStart && normalizedBirthdayNextYear <= normalizedEnd)
+      )
+    }
+
+    // Filter and map customers by birthday date range
     const upcomingBirthdays = customers
-      ?.filter(customer => {
+      .filter(customer => {
         if (!customer.dob) return false
-
+        
         const dob = new Date(customer.dob)
-        const currentYear = targetDate.getFullYear()
-        
-        // Create birthday date for current year
-        const birthdayThisYear = new Date(currentYear, dob.getMonth(), dob.getDate())
-        
-        // Also check next year if range crosses year boundary
-        const birthdayNextYear = new Date(currentYear + 1, dob.getMonth(), dob.getDate())
-
-        return (
-          (birthdayThisYear >= targetDate && birthdayThisYear <= endDate) ||
-          (birthdayNextYear >= targetDate && birthdayNextYear <= endDate)
-        )
+        return isBirthdayInRange(dob, today, endDate)
       })
       .map(customer => {
         const dob = new Date(customer.dob!)
-        const today = new Date()
         const currentYear = today.getFullYear()
         const birthdayThisYear = new Date(currentYear, dob.getMonth(), dob.getDate())
+        const normalizedBirthday = normalizeDate(birthdayThisYear)
+        const normalizedToday = normalizeDate(today)
+        
+        // Check if birthday is today
+        const isToday = normalizedBirthday.getTime() === normalizedToday.getTime()
         
         // Calculate age
-        const age = customer.age || (today.getFullYear() - dob.getFullYear() - 
-          (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0))
+        const age = customer.age || 
+          (today.getFullYear() - dob.getFullYear() - 
+           (today < birthdayThisYear ? 1 : 0))
 
         return {
           ...customer,
           birthday_date: birthdayThisYear.toISOString().split('T')[0],
           age,
-          is_today: birthdayThisYear.toDateString() === today.toDateString(),
+          is_today: isToday,
         }
       })
       .sort((a, b) => {
@@ -86,16 +120,22 @@ export async function GET(request: Request) {
         if (a.is_today && !b.is_today) return -1
         if (!a.is_today && b.is_today) return 1
         return new Date(a.birthday_date).getTime() - new Date(b.birthday_date).getTime()
-      }) || []
+      })
 
     // Check which customers already received birthday messages today
-    const today = new Date().toISOString().split('T')[0]
-    const { data: sentMessages } = await supabase
+    const todayStr = today.toISOString().split('T')[0]
+    let sentMessagesQuery = supabase
       .from('birthday_messages')
       .select('customer_id')
-      .eq('user_id', user.id)
-      .gte('sent_at', `${today}T00:00:00Z`)
-      .lte('sent_at', `${today}T23:59:59Z`)
+      .gte('sent_at', `${todayStr}T00:00:00Z`)
+      .lte('sent_at', `${todayStr}T23:59:59Z`)
+    
+    // Only filter by user_id if not in admin mode
+    if (!adminMode) {
+      sentMessagesQuery = sentMessagesQuery.eq('user_id', user.id)
+    }
+    
+    const { data: sentMessages } = await sentMessagesQuery
 
     const sentCustomerIds = new Set(sentMessages?.map(m => m.customer_id) || [])
 

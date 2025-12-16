@@ -97,57 +97,99 @@ export async function POST(request: Request) {
       }
     }
 
-    // Send message via WhatsApp API
-    const sendResponse = await fetch(`${WHATSAPP_API_ENDPOINT}send-message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        api_key: connection.api_key,
-        sender: connection.sender_number,
-        number: phoneNumber,
-        message: message,
-      }),
+    // Send message via WhatsApp API using GET method with query parameters
+    const params = new URLSearchParams({
+      api_key: connection.api_key,
+      sender: connection.sender_number,
+      number: phoneNumber,
+      message: message,
     })
+    
+    const sendResponse = await fetch(`${WHATSAPP_API_ENDPOINT}send-message?${params.toString()}`, {
+      method: 'GET',
+    })
+
+    console.log("sendResponse--->", sendResponse)
 
     const sendResult = await sendResponse.json()
 
-    // Get birthday date
+    // Get birthday date (use current year for the birthday date, not the birth year)
     const dob = customer.dob ? new Date(customer.dob) : null
-    const birthdayDate = dob ? `${dob.getFullYear()}-${String(dob.getMonth() + 1).padStart(2, '0')}-${String(dob.getDate()).padStart(2, '0')}` : null
+    const currentYear = new Date().getFullYear()
+    const today = new Date()
+    const birthdayDate = dob 
+      ? `${currentYear}-${String(dob.getMonth() + 1).padStart(2, '0')}-${String(dob.getDate()).padStart(2, '0')}`
+      : today.toISOString().split('T')[0]
+
+    // Check if message already exists for this birthday
+    const { data: existingMessage } = await supabase
+      .from('birthday_messages')
+      .select('id, message_status')
+      .eq('user_id', user.id)
+      .eq('customer_id', customer.id)
+      .eq('birthday_date', birthdayDate)
+      .eq('sent_year', currentYear)
+      .single()
 
     // Record message in database
     const messageStatus = sendResponse.ok && sendResult.status !== false ? 'sent' : 'failed'
-    const currentYear = new Date().getFullYear()
     
-    const { data: birthdayMessage, error: messageError } = await supabase
-      .from('birthday_messages')
-      .insert({
-        user_id: user.id,
-        customer_id: customer.id,
-        whatsapp_connection_id: connection.id,
-        recipient_number: phoneNumber,
-        message_sent: message,
-        message_status: messageStatus,
-        birthday_date: birthdayDate || new Date().toISOString().split('T')[0],
-        sent_year: currentYear, // Set sent_year for unique constraint
-      })
-      .select()
-      .single()
+    let birthdayMessage = existingMessage
 
-    // Update connection message count
-    if (messageStatus === 'sent') {
+    // Only insert if it doesn't already exist
+    if (!existingMessage) {
+      const { data: insertedMessage, error: messageError } = await supabase
+        .from('birthday_messages')
+        .insert({
+          user_id: user.id,
+          customer_id: customer.id,
+          whatsapp_connection_id: connection.id,
+          recipient_number: phoneNumber,
+          message_sent: message,
+          message_status: messageStatus,
+          birthday_date: birthdayDate,
+          sent_year: currentYear, // Set sent_year for unique constraint
+        })
+        .select()
+        .single()
+
+      if (messageError) {
+        // Handle duplicate key error gracefully
+        if (messageError.code === '23505') {
+          // Message already exists, fetch it
+          const { data: fetchedMessage } = await supabase
+            .from('birthday_messages')
+            .select('id, message_status')
+            .eq('user_id', user.id)
+            .eq('customer_id', customer.id)
+            .eq('birthday_date', birthdayDate)
+            .eq('sent_year', currentYear)
+            .single()
+          birthdayMessage = fetchedMessage
+        } else {
+          console.error('Error saving birthday message:', messageError)
+        }
+      } else {
+        birthdayMessage = insertedMessage
+      }
+    } else {
+      // Message already exists - return early with appropriate response
+      return NextResponse.json({
+        success: true,
+        message: 'Birthday message was already sent to this customer',
+        message_id: existingMessage.id,
+        already_sent: true,
+      })
+    }
+
+    // Update connection message count only if message was successfully sent and is new
+    if (messageStatus === 'sent' && !existingMessage) {
       await supabase
         .from('whatsapp_connections')
         .update({
           messages_sent: (connection.messages_sent || 0) + 1,
         })
         .eq('id', connection.id)
-    }
-
-    if (messageError) {
-      console.error('Error saving birthday message:', messageError)
     }
 
     if (!sendResponse.ok || sendResult.status === false) {

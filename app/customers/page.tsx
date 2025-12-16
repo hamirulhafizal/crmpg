@@ -571,6 +571,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Gender</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Ethnicity</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Age</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Date of Birth</th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -578,7 +579,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -604,6 +605,15 @@ export default function CustomersPage() {
                       <td className="px-4 py-3 text-sm text-slate-800">{customer.gender || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-800">{customer.ethnicity || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-800">{customer.age || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {customer.dob 
+                          ? new Date(customer.dob).toLocaleDateString('en-US', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })
+                          : '-'}
+                      </td>
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">

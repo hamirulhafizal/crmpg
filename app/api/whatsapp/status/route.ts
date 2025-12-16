@@ -45,44 +45,93 @@ export async function GET(request: Request) {
 
     // Check device status via API
     try {
-      const response = await fetch(
-        `${WHATSAPP_API_ENDPOINT}info-device?api_key=${encodeURIComponent(connection.api_key)}&number=${encodeURIComponent(connection.sender_number)}`,
+      return fetch(
+        `${WHATSAPP_API_ENDPOINT}info-device`,
         {
-          method: 'GET',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            api_key: connection.api_key,
+            number: connection.sender_number,
+          }),
         }
       )
-
-      const apiResult = await response.json()
-
-      if (apiResult.status && apiResult.info && apiResult.info.length > 0) {
-        const deviceInfo = apiResult.info[0]
-        const isConnected = deviceInfo.status === 'Connected'
-
-        // Update connection status in database
-        await supabase
-          .from('whatsapp_connections')
-          .update({
-            device_status: isConnected ? 'Connected' : 'Disconnected',
-            last_connected_at: isConnected ? new Date().toISOString() : connection.last_connected_at,
-            last_disconnected_at: !isConnected ? new Date().toISOString() : connection.last_disconnected_at,
-          })
-          .eq('id', connection.id)
-
-        return NextResponse.json({
-          connected: isConnected,
-          has_connection: true,
-          connection: {
-            id: connection.id,
-            sender_number: connection.sender_number,
-            device_status: isConnected ? 'Connected' : 'Disconnected',
-            last_connected_at: isConnected ? new Date().toISOString() : connection.last_connected_at,
-            last_disconnected_at: !isConnected ? new Date().toISOString() : connection.last_disconnected_at,
-            messages_sent: connection.messages_sent,
-            api_key: connection.api_key, // Include API key for display (masked in UI)
-            device_info: deviceInfo,
-          },
+        .then(response => {
+          // Check if response is OK and content type is JSON
+          if (!response.ok) {
+            throw new Error(`API returned status ${response.status}`)
+          }
+          const contentType = response.headers.get('content-type')
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('API returned non-JSON response')
+          }
+          return response.json()
         })
-      }
+        .then(apiResult => {
+          if (apiResult.status && apiResult.info && apiResult.info.length > 0) {
+            const deviceInfo = apiResult.info[0]
+            const isConnected = deviceInfo.status === 'Connected'
+
+            // Update connection status in database
+            return supabase
+              .from('whatsapp_connections')
+              .update({
+                device_status: isConnected ? 'Connected' : 'Disconnected',
+                last_connected_at: isConnected ? new Date().toISOString() : connection.last_connected_at,
+                last_disconnected_at: !isConnected ? new Date().toISOString() : connection.last_disconnected_at,
+              })
+              .eq('id', connection.id)
+              .then(() => {
+                return NextResponse.json({
+                  connected: isConnected,
+                  has_connection: true,
+                  connection: {
+                    id: connection.id,
+                    sender_number: connection.sender_number,
+                    device_status: isConnected ? 'Connected' : 'Disconnected',
+                    last_connected_at: isConnected ? new Date().toISOString() : connection.last_connected_at,
+                    last_disconnected_at: !isConnected ? new Date().toISOString() : connection.last_disconnected_at,
+                    messages_sent: connection.messages_sent,
+                    api_key: connection.api_key, // Include API key for display (masked in UI)
+                    device_info: deviceInfo,
+                  },
+                })
+              })
+          }
+          // Return database status if API check doesn't match expected format
+          return NextResponse.json({
+            connected: connection.device_status === 'Connected',
+            has_connection: true,
+            connection: {
+              id: connection.id,
+              sender_number: connection.sender_number,
+              device_status: connection.device_status,
+              last_connected_at: connection.last_connected_at,
+              last_disconnected_at: connection.last_disconnected_at,
+              messages_sent: connection.messages_sent,
+              api_key: connection.api_key,
+            },
+          })
+        })
+        .catch(apiError => {
+          console.error('Error checking device status:', apiError)
+          // Return database status if API check fails
+          return NextResponse.json({
+            connected: connection.device_status === 'Connected',
+            has_connection: true,
+            connection: {
+              id: connection.id,
+              sender_number: connection.sender_number,
+              device_status: connection.device_status,
+              last_connected_at: connection.last_connected_at,
+              last_disconnected_at: connection.last_disconnected_at,
+              messages_sent: connection.messages_sent,
+              api_key: connection.api_key,
+            },
+          })
+        })
     } catch (apiError) {
       console.error('Error checking device status:', apiError)
     }

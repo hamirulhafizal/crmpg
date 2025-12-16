@@ -55,6 +55,7 @@ export default function WhatsAppServicesPage() {
   const [settings, setSettings] = useState<any>(null)
   const [scheduledTime, setScheduledTime] = useState('08:00')
   const [autoSendEnabled, setAutoSendEnabled] = useState(true)
+  const [isTestingCron, setIsTestingCron] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -179,9 +180,13 @@ export default function WhatsAppServicesPage() {
   const loadBirthdays = async () => {
     setIsLoadingBirthdays(true)
     try {
-      const response = await fetch('/api/birthday/upcoming?days=7')
+      // Fetch all customers with today's birthday (admin mode - shows all customers)
+      const response = await fetch('/api/birthday/upcoming?days=0&admin=true')
       const result = await response.json()
-      setBirthdays(result.birthdays || [])
+      console.log("result loadBirthdays--->", result)
+      // Filter to only show today's birthdays
+      const todayBirthdays = (result.birthdays || []).filter((b: any) => b.is_today)
+      setBirthdays(todayBirthdays)
     } catch (err: any) {
       setError(err.message || 'Failed to load birthdays')
     } finally {
@@ -517,6 +522,40 @@ export default function WhatsAppServicesPage() {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save settings')
+    }
+  }
+
+  const handleTestCron = async () => {
+    if (!confirm('This will send birthday messages to ALL customers with birthdays today using ALL connected WhatsApp accounts. Are you sure you want to proceed?')) {
+      return
+    }
+
+    setIsTestingCron(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/cron/birthday-automation', {
+        method: 'GET',
+        headers: {
+          'x-test-call': 'true', // Mark as test call to bypass auth
+        },
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        const message = `Cron test completed!\n\nProcessed: ${result.results.processed} users\nSent: ${result.results.sent} messages\nFailed: ${result.results.failed} messages\n\n${result.results.errors.length > 0 ? `Errors:\n${result.results.errors.slice(0, 5).join('\n')}${result.results.errors.length > 5 ? `\n...and ${result.results.errors.length - 5} more` : ''}` : 'No errors'}`
+        alert(message)
+        // Reload birthdays and connection status
+        await loadBirthdays()
+        await loadConnection()
+      } else {
+        setError(result.error || 'Failed to test cron job')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to test cron job')
+    } finally {
+      setIsTestingCron(false)
     }
   }
 
@@ -889,7 +928,21 @@ export default function WhatsAppServicesPage() {
           <>
             {/* Automation Settings */}
             <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Birthday Automation Settings</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-slate-900">Birthday Automation Settings</h2>
+                <button
+                  onClick={handleTestCron}
+                  disabled={isTestingCron}
+                  className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isTestingCron ? 'Testing...' : 'Test Cron Job'}
+                </button>
+              </div>
+              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-xs text-purple-800">
+                  <strong>Test Cron Job:</strong> This will send birthday messages to ALL customers with birthdays today using ALL connected WhatsApp accounts. Use this to test the automated cron job.
+                </p>
+              </div>
               <div className="space-y-6">
                 {/* Auto-Send Toggle */}
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -966,16 +1019,31 @@ export default function WhatsAppServicesPage() {
                   <h2 className="text-xl font-semibold text-slate-900">
                     Today's Birthdays ({todayBirthdays.length})
                   </h2>
-                  <button
-                    onClick={() => {
-                      setSelectedBirthdays(new Set(todayBirthdays.map(b => b.id)))
-                      handleBulkSend()
-                    }}
-                    disabled={isSending}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 transition-colors"
-                  >
-                    Send All
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleTestCron}
+                      disabled={isTestingCron}
+                      className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                      title="Test Cron Job - Send birthday wishes to all customers using their respective client WhatsApp connections"
+                    >
+                      {isTestingCron ? 'Running Cron...' : 'Test Cron Job'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedBirthdays(new Set(todayBirthdays.map(b => b.id)))
+                        handleBulkSend()
+                      }}
+                      disabled={isSending}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 transition-colors"
+                    >
+                      Send All
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <p className="text-xs text-purple-800">
+                    <strong>Admin POC:</strong> Click "Test Cron Job" to send birthday wishes to all customers using their respective client's WhatsApp connection (API key and phone number). This simulates the automated cron job.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   {todayBirthdays.map((birthday) => (
