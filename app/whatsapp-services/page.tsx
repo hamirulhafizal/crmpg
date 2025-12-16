@@ -104,7 +104,7 @@ export default function WhatsAppServicesPage() {
         // Try to get any existing connection (even if disconnected)
         const checkResponse = await fetch('/api/whatsapp/check-connection')
         const checkResult = await checkResponse.json()
-        
+
         if (checkResult.has_connection && checkResult.connection) {
           setConnection(checkResult.connection)
           setSenderNumber(checkResult.connection.sender_number || '')
@@ -181,9 +181,9 @@ export default function WhatsAppServicesPage() {
     setIsLoadingBirthdays(true)
     try {
       // Fetch all customers with today's birthday (admin mode - shows all customers)
-      const response = await fetch('/api/birthday/upcoming?days=0&admin=true')
+      const response = await fetch('/api/birthday/upcoming?days=0&admin=false')
       const result = await response.json()
-      console.log("result loadBirthdays--->", result)
+      // console.log("result loadBirthdays--->", result)
       // Filter to only show today's birthdays
       const todayBirthdays = (result.birthdays || []).filter((b: any) => b.is_today)
       setBirthdays(todayBirthdays)
@@ -496,8 +496,8 @@ export default function WhatsAppServicesPage() {
   const handleSaveSettings = async () => {
     try {
       // Convert HH:MM to HH:MM:SS format for database
-      const timeValue = scheduledTime.includes(':') 
-        ? `${scheduledTime}:00` 
+      const timeValue = scheduledTime.includes(':')
+        ? `${scheduledTime}:00`
         : `${scheduledTime}:00:00`
 
       const response = await fetch('/api/whatsapp/settings', {
@@ -602,13 +602,21 @@ export default function WhatsAppServicesPage() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-semibold text-slate-900">WhatsApp Services</h1>
+            {/* <h1 className="text-2xl font-semibold text-slate-900">WhatsApp Services</h1> */}
             <div className="flex items-center gap-3">
               <Link
                 href="/dashboard"
                 className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200"
               >
-                Dashboard
+
+                {/* // arrow icon  */}
+
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Dashboard
+                </div>
               </Link>
             </div>
           </div>
@@ -631,13 +639,12 @@ export default function WhatsAppServicesPage() {
           {connection ? (
             <div className="space-y-4">
               {/* Connection Status Badge */}
-              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
-                connection.device_status === 'Connected' 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : connection.device_status === 'Connecting' 
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200' 
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
+              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${connection.device_status === 'Connected'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : connection.device_status === 'Connecting'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
                 {connection.device_status === 'Connected' ? (
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -683,7 +690,7 @@ export default function WhatsAppServicesPage() {
                     </div>
                   )}
                 </div>
-                
+
                 {/* API Key Display (masked) */}
                 {connection.api_key && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -691,8 +698,8 @@ export default function WhatsAppServicesPage() {
                       <div className="flex-1">
                         <span className="text-sm font-medium text-slate-700">API Key:</span>
                         <span className="ml-2 font-mono text-sm text-slate-900 break-all">
-                          {connection.api_key.length > 12 
-                            ? `${connection.api_key.substring(0, 8)}...${connection.api_key.substring(connection.api_key.length - 4)}` 
+                          {connection.api_key.length > 12
+                            ? `${connection.api_key.substring(0, 8)}...${connection.api_key.substring(connection.api_key.length - 4)}`
                             : connection.api_key}
                         </span>
                       </div>
@@ -872,8 +879,8 @@ export default function WhatsAppServicesPage() {
                 {isConnecting
                   ? 'Connecting...'
                   : connection && 'device_status' in connection && (connection as any)?.device_status !== 'Connected'
-                  ? 'Reconnect WhatsApp'
-                  : 'Connect WhatsApp'}
+                    ? 'Reconnect WhatsApp'
+                    : 'Connect WhatsApp'}
               </button>
             </div>
           )}
@@ -931,6 +938,7 @@ export default function WhatsAppServicesPage() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-slate-900">Birthday Automation Settings</h2>
                 <button
+                  hidden={true}
                   onClick={handleTestCron}
                   disabled={isTestingCron}
                   className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
@@ -938,7 +946,7 @@ export default function WhatsAppServicesPage() {
                   {isTestingCron ? 'Testing...' : 'Test Cron Job'}
                 </button>
               </div>
-              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+              <div hidden className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                 <p className="text-xs text-purple-800">
                   <strong>Test Cron Job:</strong> This will send birthday messages to ALL customers with birthdays today using ALL connected WhatsApp accounts. Use this to test the automated cron job.
                 </p>
@@ -954,14 +962,20 @@ export default function WhatsAppServicesPage() {
                       Automatically send birthday wishes at your scheduled time
                     </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className="relative inline-flex items-center cursor-not-allowed">
                     <input
                       type="checkbox"
+                      disabled={true}
+                      readOnly={true}
                       checked={autoSendEnabled}
                       onChange={(e) => setAutoSendEnabled(e.target.checked)}
-                      className="sr-only peer"
+                      className="sr-only"
                     />
-                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    <div className={`w-11 h-6 rounded-full relative transition-colors ${autoSendEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                      }`}>
+                      <div className={`absolute top-[2px] left-[-16px] bg-white border border-slate-300 rounded-full h-5 w-5 transition-transform ${autoSendEnabled ? 'translate-x-[1.25rem]' : 'translate-x-0'
+                        }`}></div>
+                    </div>
                   </label>
                 </div>
 
@@ -973,6 +987,8 @@ export default function WhatsAppServicesPage() {
                     </label>
                     <div className="flex items-center gap-4">
                       <input
+                        disabled={true}
+                        readOnly={true}
                         type="time"
                         value={scheduledTime}
                         onChange={(e) => setScheduledTime(e.target.value)}
@@ -1021,6 +1037,7 @@ export default function WhatsAppServicesPage() {
                   </h2>
                   <div className="flex items-center gap-3">
                     <button
+                      hidden={true}
                       onClick={handleTestCron}
                       disabled={isTestingCron}
                       className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
@@ -1033,14 +1050,15 @@ export default function WhatsAppServicesPage() {
                         setSelectedBirthdays(new Set(todayBirthdays.map(b => b.id)))
                         handleBulkSend()
                       }}
-                      disabled={isSending}
+                      disabled={true}
+                      hidden={true}
                       className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 transition-colors"
                     >
                       Send All
                     </button>
                   </div>
                 </div>
-                <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div hidden className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                   <p className="text-xs text-purple-800">
                     <strong>Admin POC:</strong> Click "Test Cron Job" to send birthday wishes to all customers using their respective client's WhatsApp connection (API key and phone number). This simulates the automated cron job.
                   </p>
@@ -1058,7 +1076,8 @@ export default function WhatsAppServicesPage() {
                       </div>
                       <button
                         onClick={() => handleSendBirthday(birthday.id)}
-                        disabled={isSending}
+                        disabled={true}
+                        hidden={true}
                         className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:bg-slate-400 transition-colors"
                       >
                         Send

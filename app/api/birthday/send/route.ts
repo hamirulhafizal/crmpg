@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       method: 'GET',
     })
 
-    console.log("sendResponse--->", sendResponse)
+    // console.log("sendResponse--->", sendResponse)
 
     const sendResult = await sendResponse.json()
 

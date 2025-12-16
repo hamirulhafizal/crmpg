@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       .not('dob', 'is', null)
       .not('phone', 'is', null)
 
-      console.log("allCustomers--->", allCustomers)
+      // console.log("allCustomers--->", allCustomers)
 
     if (customersError) {
       console.error('Error fetching customers:', customersError)
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       return dob.getMonth() === currentMonth && dob.getDate() === currentDay
     })
 
-    console.log("todayBirthdays--->", todayBirthdays)
+    // console.log("todayBirthdays--->", todayBirthdays)
 
     if (todayBirthdays.length === 0) {
       return NextResponse.json({
@@ -117,7 +117,7 @@ export async function GET(request: Request) {
       userResults: [] as Array<{ user_id: string; sent: number; failed: number }>,
     }
 
-    console.log("customersByUserId--->", customersByUserId)
+    // console.log("customersByUserId--->", customersByUserId)
 
     // STEP 3: Send birthday messages based on user_id WhatsApp connection
     // Process each user sequentially

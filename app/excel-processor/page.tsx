@@ -78,7 +78,7 @@ export default function ExcelProcessorPage() {
 
     const mobileQuery = window.matchMedia('(max-width: 639px)')
     const desktopQuery = window.matchMedia('(min-width: 640px)')
-    
+
     // Find dialog elements
     const mobileDialog = document.querySelector('[data-dialog="mobile"]') as HTMLElement
     const desktopDialog = document.querySelector('[data-dialog="desktop"]') as HTMLElement
@@ -101,7 +101,7 @@ export default function ExcelProcessorPage() {
     const updateTransitionNames = () => {
       const mobileQuery = window.matchMedia('(max-width: 639px)')
       const desktopQuery = window.matchMedia('(min-width: 640px)')
-      
+
       const mobileDialog = document.querySelector('[data-dialog="mobile"]') as HTMLElement
       const desktopDialog = document.querySelector('[data-dialog="desktop"]') as HTMLElement
 
@@ -138,7 +138,7 @@ export default function ExcelProcessorPage() {
     if (isDialogOpen) {
       // Prevent body scroll when dialog is open
       document.body.style.overflow = 'hidden'
-      
+
       // Handle Escape key to close dialog
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
@@ -147,9 +147,9 @@ export default function ExcelProcessorPage() {
           setDialogFormData(null)
         }
       }
-      
+
       window.addEventListener('keydown', handleEscape)
-      
+
       return () => {
         document.body.style.overflow = ''
         window.removeEventListener('keydown', handleEscape)
@@ -317,7 +317,7 @@ export default function ExcelProcessorPage() {
       return
     }
     const rowData = { ...dataToDisplay[rowIdx] }
-    
+
     // Use View Transitions API if supported
     if (document.startViewTransition) {
       document.startViewTransition(() => {
@@ -404,7 +404,7 @@ export default function ExcelProcessorPage() {
 
     const dataToDisplay = editedData.length > 0 ? editedData : processedData
     const indicesToDelete = Array.from(selectedRows).sort((a, b) => b - a) // Sort descending to delete from end
-    
+
     // Create new array without selected rows
     let newData = [...dataToDisplay]
     indicesToDelete.forEach(idx => {
@@ -576,12 +576,12 @@ export default function ExcelProcessorPage() {
   const handleRemoveFile = () => {
     setFile(null)
     setFileName('')
-      setProcessedData([])
-      setEditedData([])
-      setSelectedRows(new Set())
-      setDownloadUrl(null)
-      setProgress(0)
-      setError(null)
+    setProcessedData([])
+    setEditedData([])
+    setSelectedRows(new Set())
+    setDownloadUrl(null)
+    setProgress(0)
+    setError(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -896,7 +896,12 @@ export default function ExcelProcessorPage() {
                 href="/dashboard"
                 className="text-slate-600 hover:text-slate-900 transition-colors text-sm sm:text-base"
               >
-                ← Back to Dashboard
+                <div className="flex flex-row items-center justify-start gap-3">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Dashboard
+                </div>
               </Link>
               {/* <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Excel Processor</h1> */}
             </div>
@@ -1344,15 +1349,15 @@ export default function ExcelProcessorPage() {
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                       <span className="relative z-10 whitespace-nowrap">
-                        {importProgress.total > 0 
+                        {importProgress.total > 0
                           ? `Importing ${importProgress.current}/${importProgress.total} (${Math.round((importProgress.current / importProgress.total) * 100)}%)`
                           : 'Importing...'}
                       </span>
                       {importProgress.total > 0 && (
                         <>
-                          <div 
+                          <div
                             className="absolute inset-0 bg-purple-700 transition-all duration-300 ease-out"
-                            style={{ 
+                            style={{
                               width: `${(importProgress.current / importProgress.total) * 100}%`,
                             }}
                           />
@@ -1422,8 +1427,8 @@ export default function ExcelProcessorPage() {
 
             {importResult && (
               <div className={`mb-4 p-4 rounded-lg ${importResult.success
-                  ? 'bg-green-50 border border-green-200'
-                  : 'bg-red-50 border border-red-200'
+                ? 'bg-green-50 border border-green-200'
+                : 'bg-red-50 border border-red-200'
                 }`}>
                 <p className={`text-sm ${importResult.success ? 'text-green-800' : 'text-red-800'
                   }`}>
@@ -1434,8 +1439,8 @@ export default function ExcelProcessorPage() {
 
             {saveResult && (
               <div className={`mb-4 p-4 rounded-lg ${saveResult.success
-                  ? 'bg-green-50 border border-green-200'
-                  : 'bg-red-50 border border-red-200'
+                ? 'bg-green-50 border border-green-200'
+                : 'bg-red-50 border border-red-200'
                 }`}>
                 <div className="flex items-center justify-between">
                   <p className={`text-sm ${saveResult.success ? 'text-green-800' : 'text-red-800'
@@ -1494,8 +1499,8 @@ export default function ExcelProcessorPage() {
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-200">
                             {dataToDisplay.map((row, rowIdx) => (
-                              <tr 
-                                key={rowIdx} 
+                              <tr
+                                key={rowIdx}
                                 className={`hover:bg-blue-50 cursor-pointer transition-colors active:bg-blue-100 select-none group ${selectedRows.has(rowIdx) ? 'bg-blue-100' : ''}`}
                                 onClick={(e) => {
                                   // Don't open dialog if clicking checkbox
@@ -1515,7 +1520,7 @@ export default function ExcelProcessorPage() {
                                   }
                                 }}
                               >
-                                <td 
+                                <td
                                   className="px-2 sm:px-4 py-2 border-r border-slate-100"
                                   onClick={(e) => e.stopPropagation()}
                                 >
