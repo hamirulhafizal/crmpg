@@ -251,3 +251,4 @@ SELECT cron.unschedule('birthday-automation-hourly');
 - Messages are only sent once per day per customer (enforced by unique constraint)
 - The system respects user's `auto_send_enabled` setting
 - All times are in Malaysia timezone (`Asia/Kuala_Lumpur`)
+
