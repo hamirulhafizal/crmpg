@@ -40,6 +40,11 @@ export default function WhatsAppServicesPage() {
   const [senderNumber, setSenderNumber] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [editSenderNumber, setEditSenderNumber] = useState('')
+  const [editApiKey, setEditApiKey] = useState('')
 
   // Birthday automation state
   const [birthdays, setBirthdays] = useState<Birthday[]>([])
@@ -88,8 +93,10 @@ export default function WhatsAppServicesPage() {
         setConnection(statusResult.connection)
         // Always pre-fill sender number and API key from existing connection
         setSenderNumber(statusResult.connection.sender_number || '')
+        setEditSenderNumber(statusResult.connection.sender_number || '')
         if (statusResult.connection.api_key) {
           setApiKey(statusResult.connection.api_key)
+          setEditApiKey(statusResult.connection.api_key)
         }
         setQrStatus(statusResult.connected ? 'connected' : 'idle')
       } else {
@@ -100,8 +107,10 @@ export default function WhatsAppServicesPage() {
         if (checkResult.has_connection && checkResult.connection) {
           setConnection(checkResult.connection)
           setSenderNumber(checkResult.connection.sender_number || '')
+          setEditSenderNumber(checkResult.connection.sender_number || '')
           if (checkResult.connection.api_key) {
             setApiKey(checkResult.connection.api_key)
+            setEditApiKey(checkResult.connection.api_key)
           }
           setQrStatus(checkResult.connected ? 'connected' : 'idle')
         } else {
@@ -130,9 +139,11 @@ export default function WhatsAppServicesPage() {
         // Update sender number and API key if they exist
         if (result.connection.sender_number) {
           setSenderNumber(result.connection.sender_number)
+          setEditSenderNumber(result.connection.sender_number)
         }
         if (result.connection.api_key) {
           setApiKey(result.connection.api_key)
+          setEditApiKey(result.connection.api_key)
         }
         setQrStatus(result.connected ? 'connected' : 'idle')
       } else {
@@ -202,6 +213,15 @@ export default function WhatsAppServicesPage() {
 
       const result = await response.json()
 
+      // Handle API errors
+      if (!response.ok || result.error) {
+        setError(result.error || result.message || 'Failed to generate QR code')
+        setQrStatus('error')
+        // Reload connection to reflect saved phone/API key even if connection failed
+        await loadConnection()
+        return
+      }
+
       if (result.status === 'processing') {
         setQrStatus('processing')
         return
@@ -226,9 +246,13 @@ export default function WhatsAppServicesPage() {
 
       setError(result.message || 'Failed to generate QR code')
       setQrStatus('error')
+      // Reload connection to reflect any saved data
+      await loadConnection()
     } catch (err: any) {
       setError(err.message || 'Failed to generate QR code')
       setQrStatus('error')
+      // Reload connection to reflect any saved data
+      await loadConnection()
     } finally {
       setIsConnecting(false)
     }
@@ -266,6 +290,104 @@ export default function WhatsAppServicesPage() {
       }
     } catch (err: any) {
       setError(err.message || 'Failed to disconnect')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!connection) return
+
+    if (!confirm('Are you sure you want to delete this WhatsApp connection? This will permanently remove all connection data including your API key and phone number.')) {
+      return
+    }
+
+    setIsDeleting(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/whatsapp/connection', {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setConnection(null)
+        setSenderNumber('')
+        setEditSenderNumber('')
+        setApiKey('')
+        setEditApiKey('')
+        setQrStatus('idle')
+        setQrCode(null)
+        setIsEditing(false)
+        // Reload connection to refresh UI
+        await loadConnection()
+      } else {
+        setError(result.error || 'Failed to delete connection')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete connection')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleStartEdit = () => {
+    if (connection) {
+      setEditSenderNumber(connection.sender_number || '')
+      setEditApiKey(connection.api_key || '')
+      setIsEditing(true)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditSenderNumber(senderNumber)
+    setEditApiKey(apiKey)
+    setError(null)
+  }
+
+  const handleUpdate = async () => {
+    if (!editSenderNumber || !editApiKey) {
+      setError('Please enter both phone number and API key')
+      return
+    }
+
+    // Validate phone number format
+    if (!/^60\d{9,10}$/.test(editSenderNumber)) {
+      setError('Invalid phone number format. Must be in format: 60123456789')
+      return
+    }
+
+    setIsUpdating(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/whatsapp/connection', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender_number: editSenderNumber,
+          api_key: editApiKey,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setSenderNumber(editSenderNumber)
+        setApiKey(editApiKey)
+        setIsEditing(false)
+        // Reload connection to get updated data
+        await loadConnection()
+      } else {
+        setError(result.error || 'Failed to update connection')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update connection')
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -541,8 +663,59 @@ export default function WhatsAppServicesPage() {
                 )}
               </div>
 
+              {/* Edit Form */}
+              {isEditing && (
+                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Edit Connection Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        WhatsApp Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="60123456789"
+                        value={editSenderNumber}
+                        onChange={(e) => setEditSenderNumber(e.target.value)}
+                        className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Format: 60123456789 (Malaysia)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        API Key
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Your WhatsApp API Key"
+                        value={editApiKey}
+                        onChange={(e) => setEditApiKey(e.target.value)}
+                        className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Your API key from Ustaz AI WhatsApp service</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleUpdate}
+                      disabled={isUpdating}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isUpdating ? 'Updating...' : 'Save Changes'}
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      disabled={isUpdating}
+                      className="px-4 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 disabled:bg-slate-200 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 {connection.device_status === 'Connected' ? (
                   <>
                     <button
@@ -553,7 +726,7 @@ export default function WhatsAppServicesPage() {
                     </button>
                     <button
                       onClick={handleDisconnect}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
                     >
                       Disconnect WhatsApp
                     </button>
@@ -574,6 +747,23 @@ export default function WhatsAppServicesPage() {
                       className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                     >
                       Reconnect
+                    </button>
+                  </>
+                )}
+                {!isEditing && (
+                  <>
+                    <button
+                      onClick={handleStartEdit}
+                      className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors"
+                    >
+                      Edit Details
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isDeleting ? 'Deleting...' : 'Delete Connection'}
                     </button>
                   </>
                 )}
