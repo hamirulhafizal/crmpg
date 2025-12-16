@@ -1,10 +1,10 @@
 # Cron Job Setup Guide
 
-This guide shows you how to set up automated birthday messages using either Supabase pg_cron (recommended, free) or Vercel Cron (requires Pro plan).
+This guide shows you how to set up automated birthday messages using Supabase pg_cron (FREE on all Supabase plans).
 
 ---
 
-## 🎯 Option 1: Supabase pg_cron (Recommended - FREE)
+## 🎯 Supabase pg_cron Setup
 
 ### Why Choose This?
 - ✅ **FREE** on all Supabase plans
@@ -118,52 +118,6 @@ SELECT cron.schedule(
   $$...$$
 );
 ```
-
----
-
-## 🚀 Option 2: Vercel Cron (Requires Pro Plan)
-
-### Why Choose This?
-- ✅ Visual dashboard
-- ✅ Easy JSON configuration
-- ✅ Integrated with Vercel deployment
-- ❌ Requires Pro plan ($20/month) for hourly jobs
-- ❌ Free plan only supports daily jobs
-
-### Setup Steps
-
-#### 1. Upgrade to Vercel Pro
-
-If you're on the free (Hobby) plan, upgrade to Pro:
-- Go to Vercel Dashboard → Settings → Billing
-- Upgrade to Pro plan ($20/month)
-
-#### 2. Configure vercel.json
-
-Your `vercel.json` is already configured:
-
-```json
-{
-  "crons": [{
-    "path": "/api/cron/birthday-automation",
-    "schedule": "0 * * * *"
-  }]
-}
-```
-
-#### 3. Set Environment Variable
-
-In Vercel Dashboard → Settings → Environment Variables:
-- Add `CRON_SECRET` with a secure random string
-
-#### 4. Deploy
-
-The cron job will be automatically set up after deployment.
-
-#### 5. Monitor
-
-- Go to Vercel Dashboard → Cron Jobs
-- View execution history and logs
 
 ---
 
@@ -282,11 +236,6 @@ WHERE status = 'failed'
 ORDER BY start_time DESC;
 ```
 
-### Vercel Cron
-
-- Dashboard → Cron Jobs → View logs
-- Check function logs in Vercel Dashboard
-- Monitor execution times and errors
 
 ---
 
@@ -348,5 +297,4 @@ ORDER BY start_time DESC;
 ## 📚 Additional Resources
 
 - [Supabase pg_cron Docs](https://supabase.com/docs/guides/cron)
-- [Vercel Cron Jobs Docs](https://vercel.com/docs/cron-jobs)
 - [Cron Expression Generator](https://crontab.guru/)

@@ -67,12 +67,12 @@
 - `app/lib/supabase/middleware.ts`
 
 ### Phase 5: Automation ✅
-- [x] Created Vercel cron job configuration
+- [x] Created Supabase pg_cron migration
 - [x] Implemented hourly cron job that checks user send times
 - [x] Automatic birthday message sending based on user settings
 
 **Files Created:**
-- `vercel.json`
+- `supabase/migrations/003_setup_pg_cron.sql`
 - `app/api/cron/birthday-automation/route.ts`
 
 ---
@@ -95,20 +95,15 @@ CRON_SECRET=your-secret-key-here
 
 **Note**: `CRON_SECRET` is used to secure the cron endpoint. Generate a random string.
 
-### 3. Configure Vercel Cron Job (REQUIRED for auto-send)
+### 3. Configure Supabase pg_cron (REQUIRED for auto-send)
 
-#### Option A: Using Vercel Dashboard
-1. Go to your Vercel project dashboard
-2. Navigate to Settings → Cron Jobs
-3. Add new cron job:
-   - Path: `/api/cron/birthday-automation`
-   - Schedule: `0 * * * *` (every hour)
-   - Add header: `Authorization: Bearer YOUR_CRON_SECRET`
+1. Go to Supabase Dashboard → SQL Editor
+2. Copy and paste the contents of `supabase/migrations/003_setup_pg_cron.sql`
+3. Replace `YOUR_APP_URL` with your Vercel/deployment URL
+4. Replace `YOUR_CRON_SECRET` with your generated secret (same as in `.env.local`)
+5. Run the SQL to schedule the cron job
 
-#### Option B: Using vercel.json (Already created)
-The `vercel.json` file is already created. After deployment, Vercel will automatically set up the cron job.
-
-**Important**: Make sure to set `CRON_SECRET` environment variable in Vercel dashboard.
+**Important**: Make sure to set `CRON_SECRET` environment variable in Vercel dashboard (same value as in the SQL migration).
 
 ### 4. Test the Implementation
 
@@ -285,9 +280,9 @@ The `vercel.json` file is already created. After deployment, Vercel will automat
 - Review error messages in UI
 
 ### Cron Job Not Running
-- Verify `CRON_SECRET` is set in Vercel
-- Check cron job is configured in Vercel dashboard
-- Review Vercel logs for errors
+- Verify `CRON_SECRET` is set in Vercel environment variables
+- Check cron job is scheduled in Supabase (run: `SELECT * FROM cron.job`)
+- Review Supabase cron execution history (run: `SELECT * FROM cron.job_run_details`)
 - Verify endpoint is accessible
 
 ---
@@ -304,8 +299,8 @@ The `vercel.json` file is already created. After deployment, Vercel will automat
 - [ ] Test bulk birthday message send
 - [ ] Test duplicate prevention
 - [ ] Test message history
-- [ ] Configure Vercel cron job
-- [ ] Test cron job (manually trigger)
+- [ ] Configure Supabase pg_cron
+- [ ] Test cron job (manually trigger endpoint)
 - [ ] Verify auto-send works
 - [ ] Test on mobile device
 
@@ -316,7 +311,7 @@ The `vercel.json` file is already created. After deployment, Vercel will automat
 1. **Run Database Migration** - Execute SQL migration in Supabase
 2. **Add Environment Variables** - Set `WHATSAPP_API_ENDPOINT` and `CRON_SECRET`
 3. **Test Connection** - Connect your WhatsApp account
-4. **Configure Cron** - Set up Vercel cron job for auto-send
+4. **Configure Cron** - Set up Supabase pg_cron for auto-send
 5. **Test Automation** - Verify birthday messages are sent automatically
 
 ---

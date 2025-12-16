@@ -1,10 +1,2 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/birthday-automation",
-      "schedule": "0 * * * *"
-    }
-  ]
-}
-
+{}
 

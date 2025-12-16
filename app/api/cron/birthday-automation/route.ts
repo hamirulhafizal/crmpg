@@ -3,7 +3,8 @@ import { createClient } from '@/app/lib/supabase/server'
 
 const WHATSAPP_API_ENDPOINT = process.env.WHATSAPP_API_ENDPOINT || 'https://ustazai.my/'
 
-// This endpoint will be called by Vercel Cron Job daily at 8 AM Malaysia time
+// This endpoint will be called by Supabase pg_cron every hour
+// The cron job checks each user's scheduled time and sends messages accordingly
 export async function GET(request: Request) {
   // Verify cron secret (for security)
   const authHeader = request.headers.get('authorization')
