@@ -1,6 +1,121 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 
+// Helper function to parse and normalize date strings to ISO format (YYYY-MM-DD)
+function parseDate(dateValue: any): string | null {
+  if (!dateValue) return null
+  
+  // If it's already a date object, convert to ISO string
+  if (dateValue instanceof Date) {
+    return dateValue.toISOString().split('T')[0]
+  }
+  
+  // Convert to string if it's not already
+  const dateStr = String(dateValue).trim()
+  if (!dateStr || dateStr === 'null' || dateStr === 'undefined' || dateStr === '') {
+    return null
+  }
+  
+  try {
+    // Format 1: YYYY-MM-DD (ISO format) - check first
+    const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (isoMatch) {
+      // Validate the date
+      const year = parseInt(isoMatch[1], 10)
+      const month = parseInt(isoMatch[2], 10)
+      const day = parseInt(isoMatch[3], 10)
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return dateStr
+      }
+    }
+    
+    // Format 2: DD/MM/YYYY or D/M/YYYY (e.g., "22/7/2006", "01/12/2000")
+    // Common in Malaysia and many countries
+    const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slashMatch) {
+      const part1 = parseInt(slashMatch[1], 10)
+      const part2 = parseInt(slashMatch[2], 10)
+      const year = parseInt(slashMatch[3], 10)
+      
+      let day: number
+      let month: number
+      
+      // Determine format: if part1 > 12, it must be day (DD/MM/YYYY)
+      if (part1 > 12) {
+        day = part1
+        month = part2
+      } 
+      // If part2 > 12, it must be MM/DD/YYYY
+      else if (part2 > 12) {
+        month = part1
+        day = part2
+      }
+      // Ambiguous case (both <= 12): default to DD/MM/YYYY for Malaysia
+      else {
+        day = part1
+        month = part2
+      }
+      
+      // Validate month and day
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        // Double-check with Date object
+        const dateObj = new Date(year, month - 1, day)
+        if (dateObj.getFullYear() === year && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
+          return isoDate
+        }
+      }
+    }
+    
+    // Format 3: DD-MM-YYYY (e.g., "22-7-2006")
+    const dashMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+    if (dashMatch) {
+      const part1 = parseInt(dashMatch[1], 10)
+      const part2 = parseInt(dashMatch[2], 10)
+      const year = parseInt(dashMatch[3], 10)
+      
+      let day: number
+      let month: number
+      
+      if (part1 > 12) {
+        day = part1
+        month = part2
+      } else if (part2 > 12) {
+        month = part1
+        day = part2
+      } else {
+        day = part1
+        month = part2
+      }
+      
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        const dateObj = new Date(year, month - 1, day)
+        if (dateObj.getFullYear() === year && dateObj.getMonth() === month - 1 && dateObj.getDate() === day) {
+          return isoDate
+        }
+      }
+    }
+    
+    // Format 4: Try JavaScript Date parsing as fallback (handles many formats)
+    const parsedDate = new Date(dateStr)
+    if (!isNaN(parsedDate.getTime())) {
+      const isoDate = parsedDate.toISOString().split('T')[0]
+      // Only use if it makes sense (not 1970-01-01 for invalid dates)
+      if (parsedDate.getFullYear() > 1900 && parsedDate.getFullYear() < 2100) {
+        return isoDate
+      }
+    }
+    
+    // If all parsing fails, return null
+    console.warn(`Unable to parse date: ${dateStr}`)
+    return null
+  } catch (error) {
+    console.error(`Error parsing date "${dateStr}":`, error)
+    return null
+  }
+}
+
 // POST /api/customers/bulk - Bulk create customers
 export async function POST(request: Request) {
   try {
@@ -42,10 +157,14 @@ export async function POST(request: Request) {
         }
       })
 
+      // Parse DOB from various formats
+      const dobValue = customer.dob || customer['D.O.B.'] || customer['D.O.B'] || customer.DOB || null
+      const parsedDob = parseDate(dobValue)
+
       return {
         user_id: user.id,
         name: customer.name || customer.Name || null,
-        dob: customer.dob || customer['D.O.B.'] || customer['D.O.B'] || customer.DOB || null,
+        dob: parsedDob,
         email: customer.email || customer.Email || null,
         phone: customer.phone || customer.Phone || customer.Telephone ,
         location: customer.location || customer.Location || null,
@@ -156,5 +275,6 @@ export async function DELETE(request: Request) {
     )
   }
 }
+
 
 

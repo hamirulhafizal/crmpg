@@ -252,3 +252,4 @@ SELECT cron.unschedule('birthday-automation-hourly');
 - The system respects user's `auto_send_enabled` setting
 - All times are in Malaysia timezone (`Asia/Kuala_Lumpur`)
 
+
