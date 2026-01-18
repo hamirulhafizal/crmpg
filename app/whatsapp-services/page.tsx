@@ -56,6 +56,8 @@ export default function WhatsAppServicesPage() {
   const [scheduledTime, setScheduledTime] = useState('08:00')
   const [autoSendEnabled, setAutoSendEnabled] = useState(true)
   const [isTestingCron, setIsTestingCron] = useState(false)
+  const [isSendingTestMessage, setIsSendingTestMessage] = useState(false)
+  const [testMessageResult, setTestMessageResult] = useState<any>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -559,6 +561,55 @@ export default function WhatsAppServicesPage() {
     }
   }
 
+  const handleSendTestMessage = async () => {
+    if (!connection || !connection.api_key) {
+      setError('Connection or API key not available')
+      return
+    }
+
+    setIsSendingTestMessage(true)
+    setTestMessageResult(null)
+    setError(null)
+
+    try {
+      // Call server-side API route to avoid CORS issues
+      const response = await fetch('/api/whatsapp/send-test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: connection.sender_number, // Default test recipient number (self)
+          message: 'SUCCESS SENT', // Default test message
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send test message')
+      }
+
+      setTestMessageResult({
+        success: result.success,
+        response: result.response,
+        apiUrl: result.apiUrl,
+        message: result.message,
+      })
+
+      // Reload connection to update messages_sent count
+      await loadConnection()
+    } catch (err: any) {
+      setTestMessageResult({
+        success: false,
+        error: err.message || 'Failed to send test message',
+      })
+      setError(err.message || 'Failed to send test message')
+    } finally {
+      setIsSendingTestMessage(false)
+    }
+  }
+
   if (loading || isCheckingConnection) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -665,9 +716,19 @@ export default function WhatsAppServicesPage() {
               {/* Connection Details */}
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm p-4 bg-slate-50 rounded-lg">
-                  <div>
-                    <span className="text-slate-600 font-medium">Device Number:</span>
-                    <span className="ml-2 font-mono text-slate-900">{connection.sender_number}</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-600 font-medium">Device Number:</span>
+                      <span className="ml-2 font-mono text-slate-900">{connection.sender_number}</span>
+                    </div>
+                    <button
+                      onClick={handleSendTestMessage}
+                      disabled={isSendingTestMessage || !connection.api_key}
+                      className="ml-4 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                      title="Send a test message to verify WhatsApp connection"
+                    >
+                      {isSendingTestMessage ? 'Sending...' : 'Send Test Message'}
+                    </button>
                   </div>
                   <div>
                     <span className="text-slate-600 font-medium">Messages Sent:</span>
@@ -690,6 +751,67 @@ export default function WhatsAppServicesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Test Message Result */}
+                {testMessageResult && (
+                  <div className={`p-4 rounded-lg border ${
+                    testMessageResult.success 
+                      ? 'bg-green-50 border-green-200' 
+                      : 'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {testMessageResult.success ? (
+                          <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                        <span className={`font-semibold ${
+                          testMessageResult.success ? 'text-green-800' : 'text-red-800'
+                        }`}>
+                          {testMessageResult.success ? 'Test Message Sent Successfully!' : 'Test Message Failed'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setTestMessageResult(null)}
+                        className="text-slate-500 hover:text-slate-700"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className={`text-sm space-y-2 ${
+                      testMessageResult.success ? 'text-green-700' : 'text-red-700'
+                    }`}>
+                      {testMessageResult.response && (
+                        <div>
+                          <p className="font-medium mb-1">API Response:</p>
+                          <pre className="bg-white/50 p-2 rounded text-xs overflow-x-auto">
+                            {JSON.stringify(testMessageResult.response, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {testMessageResult.error && (
+                        <p className="text-sm">{testMessageResult.error}</p>
+                      )}
+                      {testMessageResult.apiUrl && (
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-xs font-medium hover:underline">
+                            View API URL (Click to expand)
+                          </summary>
+                          <p className="mt-1 text-xs font-mono break-all bg-white/50 p-2 rounded">
+                            {testMessageResult.apiUrl}
+                          </p>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* API Key Display (masked) */}
                 {connection.api_key && (
@@ -769,6 +891,14 @@ export default function WhatsAppServicesPage() {
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       Refresh Status
+                    </button>
+                    <button
+                      onClick={handleSendTestMessage}
+                      disabled={isSendingTestMessage || !connection.api_key}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors"
+                      title="Send a test message to verify WhatsApp connection"
+                    >
+                      {isSendingTestMessage ? 'Sending...' : 'Send Test Message'}
                     </button>
                     <button
                       onClick={handleDisconnect}
