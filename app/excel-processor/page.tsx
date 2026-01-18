@@ -832,9 +832,15 @@ export default function ExcelProcessorPage() {
         throw new Error(result.error || 'Failed to save data')
       }
 
+      // Use the message from the API if available, otherwise construct one
+      const message = result.message || 
+        (result.duplicates > 0 
+          ? `Successfully saved ${result.count} new customer(s). ${result.duplicates} duplicate(s) skipped.`
+          : `Successfully saved ${result.count} customer(s) to database!`)
+
       setSaveResult({
         success: true,
-        message: `Successfully saved ${result.count} customer(s) to database!`,
+        message: message,
       })
 
       // Clear error if any

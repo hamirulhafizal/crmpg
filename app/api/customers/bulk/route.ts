@@ -161,6 +161,8 @@ export async function POST(request: Request) {
       const dobValue = customer.dob || customer['D.O.B.'] || customer['D.O.B'] || customer.DOB || null
       const parsedDob = parseDate(dobValue)
 
+      const pgCode = customer.PGCode || customer.pg_code || customer.PGCode || null
+
       return {
         user_id: user.id,
         name: customer.name || customer.Name || null,
@@ -175,21 +177,78 @@ export async function POST(request: Request) {
         first_name: customer.FirstName || customer.first_name || customer.FirstName || null,
         sender_name: customer.SenderName || customer.sender_name || customer.SenderName || null,
         save_name: customer.SaveName || customer.save_name || customer.SaveName || null,
-        pg_code: customer.PGCode || customer.pg_code || customer.PGCode || null,
+        pg_code: pgCode,
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
       }
     })
+
+    // Check for duplicates by pg_code
+    // Extract non-null pg_code values from the input
+    const pgCodesToCheck = customersToInsert
+      .map(c => c.pg_code)
+      .filter((code): code is string => code !== null && code !== undefined && code.trim() !== '')
+
+    // Query existing customers with these pg_codes for the current user
+    let existingPgCodes = new Set<string>()
+    if (pgCodesToCheck.length > 0) {
+      // Query in batches to avoid URL length limits
+      const pgCodeBatchSize = 100
+      for (let i = 0; i < pgCodesToCheck.length; i += pgCodeBatchSize) {
+        const pgCodeBatch = pgCodesToCheck.slice(i, i + pgCodeBatchSize)
+        
+        const { data: existingCustomers, error: queryError } = await supabase
+          .from('customers')
+          .select('pg_code')
+          .eq('user_id', user.id)
+          .in('pg_code', pgCodeBatch)
+          .not('pg_code', 'is', null)
+
+        if (queryError) {
+          console.error('Error checking duplicates:', queryError)
+          // Continue with insert even if duplicate check fails
+        } else if (existingCustomers) {
+          existingCustomers.forEach((c: any) => {
+            if (c.pg_code) {
+              existingPgCodes.add(c.pg_code)
+            }
+          })
+        }
+      }
+    }
+
+    // Filter out duplicates - only keep customers with unique pg_code or null pg_code
+    const newCustomers = customersToInsert.filter(customer => {
+      if (!customer.pg_code || customer.pg_code.trim() === '') {
+        // Allow null/empty pg_code (won't be checked for duplicates)
+        return true
+      }
+      // Only include if pg_code doesn't exist in database
+      return !existingPgCodes.has(customer.pg_code)
+    })
+
+    const duplicateCount = customersToInsert.length - newCustomers.length
+
+    if (newCustomers.length === 0) {
+      return NextResponse.json({
+        success: true,
+        count: 0,
+        duplicates: duplicateCount,
+        message: `All ${duplicateCount} customer(s) already exist in the database (duplicate pg_code)`,
+        ids: [],
+      })
+    }
 
     // Insert customers in batches of 1000 (Supabase limit)
     const batchSize = 1000
     const results = {
       total: customersToInsert.length,
       inserted: 0,
+      duplicates: duplicateCount,
       ids: [] as string[],
     }
 
-    for (let i = 0; i < customersToInsert.length; i += batchSize) {
-      const batch = customersToInsert.slice(i, i + batchSize)
+    for (let i = 0; i < newCustomers.length; i += batchSize) {
+      const batch = newCustomers.slice(i, i + batchSize)
       
       const { data: insertedData, error } = await supabase
         .from('customers')
@@ -211,6 +270,10 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       count: results.inserted,
+      duplicates: results.duplicates,
+      message: results.duplicates > 0 
+        ? `Successfully saved ${results.inserted} new customer(s). ${results.duplicates} duplicate(s) skipped.`
+        : `Successfully saved ${results.inserted} customer(s) to database!`,
       ids: results.ids,
     })
   } catch (error: any) {
