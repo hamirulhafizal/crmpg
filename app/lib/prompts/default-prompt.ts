@@ -1,41 +1,47 @@
-// Default prompt template based on n8n workflow
+// Default prompt template for Malaysian name classification (Excel/extension sync)
 
-export const DEFAULT_PROMPT_TEMPLATE = `You are a classifier. This is an example we have:
+export const DEFAULT_PROMPT_TEMPLATE = `You are a classifier for Malaysian customer data. Extract structured fields from the given name and date of birth. Return only valid JSON.
 
-| Name                                   | D.O.B.     | Gender | Age | Prefix | Ethnicity |
-| -------------------------------------- | ---------- | ------ | --- | ------ | --------- |
-| Hamirul Hafizal Bin Mohamad Kamaruddin | 1997-01-05 | male   | 28  | En     | Malay     |
-| Lim Wei Ming                           | 2000-07-12 | male   | 25  | Tn     | Chinese   |
-| Siti Nur Aisyah Binti Ahmad            | 1995-03-22 | female | 30  | Pn     | Malay     |
-
-The data provided is:
-
+## Input
 Name: {{name}}
 D.O.B.: {{dob}}
 PGCode: {{pgCode}}
+row_number: {{rowNumber}}
 
-You MUST return a JSON object with the following keys:
+## Rules
 
-1. row_number: {{rowNumber}},
-2. Ethnicity - (Malay/Chinese/Indian/Other)
-3. Gender - (Male/Female) if name contains Bin then it male, if Binti/Bte then it female
-4. Age - (calculate from D.O.B. if provided, otherwise estimate from name)
-5. Prefix - (based on gender and age)  En (for male) , Pn (for female) , Cik (for female), Tn (for male) -- if(age > 28, En or Pn) else ( Tn, Cik ) 
-6. FirstName - without common prefix name like muhd, mohamad, nur, noor, siti, nurul, nur, ahmad and others that common on malaysia
-7. SenderName - Prefix + FirstName
-8. SaveName - {{PGCode}} - {{SenderName}}
+**Ethnicity** (exactly one: Malay, Chinese, Indian, Other)
+- Malay: name contains "bin", "binti", "bte", "bt" (patronymic).
+- Chinese: typical Chinese name patterns (e.g. Lim, Tan, Wong, single-syllable given names).
+- Indian: typical Indian name patterns (e.g. Kumar, Raj, Priya).
+- Other: when none of the above clearly apply.
 
-Example:
-1. row_number: {{rowNumber}}
-2. Ethnicity: Malay
-3. Age : 30
-4. Gender : Female
-4. Prefix : Pn
-5. FirstName : Aisyah
-6. SenderName: Pn Aisyah
-8. SaveName: PG01140829 - Pn Aisyah
+**Gender** (exactly one: Male, Female)
+- "Bin" → Male. "Binti", "Bte", "Bt" → Female.
+- For non-Malay names, infer from common first-name patterns if possible; otherwise use best guess.
 
-Do not return anything else. Only return the JSON object.`
+**Age** (integer)
+- If D.O.B. is provided and valid: calculate age from today's date.
+- If D.O.B. is missing or invalid: estimate from name/context (e.g. student vs adult); use a reasonable integer.
+
+**Prefix** (exactly one: En, Pn, Tn, Cik)
+- Male, age > 28 → En. Male, age ≤ 28 → Tn.
+- Female, age > 28 → Pn. Female, age ≤ 28 → Cik.
+
+**FirstName**
+- The main given name only. Strip common Malaysian prefixes/particles: Muhd, Mohamad, Muhammad, Nur, Noor, Siti, Nurul, Ahmad, Abdul, etc. Keep one clear first name (e.g. "Aisyah", "Wei Ming", "Hafizal").
+
+**SenderName**
+- Exactly: Prefix + space + FirstName (e.g. "Pn Aisyah", "En Hafizal").
+
+**SaveName**
+- Exactly: PGCode + " - " + SenderName. If PGCode is empty, use " - " + SenderName only.
+
+## Output
+Return a single JSON object with these keys only (no extra text):
+row_number, Ethnicity, Gender, Age, Prefix, FirstName, SenderName, SaveName
+
+Use these exact value types: row_number (number), Ethnicity/Gender/Prefix (string from allowed values above), Age (number), FirstName/SenderName/SaveName (string).`
 
 export function buildPrompt(template: string, name: string, dob: string, rowNumber: number, pgCode: string): string {
   return template

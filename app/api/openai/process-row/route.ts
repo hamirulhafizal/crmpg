@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { DEFAULT_PROMPT_TEMPLATE, buildPrompt } from '@/app/lib/prompts/default-prompt'
 
+// CORS for extension and other cross-origin callers
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+}
+
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_SECRET_KEY || process.env.OPENAI_API_KEY,
@@ -14,7 +25,7 @@ export async function POST(request: Request) {
     if (!rowData) {
       return NextResponse.json(
         { error: 'Row data is required' },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       )
     }
 
@@ -24,7 +35,7 @@ export async function POST(request: Request) {
           error: 'OpenAI API key not configured',
           details: 'Please set OPENAI_SECRET_KEY or OPENAI_API_KEY in your environment variables.'
         },
-        { status: 500 }
+        { status: 500, headers: CORS_HEADERS }
       )
     }
 
@@ -36,7 +47,7 @@ export async function POST(request: Request) {
     if (!name) {
       return NextResponse.json(
         { error: 'Name field not found in row data' },
-        { status: 400 }
+        { status: 400, headers: CORS_HEADERS }
       )
     }
 
@@ -91,10 +102,10 @@ export async function POST(request: Request) {
     // Ensure row_number is set
     result.row_number = rowNumber || result.row_number || 1
 
-    return NextResponse.json({
-      success: true,
-      result,
-    })
+    return NextResponse.json(
+      { success: true, result },
+      { headers: CORS_HEADERS }
+    )
   } catch (error: any) {
     console.error('Error processing row with OpenAI:', error)
     
@@ -105,7 +116,7 @@ export async function POST(request: Request) {
           error: 'Invalid OpenAI API key',
           details: 'Please check your OPENAI_SECRET_KEY or OPENAI_API_KEY environment variable.'
         },
-        { status: 401 }
+        { status: 401, headers: CORS_HEADERS }
       )
     }
 
@@ -115,7 +126,7 @@ export async function POST(request: Request) {
           error: 'OpenAI API rate limit exceeded',
           details: 'Please wait a moment before trying again.'
         },
-        { status: 429 }
+        { status: 429, headers: CORS_HEADERS }
       )
     }
 
@@ -124,7 +135,7 @@ export async function POST(request: Request) {
         error: error.message || 'Failed to process row with OpenAI',
         details: error.response?.data || error.message
       },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     )
   }
 }

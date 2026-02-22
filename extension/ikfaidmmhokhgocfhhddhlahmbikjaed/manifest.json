@@ -1,0 +1,40 @@
+{
+"update_url": "https://clients2.google.com/service/update2/crx",
+
+  "manifest_version": 3,
+  "name": "CRMPG by KEM",
+  "description": "Extension for KEM Public Gold Dealers to download their customer data's from business center page.",
+  "version": "10",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "identity"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.pgmall.my/*"
+      ],
+      "js": [
+        "jquery.min.js",
+        "xlsx.full.min.js",
+        "background.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_icon": "icon.png",
+    "default_title": "CRMPG by KEM",
+    "default_popup": "background.html"
+  }
+}
