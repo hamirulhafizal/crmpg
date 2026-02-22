@@ -58,6 +58,10 @@ export default function WhatsAppServicesPage() {
   const [isTestingCron, setIsTestingCron] = useState(false)
   const [isSendingTestMessage, setIsSendingTestMessage] = useState(false)
   const [testMessageResult, setTestMessageResult] = useState<any>(null)
+  const [isSendingAllWithDelay, setIsSendingAllWithDelay] = useState(false)
+  const [sendAllProgress, setSendAllProgress] = useState({ current: 0, total: 0 })
+
+  const DELAY_BETWEEN_SENDS_MS = 4000
 
   useEffect(() => {
     if (!loading && !user) {
@@ -447,6 +451,59 @@ export default function WhatsAppServicesPage() {
       setError(err.message || 'Failed to send message')
     } finally {
       setIsSending(false)
+    }
+  }
+
+  const handleSendAllTodayWithDelay = async (list: Birthday[]) => {
+    if (list.length === 0) {
+      setError('No birthdays to send')
+      return
+    }
+    if (!connection) {
+      setError('Please connect WhatsApp first')
+      return
+    }
+    const delaySec = DELAY_BETWEEN_SENDS_MS / 1000
+    const estimatedSec = Math.ceil(list.length * delaySec)
+    if (!confirm(`Send birthday messages to ${list.length} contact(s) with ${delaySec}s delay between each to avoid ban?\n\nEstimated time: ~${estimatedSec} seconds.`)) {
+      return
+    }
+    setIsSendingAllWithDelay(true)
+    setSendAllProgress({ current: 0, total: list.length })
+    setError(null)
+    let sent = 0
+    for (let i = 0; i < list.length; i++) {
+      setSendAllProgress({ current: i + 1, total: list.length })
+      try {
+        const response = await fetch('/api/birthday/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: list[i].id,
+            message_template: messageTemplate,
+          }),
+        })
+        const result = await response.json()
+        if (result.success) {
+          sent++
+          await loadBirthdays()
+          await checkConnection()
+        } else {
+          setError(result.error || `Failed to send to ${list[i].sender_name || list[i].name}`)
+          break
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to send message')
+        break
+      }
+      if (i < list.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_SENDS_MS))
+      }
+    }
+    setSendAllProgress({ current: 0, total: 0 })
+    setIsSendingAllWithDelay(false)
+    if (sent > 0) {
+      await loadBirthdays()
     }
   }
 
@@ -1176,18 +1233,39 @@ export default function WhatsAppServicesPage() {
                       {isTestingCron ? 'Running Cron...' : 'Test Cron Job'}
                     </button>
                     <button
-                      onClick={() => {
-                        setSelectedBirthdays(new Set(todayBirthdays.map(b => b.id)))
-                        handleBulkSend()
-                      }}
-                      disabled={true}
-                      hidden={true}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-slate-400 transition-colors"
+                      onClick={() => handleSendAllTodayWithDelay(todayBirthdays)}
+                      disabled={isSendingAllWithDelay}
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                      title={`Send to all with ${DELAY_BETWEEN_SENDS_MS / 1000}s delay between each to avoid ban`}
                     >
-                      Send All
+                      {isSendingAllWithDelay ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                          Sending {sendAllProgress.current}/{sendAllProgress.total}
+                        </>
+                      ) : (
+                        <>Send to all ({todayBirthdays.length}) — with delay</>
+                      )}
                     </button>
                   </div>
                 </div>
+                {isSendingAllWithDelay && sendAllProgress.total > 0 && (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
+                      <span>Waiting {DELAY_BETWEEN_SENDS_MS / 1000}s between each message to avoid ban</span>
+                      <span>{sendAllProgress.current} / {sendAllProgress.total}</span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-green-500 rounded-full transition-all duration-300"
+                        style={{ width: `${(100 * sendAllProgress.current) / sendAllProgress.total}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div hidden className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
                   <p className="text-xs text-purple-800">
                     <strong>Admin POC:</strong> Click "Test Cron Job" to send birthday wishes to all customers using their respective client's WhatsApp connection (API key and phone number). This simulates the automated cron job.
