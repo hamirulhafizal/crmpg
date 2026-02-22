@@ -2,8 +2,33 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
+
+const runConfetti = () => {
+  if (typeof window === 'undefined') return
+  import('canvas-confetti').then(({ default: confetti }) => {
+    confetti({
+      particleCount: 120,
+      spread: 70,
+      origin: { y: 0.7 },
+      colors: ['#0ea5e9', '#22c55e', '#eab308', '#a855f7', '#ec4899'],
+    })
+  })
+}
+
+declare global {
+  interface Window {
+    googleContactsIntegration?: {
+      signIn: () => void
+      signOut: () => void
+      importContacts: (data: Record<string, unknown>[]) => Promise<void>
+      isSignedIn: () => boolean
+      isInitialized: () => boolean
+    }
+  }
+}
 
 interface Customer {
   id: string
@@ -52,6 +77,13 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
+  // Google Contacts sync
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false)
+  const [isCheckingConnection, setIsCheckingConnection] = useState(true)
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
+  const [isImporting, setIsImporting] = useState(false)
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login')
@@ -63,6 +95,111 @@ export default function CustomersPage() {
       fetchCustomers()
     }
   }, [user, page, search, genderFilter, ethnicityFilter, sortBy, sortOrder])
+
+  // Check Google Contacts connection status
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user) {
+      setIsCheckingConnection(false)
+      return
+    }
+    const checkInterval = setInterval(() => {
+      if (window.googleContactsIntegration?.isInitialized()) {
+        setIsGoogleConnected(window.googleContactsIntegration.isSignedIn())
+        setIsCheckingConnection(false)
+        clearInterval(checkInterval)
+      }
+    }, 500)
+    const t = setTimeout(() => {
+      clearInterval(checkInterval)
+      setIsCheckingConnection(false)
+      if (!window.googleContactsIntegration?.isInitialized()) setIsGoogleConnected(false)
+    }, 10000)
+    return () => {
+      clearInterval(checkInterval)
+      clearTimeout(t)
+    }
+  }, [user])
+
+  const handleConnectionChange = useCallback((connected: boolean) => {
+    setIsGoogleConnected(connected)
+    if (connected) {
+      setImportResult({ success: true, message: 'Connected to Google Contacts. You can import customers to Google.' })
+    }
+  }, [])
+
+  const handleImportResult = useCallback((result: { success: boolean; message: string }) => {
+    setImportResult(result)
+    setImportProgress({ current: 0, total: 0 })
+    if (!result.success) {
+      setError(result.message)
+    } else {
+      runConfetti()
+    }
+  }, [])
+
+  const handleImportProgress = useCallback((current: number, total: number) => {
+    setImportProgress({ current, total })
+  }, [])
+
+  const handleConnectGoogleContacts = (e?: React.MouseEvent) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    if (!window.googleContactsIntegration) {
+      setError('Google Contacts not ready. Wait a moment or refresh. Ensure NEXT_PUBLIC_GOOGLE_CONTACTS_CLIENT_ID is set.')
+      return
+    }
+    if (!window.googleContactsIntegration.isInitialized()) {
+      setError('Google API is initializing. Please wait and try again.')
+      return
+    }
+    try {
+      window.googleContactsIntegration.signIn()
+    } catch (err: unknown) {
+      setError(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleImportToGoogleContacts = async () => {
+    if (!isGoogleConnected || !window.googleContactsIntegration?.isSignedIn()) {
+      setError('Please connect Google Contacts first using "Sync with Google Contacts".')
+      return
+    }
+    setIsImporting(true)
+    setError(null)
+    setImportResult(null)
+    setImportProgress({ current: 0, total: 0 })
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '100000',
+        sortBy,
+        sortOrder,
+      })
+      const response = await fetch(`/api/customers?${params}`)
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to fetch customers')
+      const allCustomers: Customer[] = result.data || []
+      if (allCustomers.length === 0) {
+        setError('No customers to import. Add customers first.')
+        setIsImporting(false)
+        return
+      }
+      const dataToImport = allCustomers.map((c): Record<string, unknown> => ({
+        Name: c.name ?? '',
+        SenderName: c.sender_name ?? '',
+        FirstName: c.first_name ?? '',
+        SaveName: c.save_name ?? '',
+        DOB: c.dob ?? '',
+        Email: c.email ?? '',
+        Phone: c.phone ?? '',
+      }))
+      await window.googleContactsIntegration.importContacts(dataToImport)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Import to Google failed')
+    } finally {
+      setIsImporting(false)
+    }
+  }
 
   const fetchCustomers = async () => {
     setIsLoading(true)
@@ -299,6 +436,11 @@ export default function CustomersPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <GoogleContactsIntegration
+        onConnectionChange={handleConnectionChange}
+        onImportResult={handleImportResult}
+        onImportProgress={handleImportProgress}
+      />
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -415,7 +557,76 @@ export default function CustomersPage() {
               </svg>
               Export to Excel
             </button>
+
+            <button
+              type="button"
+              onClick={handleConnectGoogleContacts}
+              disabled={isCheckingConnection}
+              className="px-4 py-2 bg-slate-700 text-white text-sm font-medium rounded-xl hover:bg-slate-800 disabled:opacity-70 transition-colors flex items-center gap-2"
+            >
+              {isGoogleConnected ? (
+                <>
+                  <svg className="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Google Connected
+                </>
+              ) : (
+                <>
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  {isCheckingConnection ? 'Checking…' : 'Sync with Google Contacts'}
+                </>
+              )}
+            </button>
+            {isGoogleConnected && (
+              <button
+                type="button"
+                onClick={handleImportToGoogleContacts}
+                disabled={isImporting}
+                className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-70 transition-colors flex items-center gap-2"
+              >
+                {isImporting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Importing…
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Import all to Google Contacts
+                  </>
+                )}
+              </button>
+            )}
           </div>
+          {(isImporting || importProgress.total > 0) && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
+                <span>Importing to Google Contacts…</span>
+                <span>{importProgress.total > 0 ? `${importProgress.current} / ${importProgress.total}` : 'Preparing…'}</span>
+              </div>
+              <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: importProgress.total > 0 ? `${(100 * importProgress.current) / importProgress.total}%` : '0%',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {importResult?.message && (
+            <p className={`mt-3 text-sm ${importResult.success ? 'text-green-700' : 'text-amber-700'}`}>
+              {importResult.message}
+            </p>
+          )}
         </div>
 
         {/* Error Message */}
