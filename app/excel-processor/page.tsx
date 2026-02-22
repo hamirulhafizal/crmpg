@@ -8,19 +8,6 @@ import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 
-declare global {
-  interface Window {
-    googleContactsIntegration?: {
-      signIn: () => void
-      signOut: () => void
-      importContacts: (data: ProcessedRow[]) => Promise<void>
-      isSignedIn: () => boolean
-      isLoading: () => boolean
-      isInitialized: () => boolean
-    }
-  }
-}
-
 interface ProcessedRow {
   [key: string]: any
   Gender?: string
