@@ -60,6 +60,7 @@ export default function CustomersPage() {
 
   // Filters
   const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('') // immediate input value; search is debounced
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
   const [sortBy, setSortBy] = useState('created_at')
@@ -83,6 +84,19 @@ export default function CustomersPage() {
       fetchCustomers()
     }
   }, [user, page, search, genderFilter, ethnicityFilter, sortBy, sortOrder])
+
+  const handleSearch = () => {
+    setSearch(searchInput)
+    setPage(1)
+  }
+
+  const handleClearFilters = () => {
+    setSearchInput('')
+    setSearch('')
+    setGenderFilter('')
+    setEthnicityFilter('')
+    setPage(1)
+  }
 
   // Check Google Contacts connection status
   useEffect(() => {
@@ -464,17 +478,22 @@ export default function CustomersPage() {
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             {/* Search */}
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 flex gap-2">
               <input
                 type="text"
                 placeholder="Search by name, email, or phone..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setPage(1)
-                }}
-                className="w-full px-4 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="flex-1 px-4 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <button
+                type="button"
+                onClick={handleSearch}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+              >
+                Search
+              </button>
             </div>
 
             {/* Gender Filter */}
@@ -506,6 +525,15 @@ export default function CustomersPage() {
               <option value="Indian">Indian</option>
               <option value="Other">Other</option>
             </select>
+
+            {/* Clear filters */}
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium whitespace-nowrap"
+            >
+              Clear
+            </button>
           </div>
 
           {/* Action Buttons */}
@@ -718,6 +746,28 @@ export default function CustomersPage() {
                       type="text"
                       value={editingCustomer.pg_code || ''}
                       onChange={(e) => setEditingCustomer({ ...editingCustomer, pg_code: e.target.value })}
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Sender Name</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.sender_name || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, sender_name: e.target.value })}
+                      placeholder="e.g. Pn Haszelina, Tn Azamuddin"
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Save Name</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.save_name || ''}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, save_name: e.target.value })}
+                      placeholder="e.g. PG00113237 - Pn Haszelina"
                       className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>

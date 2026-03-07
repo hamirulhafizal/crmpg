@@ -43,7 +43,8 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/pwa-test') ||
       request.nextUrl.pathname.startsWith('/excel-processor') ||
       request.nextUrl.pathname.startsWith('/customers') ||
-      request.nextUrl.pathname.startsWith('/whatsapp-services'))
+      request.nextUrl.pathname.startsWith('/whatsapp-services') ||
+      request.nextUrl.pathname.startsWith('/waha-integration'))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
