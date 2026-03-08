@@ -329,6 +329,7 @@ export default function WahaIntegrationPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
+              
               <h1 className="text-xl font-semibold text-slate-900">WAHA WhatsApp Integration</h1>
             </div>
           </div>
