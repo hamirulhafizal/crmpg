@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { wahaFetch } from '@/app/lib/waha'
 
 const BATCH_SIZE = 20
+
+// Service-role Supabase client so this worker can bypass RLS safely.
+// Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.
+const supabaseAdmin = createSupabaseClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // Basic customer type for template rendering
 interface Customer {
@@ -89,7 +96,7 @@ export async function GET(request: Request) {
   console.log('triggering send---->')
 
   try {
-    const supabase = await createClient()
+    const supabase = supabaseAdmin
     const nowIso = new Date().toISOString()
 
     console.log('nowIso---->', nowIso)
