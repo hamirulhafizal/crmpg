@@ -98,6 +98,9 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const nowIso = new Date().toISOString()
 
+    console.log('nowIso---->', nowIso)
+
+
     // 1. Get due, pending, unlocked scheduled messages
     const { data: due, error: fetchError } = await supabase
       .from('scheduled_messages')
