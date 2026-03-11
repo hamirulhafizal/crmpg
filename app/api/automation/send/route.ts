@@ -60,7 +60,7 @@ function renderCustomerTemplate(template: string, customer: Customer): string {
     .replace(/{PGCode}/g, customer.pg_code || '')
 }
 
-async function sendWhatsAppMessage(phone: string, text: string) {
+async function sendWhatsAppMessage(session: string, phone: string, text: string) {
   // Normalise phone: keep digits only, ensure 60 prefix, add @c.us
   let digits = phone.replace(/[^0-9]/g, '')
   if (!digits.startsWith('60')) {
@@ -71,14 +71,12 @@ async function sendWhatsAppMessage(phone: string, text: string) {
     }
   }
 
-  const chatId1 = `${digits}@c.us`
-  const chatId = `60184644305@c.us`
-
-  console.log('chatId1---->', chatId1)
+  const chatId = `${digits}@c.us`
 
   await wahaFetch('/api/sendText', {
     method: 'POST',
     body: JSON.stringify({
+      session,
       chatId,
       text,
     }),
@@ -150,6 +148,24 @@ export async function GET(request: Request) {
       console.error('Error locking scheduled messages:', lockError)
     }
 
+    // 3. Resolve WAHA sessions per user so we know which session to send from.
+    const userIds = Array.from(new Set((due as any[]).map((m) => m.user_id))) as string[]
+    const { data: sessionRows, error: sessionError } = await supabase
+      .from('waha_user_sessions')
+      .select('user_id, session_name')
+      .in('user_id', userIds)
+
+    if (sessionError) {
+      console.error('Error fetching WAHA sessions for users:', sessionError)
+    }
+
+    const sessionByUser = new Map<string, string>()
+    for (const s of sessionRows || []) {
+      if (!sessionByUser.has(s.user_id) && s.session_name) {
+        sessionByUser.set(s.user_id, s.session_name)
+      }
+    }
+
     let sent = 0
     let failed = 0
 
@@ -166,6 +182,13 @@ export async function GET(request: Request) {
         const title = (row.title || '').toLowerCase().trim()
         const hasPhone = !!row.phone && row.phone.trim() !== ''
 
+        const sessionName = sessionByUser.get(row.user_id)
+        if (!sessionName) {
+          console.warn('No WAHA session configured for user, skipping message row:', row.user_id, row.id)
+          failed++
+          continue
+        }
+
         switch (title) {
           // Birthday automation: title contains "birthday" and phone is empty
           case 'birthday': {
@@ -176,7 +199,7 @@ export async function GET(request: Request) {
               .not('dob', 'is', null)
               .not('phone', 'is', null)
 
-            console.log('allCustomers---->', allCustomers)
+            // console.log('allCustomers---->', allCustomers)
 
             if (custError) {
               console.error('Error fetching customers for birthday automation:', custError)
@@ -194,11 +217,11 @@ export async function GET(request: Request) {
               for (const customer of todaysCustomers) {
                 try {
                   const message = renderCustomerTemplate(row.message, customer)
-                  
+
                   console.log('customer---->', customer)
                   console.log('message---->', message)
 
-                  await sendWhatsAppMessage(customer.phone!, message)
+                  await sendWhatsAppMessage(sessionName, customer.phone!, message)
                   sent++
                 } catch (sendErr) {
                   console.error('Error sending birthday WhatsApp message:', sendErr)
@@ -212,7 +235,7 @@ export async function GET(request: Request) {
           // Default: direct send using configured phone
           case '': {
             try {
-              await sendWhatsAppMessage(row.phone, row.message)
+              await sendWhatsAppMessage(sessionName, row.phone, row.message)
               sent++
             } catch (sendErr) {
               console.error('Error sending direct WhatsApp message:', sendErr)
@@ -229,11 +252,27 @@ export async function GET(request: Request) {
           }
         }
 
-        // Mark this scheduled message as processed (sent), regardless of per-recipient failures.
-        await supabase
-          .from('scheduled_messages')
-          .update({ status: 'sent', locked_at: null })
-          .eq('id', row.id)
+        // Update scheduling depending on type:
+        // - Birthday: treat as a recurring daily job → keep status 'pending' and move scheduled_at to next day.
+        // - Others: one-off → mark as 'sent'.
+        if (title === 'birthday') {
+          const nextRun = new Date()
+          nextRun.setUTCDate(nextRun.getUTCDate() + 1)
+
+          await supabase
+            .from('scheduled_messages')
+            .update({
+              status: 'pending',
+              locked_at: null,
+              scheduled_at: nextRun.toISOString(),
+            })
+            .eq('id', row.id)
+        } else {
+          await supabase
+            .from('scheduled_messages')
+            .update({ status: 'sent', locked_at: null })
+            .eq('id', row.id)
+        }
       } catch (err) {
         console.error('Error processing scheduled message row:', err)
         failed++
