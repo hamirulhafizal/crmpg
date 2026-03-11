@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import PWAInstallPrompt from '@/app/components/PWAInstallPrompt'
 import PWAInstallButton from '@/app/components/PWAInstallButton'
@@ -10,12 +10,30 @@ import PWAInstallButton from '@/app/components/PWAInstallButton'
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
+  const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login')
     }
   }, [user, loading, router])
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    fetch('/api/waha/sessions')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        const sessions = data.sessions || []
+        const active = sessions.some((s: { status?: string }) => s.status === 'WORKING')
+        setHasActiveWahaSession(active)
+      })
+      .catch(() => {
+        if (!cancelled) setHasActiveWahaSession(false)
+      })
+    return () => { cancelled = true }
+  }, [user])
 
   const handleSignOut = async () => {
     await signOut()
@@ -176,7 +194,29 @@ export default function DashboardPage() {
                 </svg>
               </div>
             </Link>
-           
+
+            {hasActiveWahaSession && (
+              <Link
+                href="/automated-messages"
+                className="block px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-violet-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <div>
+                      <span className="font-semibold text-slate-900">Automated Messages</span>
+                      <p className="text-xs text-slate-600">Create and edit birthday &amp; other automated message templates</p>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </Link>
+            )}
+
             <Link
               href="/extension-download"
               className="block px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-amber-200"

@@ -329,7 +329,7 @@ export default function WahaIntegrationPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
-              
+
               <h1 className="text-xl font-semibold text-slate-900">WAHA WhatsApp Integration</h1>
             </div>
           </div>
@@ -565,7 +565,7 @@ export default function WahaIntegrationPage() {
 
         {/* Screenshot dialog */}
         {screenshotDialogSession && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setScreenshotDialogSession(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 top-[-2rem]" onClick={() => setScreenshotDialogSession(null)}>
             <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
                 <span className="font-semibold text-slate-900">Screenshot — {screenshotDialogSession}</span>

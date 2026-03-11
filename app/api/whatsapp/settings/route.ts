@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 
-// GET /api/whatsapp/settings - Get user's WhatsApp settings
+// GET /api/whatsapp/settings - Get user's WhatsApp settings (prefer message_automations birthday when present)
 export async function GET(request: Request) {
   try {
     const supabase = await createClient()
@@ -16,7 +16,24 @@ export async function GET(request: Request) {
       )
     }
 
-    // Get user's settings
+    // Prefer birthday automation from message_automations if it exists
+    const { data: automation } = await supabase
+      .from('message_automations')
+      .select('enabled, schedule_time, timezone, message_template')
+      .eq('user_id', user.id)
+      .eq('type', 'birthday')
+      .single()
+
+    if (automation) {
+      return NextResponse.json({
+        auto_send_enabled: automation.enabled,
+        send_time: automation.schedule_time,
+        timezone: automation.timezone || 'Asia/Kuala_Lumpur',
+        default_template: automation.message_template || 'Selamat Hari Jadi, {SenderName}! Semoga panjang umur, murah rezeki, dan bahagia selalu! 🎉🎂',
+      })
+    }
+
+    // Fallback to whatsapp_settings
     const { data: settings, error } = await supabase
       .from('whatsapp_settings')
       .select('*')
@@ -30,7 +47,6 @@ export async function GET(request: Request) {
       )
     }
 
-    // Return default settings if none exist
     if (!settings) {
       return NextResponse.json({
         auto_send_enabled: true,
@@ -111,6 +127,46 @@ export async function PUT(request: Request) {
         { error: result.error.message },
         { status: 500 }
       )
+    }
+
+    // Keep message_automations in sync for birthday
+    const { data: automationRow } = await supabase
+      .from('message_automations')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('type', 'birthday')
+      .single()
+
+    const automationPayload = {
+      user_id: user.id,
+      type: 'birthday',
+      name: 'Birthday Wishes',
+      enabled: settingsData.auto_send_enabled ?? result.data?.auto_send_enabled,
+      schedule_time: settingsData.send_time ?? result.data?.send_time,
+      timezone: settingsData.timezone ?? result.data?.timezone,
+      message_template: settingsData.default_template ?? result.data?.default_template,
+    }
+    if (automationRow) {
+      await supabase
+        .from('message_automations')
+        .update({
+          enabled: automationPayload.enabled,
+          schedule_time: automationPayload.schedule_time,
+          timezone: automationPayload.timezone,
+          message_template: automationPayload.message_template,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', automationRow.id)
+    } else {
+      await supabase.from('message_automations').insert({
+        user_id: user.id,
+        type: 'birthday',
+        name: 'Birthday Wishes',
+        enabled: automationPayload.enabled ?? true,
+        schedule_time: automationPayload.schedule_time ?? '08:00:00',
+        timezone: automationPayload.timezone ?? 'Asia/Kuala_Lumpur',
+        message_template: automationPayload.message_template ?? 'Selamat Hari Jadi, {SenderName}! Semoga panjang umur, murah rezeki, dan bahagia selalu! 🎉🎂',
+      })
     }
 
     return NextResponse.json({
