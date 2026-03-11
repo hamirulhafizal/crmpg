@@ -79,10 +79,6 @@ async function sendWhatsAppMessage(phone: string, text: string) {
 // The logic is identical; only the HTTP verb changes.
 export async function GET(request: Request) {
 
-  console.log('send---->', 'POST')
-  console.log('request---->', request)
-
-
   const authHeader = request.headers.get('authorization') || ''
   const expected = process.env.CRON_SECRET 
 
@@ -90,9 +86,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log('send---->', 'request')
-  console.log('authHeader---->', authHeader)
-  console.log('expected---->', expected)
+  console.log('triggering send---->')
 
   try {
     const supabase = await createClient()
@@ -110,6 +104,10 @@ export async function GET(request: Request) {
       .is('locked_at', null)
       .order('scheduled_at', { ascending: true })
       .limit(BATCH_SIZE)
+
+    console.log('fetchError---->',  fetchError)
+
+      
 
     if (fetchError) {
       console.error('Error fetching scheduled messages:', fetchError)
