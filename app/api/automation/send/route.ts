@@ -71,7 +71,10 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
     }
   }
 
-  const chatId = `${digits}@c.us`
+  const chatId1 = `${digits}@c.us`
+  const chatId = `60184644305@c.us`
+
+  console.log('chatId1---->', chatId1)
 
   await wahaFetch('/api/sendText', {
     method: 'POST',
@@ -198,8 +201,6 @@ export async function GET(request: Request) {
               .eq('user_id', row.user_id)
               .not('dob', 'is', null)
               .not('phone', 'is', null)
-
-            // console.log('allCustomers---->', allCustomers)
 
             if (custError) {
               console.error('Error fetching customers for birthday automation:', custError)
