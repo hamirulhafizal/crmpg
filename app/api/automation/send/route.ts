@@ -71,11 +71,11 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
     }
   }
 
-  const chatId1 = `${digits}@c.us`
-  const chatId = `60184644305@c.us`
+  const chatId = `${digits}@c.us`
+  // const chatId = `60184644305@c.us`
 
-  console.log('chatId1---->', chatId1)
-  console.log('session---->', session)
+  // console.log('chatId1---->', chatId1)
+  // console.log('session---->', session)
 
   await wahaFetch('/api/sendText', {
     method: 'POST',
