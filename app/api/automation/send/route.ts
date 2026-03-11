@@ -71,7 +71,10 @@ async function sendWhatsAppMessage(phone: string, text: string) {
     }
   }
 
-  const chatId = `${digits}@c.us`
+  const chatId1 = `${digits}@c.us`
+  const chatId = `60184644305@c.us`
+
+  console.log('chatId1---->', chatId1)
 
   await wahaFetch('/api/sendText', {
     method: 'POST',
@@ -150,9 +153,13 @@ export async function GET(request: Request) {
     let sent = 0
     let failed = 0
 
-    const today = new Date()
-    const todayMonth = today.getUTCMonth()
-    const todayDate = today.getUTCDate()
+    // Compute "today" in Malaysia time (UTC+8) so birthdays follow local date,
+    // not pure UTC (which would appear as "yesterday" for late-night runs).
+    const nowForTz = new Date()
+    const MALAYSIA_OFFSET_MINUTES = 8 * 60
+    const localTzNow = new Date(nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000)
+    const todayMonth = localTzNow.getUTCMonth()
+    const todayDate = localTzNow.getUTCDate()
 
     for (const row of due as ScheduledMessageRow[]) {
       try {
@@ -191,7 +198,7 @@ export async function GET(request: Request) {
                   console.log('customer---->', customer)
                   console.log('message---->', message)
 
-                  // await sendWhatsAppMessage(customer.phone!, message)
+                  await sendWhatsAppMessage(customer.phone!, message)
                   sent++
                 } catch (sendErr) {
                   console.error('Error sending birthday WhatsApp message:', sendErr)
