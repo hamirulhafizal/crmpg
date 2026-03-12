@@ -140,6 +140,31 @@ export default function WahaIntegrationPage() {
     }
   }
 
+  const handleDeleteSession = async (sessionName: string) => {
+    if (!window.confirm(`Delete session ${sessionName}? This will disconnect it from WAHA.`)) {
+      return
+    }
+    setActionLoading(sessionName)
+    setError(null)
+    try {
+      const res = await fetch(`/api/waha/sessions/${encodeURIComponent(sessionName)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete session')
+      }
+      await loadSessions()
+      if (selectedSession === sessionName) {
+        setSelectedSession('')
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete session')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const fetchQr = async (sessionName: string) => {
     setQrSession(sessionName)
     setLoadingQr(true)
@@ -468,6 +493,14 @@ export default function WahaIntegrationPage() {
                         {actionLoading === s.name ? '…' : 'Stop'}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSession(s.name)}
+                      disabled={actionLoading === s.name}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                    >
+                      {actionLoading === s.name ? '…' : 'Delete'}
+                    </button>
                     {/* {(s.status === 'STARTING' || s.status === 'SCAN_QR_CODE') && (
                       <button
                         type="button"
