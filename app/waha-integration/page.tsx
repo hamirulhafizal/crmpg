@@ -50,6 +50,14 @@ export default function WahaIntegrationPage() {
   const [testDialogResponse, setTestDialogResponse] = useState<string | null>(null)
   const [loadingTestSend, setLoadingTestSend] = useState(false)
 
+  const [emailFallbackDialogOpen, setEmailFallbackDialogOpen] = useState(false)
+  const [emailAppPassword, setEmailAppPassword] = useState('')
+  const [emailFallbackTemplate, setEmailFallbackTemplate] = useState('')
+  const [showEmailAppPassword, setShowEmailAppPassword] = useState(false)
+  const [savingEmailFallback, setSavingEmailFallback] = useState(false)
+  const [emailFallbackMessage, setEmailFallbackMessage] = useState<string | null>(null)
+  const [sendingTestEmail, setSendingTestEmail] = useState(false)
+
   const showQrForSession = qrSession && sessions.find((s) => s.name === qrSession)?.status !== 'WORKING'
 
   useEffect(() => {
@@ -416,14 +424,57 @@ export default function WahaIntegrationPage() {
         <section className="bg-white rounded-2xl shadow-xl p-6 border border-slate-200/50">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-900">Your sessions & status</h2>
-            <button
-              type="button"
-              onClick={() => handleRefresh()}
-              disabled={loadingSessions || loadingQr}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
-            >
-              {loadingSessions ? 'Refreshing…' : loadingQr ? 'Refreshing QR…' : 'Refresh'}
-            </button>
+            <div className="flex items-center gap-3">
+              {sessions.length > 0 && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (savingEmailFallback) return
+                    setEmailFallbackMessage(null)
+                    setShowEmailAppPassword(false)
+                    setEmailFallbackDialogOpen(true)
+                    try {
+                      const res = await fetch('/api/waha/email-fallback')
+                      if (!res.ok) return
+                      const data = await res.json()
+                      setEmailAppPassword((data.appPassword || '').toString())
+                      setEmailFallbackTemplate((data.gmailMessage || '').toString())
+                    } catch {
+                      // ignore load errors; user can still type a new password and message
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path
+                        d="M4 6.5L11.1056 11.0704C11.6633 11.4247 12.3367 11.4247 12.8944 11.0704L20 6.5"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <rect
+                        x="4"
+                        y="5"
+                        width="16"
+                        height="14"
+                        rx="2.4"
+                        strokeWidth="1.6"
+                      />
+                    </svg>
+                  </span>
+                  <span>Configure email fallback</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleRefresh()}
+                disabled={loadingSessions || loadingQr}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+              >
+                {loadingSessions ? 'Refreshing…' : loadingQr ? 'Refreshing QR…' : 'Refresh'}
+              </button>
+            </div>
           </div>
           {loadingSessions ? (
             <p className="text-slate-500">Loading sessions…</p>
@@ -652,6 +703,240 @@ export default function WahaIntegrationPage() {
                     <pre className="p-4 rounded-xl bg-slate-100 text-sm text-slate-800 overflow-auto max-h-48">{testDialogResponse}</pre>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Email fallback configuration dialog */}
+        {emailFallbackDialogOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 top-[-2rem]"
+            onClick={() => {
+              if (!savingEmailFallback) setEmailFallbackDialogOpen(false)
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Email fallback for WhatsApp failures
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    When WhatsApp delivery fails, messages can fall back to email (Gmail).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!savingEmailFallback) setEmailFallbackDialogOpen(false)
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+                  aria-label="Close"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path
+                      d="M6 18L18 6M6 6l12 12"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-6 space-y-4 text-sm text-slate-700 overflow-auto">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">
+                  <p className="text-xs text-slate-600">
+                    Use a{' '}
+                    <a
+                      href="https://myaccount.google.com/apppasswords"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                    >
+                      Gmail App Password
+                    </a>{' '}
+                    for sending emails securely. Make sure your profile email below matches the Gmail
+                    account you create the app password for.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Gmail account used for sending
+                  </label>
+                  <input
+                    type="email"
+                    value={user?.email || ''}
+                    readOnly
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Emails will be sent from this Gmail address to your customers&apos; email
+                    addresses when WhatsApp delivery fails.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Gmail app password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showEmailAppPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="16-character app password"
+                      value={emailAppPassword}
+                      onChange={(e) =>
+                        setEmailAppPassword(e.target.value.replace(/\s+/g, ''))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailAppPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+                      aria-label={showEmailAppPassword ? 'Hide app password' : 'Show app password'}
+                    >
+                      {showEmailAppPassword ? (
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path
+                            d="M3 3l18 18M10.584 10.588A3 3 0 0013.41 13.41M9.88 4.252A9.76 9.76 0 0112 4c5.523 0 10 4 10 8-0.413 1.24-1.12 2.38-2.06 3.34m-3.122 2.07A9.76 9.76 0 0112 20c-5.523 0-10-4-10-8 0-1.207.39-2.378 1.09-3.46"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                          <path
+                            d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <circle cx="12" cy="12" r="3" strokeWidth="1.6" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    This password is stored encrypted in your WAHA session record and used only for
+                    sending fallback emails.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-medium text-slate-600">
+                      Email message template (optional)
+                    </label>
+                    <span className="text-[11px] text-slate-400">
+                      You can use variables like{' '}
+                      <span className="font-mono text-[11px] text-slate-500">
+                        {'{Name}'}, {'{Email}'}, {'{Phone}'}, {'{Location}'}, {'{FirstName}'},{' '}
+                        {'{SenderName}'}
+                      </span>
+                    </span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    placeholder="If left empty, the WhatsApp message text will be reused for email."
+                    value={emailFallbackTemplate}
+                    onChange={(e) => setEmailFallbackTemplate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    When available, this template can be rendered with customer data using the same
+                    variables as your WhatsApp templates.
+                  </p>
+                </div>
+
+                {emailFallbackMessage && (
+                  <p
+                    className={`text-xs ${
+                      emailFallbackMessage.toLowerCase().includes('failed') ||
+                      emailFallbackMessage.toLowerCase().includes('error')
+                        ? 'text-red-600'
+                        : 'text-emerald-600'
+                    }`}
+                  >
+                    {emailFallbackMessage}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
+                <button
+                  type="button"
+                  disabled={sendingTestEmail || !emailAppPassword.trim()}
+                  onClick={async () => {
+                    if (!emailAppPassword.trim()) return
+                    setSendingTestEmail(true)
+                    setEmailFallbackMessage(null)
+                    try {
+                      const res = await fetch('/api/waha/email-fallback/test', {
+                        method: 'POST',
+                      })
+                      const data = await res.json().catch(() => ({}))
+                      if (!res.ok) {
+                        throw new Error(data.error || 'Failed to send test email')
+                      }
+                      setEmailFallbackMessage('Test email sent to your Gmail inbox.')
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Failed to send test email'
+                      setEmailFallbackMessage(msg)
+                    } finally {
+                      setSendingTestEmail(false)
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {sendingTestEmail ? 'Sending test…' : 'Send test email to myself'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!savingEmailFallback) setEmailFallbackDialogOpen(false)
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingEmailFallback || !emailAppPassword.trim()}
+                  onClick={async () => {
+                    if (!emailAppPassword.trim()) return
+                    setSavingEmailFallback(true)
+                    setEmailFallbackMessage(null)
+                    try {
+                      const res = await fetch('/api/waha/email-fallback', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          appPassword: emailAppPassword.trim(),
+                          gmailMessage: emailFallbackTemplate,
+                        }),
+                      })
+                      const data = await res.json()
+                      if (!res.ok) {
+                        throw new Error(data.error || 'Failed to save settings')
+                      }
+                      setEmailFallbackMessage('Email fallback settings saved successfully.')
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Failed to save settings'
+                      setEmailFallbackMessage(msg)
+                    } finally {
+                      setSavingEmailFallback(false)
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600"
+                >
+                  {savingEmailFallback ? 'Saving…' : 'Save'}
+                </button>
               </div>
             </div>
           </div>

@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import nodemailer from 'nodemailer'
 import { wahaFetch } from '@/app/lib/waha'
 
 const BATCH_SIZE = 20
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function randomDelayBetween(minMs: number, maxMs: number) {
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
+  await sleep(delay)
+}
 
 // Service-role Supabase client so this worker can bypass RLS safely.
 // Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set.
@@ -40,6 +50,12 @@ interface ScheduledMessageRow {
   status: string
 }
 
+interface EmailFallbackConfig {
+  fromEmail: string
+  appPassword: string
+  gmailTemplate: string | null
+}
+
 function renderCustomerTemplate(template: string, customer: Customer): string {
   if (!template) return ''
 
@@ -61,6 +77,20 @@ function renderCustomerTemplate(template: string, customer: Customer): string {
 }
 
 async function sendWhatsAppMessage(session: string, phone: string, text: string) {
+  const digits = normalisePhoneToMsisdn(phone)
+  const chatId = `${digits}@c.us`
+
+  await wahaFetch('/api/sendText', {
+    method: 'POST',
+    body: JSON.stringify({
+      session,
+      chatId,
+      text,
+    }),
+  })
+}
+
+function normalisePhoneToMsisdn(phone: string): string {
   // Normalise phone: keep digits only, ensure 60 prefix, add @c.us
   let digits = phone.replace(/[^0-9]/g, '')
   if (!digits.startsWith('60')) {
@@ -71,20 +101,106 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
     }
   }
 
-  const chatId = `${digits}@c.us`
-  // const chatId = `60184644305@c.us`
+  return digits
+}
 
-  // console.log('chatId1---->', chatId1)
-  // console.log('session---->', session)
+async function checkWhatsAppNumberExists(session: string, phone: string): Promise<boolean> {
+  try {
+    const digits = normalisePhoneToMsisdn(phone)
+    const url = `https://${process.env.NEXT_PUBLIC_WAHA_URL}/api/contacts/check-exists?phone=${encodeURIComponent(
+      digits
+    )}&session=${encodeURIComponent(session)}`
 
-  await wahaFetch('/api/sendText', {
-    method: 'POST',
-    body: JSON.stringify({
-      session,
-      chatId,
-      text,
-    }),
-  })
+    const res = await fetch(url)
+
+    if (!res.ok) {
+      console.error('Failed to check WhatsApp contact existence, proceeding with send:', res.status)
+      // Fail-open to avoid blocking sends if the external API is down.
+      return true
+    }
+
+    const data: any = await res.json().catch(() => null)
+
+    // Expected WAHA response:
+    // { "numberExists": false }
+    // { "numberExists": true, "chatId": "80028243066938@lid" }
+    if (!data || typeof data.numberExists !== 'boolean') {
+      // If the shape is unexpected, fail-open so messages still go out.
+      return true
+    }
+
+    return data.numberExists
+  } catch (err) {
+    console.error('Error calling WhatsApp contact check API, proceeding with send:', err)
+    // Fail-open if the check itself fails.
+    return true
+  }
+}
+
+async function getEmailFallbackConfig(userId: string): Promise<EmailFallbackConfig | null> {
+  // Look up Gmail app password from WAHA user sessions
+  const { data: sessionRow, error: sessionError } = await supabaseAdmin
+    .from('waha_user_sessions')
+    .select('gmaill_app_password, gmail_message')
+    .eq('user_id', userId)
+    .not('gmaill_app_password', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (sessionError || !sessionRow?.gmaill_app_password) {
+    return null
+  }
+
+  // Use the authenticated user's primary email as the Gmail account
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+  if (error || !data?.user?.email) {
+    return null
+  }
+
+  return {
+    fromEmail: data.user.email,
+    appPassword: sessionRow.gmaill_app_password,
+    gmailTemplate: (sessionRow as any).gmail_message || null,
+  }
+}
+
+async function sendEmailFallback(userId: string, customer: Customer, text: string): Promise<boolean> {
+  if (!customer.email) return false
+
+  const cfg = await getEmailFallbackConfig(userId)
+  if (!cfg) return false
+
+  if (!cfg.gmailTemplate || cfg.gmailTemplate.trim().length === 0) {
+    // No Gmail template configured; nothing to send.
+    return false
+  }
+
+  const renderedText = renderCustomerTemplate(cfg.gmailTemplate, customer)
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      service: 'gmail',
+      auth: {
+        user: cfg.fromEmail,
+        pass: cfg.appPassword,
+      },
+    })
+
+    await transporter.sendMail({
+      from: cfg.fromEmail,
+      to: customer.email,
+      subject: 'Public Gold',
+      text: renderedText,
+    })
+
+    return true
+  } catch (err) {
+    console.error('Error sending fallback email:', err)
+    return false
+  }
 }
 
 // Use GET so you can call this via an HTTP GET (e.g. from Supabase cron if you switch to net.http_get).
@@ -104,8 +220,6 @@ export async function GET(request: Request) {
     const supabase = supabaseAdmin
     const nowIso = new Date().toISOString()
 
-    console.log('nowIso---->', nowIso)
-
 
     // 1. Get due, pending, unlocked scheduled messages
     const { data: due, error: fetchError } = await supabase
@@ -117,9 +231,6 @@ export async function GET(request: Request) {
       .order('scheduled_at', { ascending: true })
       .limit(BATCH_SIZE)
 
-    console.log('fetchError---->',  fetchError)
-
-      
 
     if (fetchError) {
       console.error('Error fetching scheduled messages:', fetchError)
@@ -135,8 +246,6 @@ export async function GET(request: Request) {
       })
     }
     
-    console.log('due---->', due)
-
     const ids = due.map((m: any) => m.id)
 
     // 2. Lock rows to avoid duplicate processing
@@ -218,15 +327,43 @@ export async function GET(request: Request) {
 
               for (const customer of todaysCustomers) {
                 try {
+                  // Add random delay (3–6 seconds) between customers
+                  await randomDelayBetween(3000, 6000)
+
                   const message = renderCustomerTemplate(row.message, customer)
 
-                  console.log('customer---->', customer)
-                  console.log('message---->', message)
+                  const exists = await checkWhatsAppNumberExists(sessionName, customer.phone!)
 
-                  await sendWhatsAppMessage(sessionName, customer.phone!, message)
-                  sent++
-                } catch (sendErr) {
-                  console.error('Error sending birthday WhatsApp message:', sendErr)
+                  if (!exists) {
+                    console.log(
+                      'WhatsApp contact does not exist for customer, using email fallback:',
+                      customer.id
+                    )
+                    const emailSent = await sendEmailFallback(row.user_id, customer, message)
+                    if (emailSent) {
+                      sent++
+                    } else {
+                      failed++
+                    }
+                  } else {
+                    try {
+                      await sendWhatsAppMessage(sessionName, customer.phone!, message)
+                      sent++
+                    } catch (sendErr) {
+                      console.error(
+                        'Error sending birthday WhatsApp message, attempting email fallback:',
+                        sendErr
+                      )
+                      // const emailSent = await sendEmailFallback(row.user_id, customer, message)
+                      // if (emailSent) {
+                      //   sent++
+                      // } else {
+                      //   failed++
+                      // }
+                    }
+                  }
+                } catch (err) {
+                  console.error('Error preparing birthday message:', err)
                   failed++
                 }
               }
@@ -241,6 +378,8 @@ export async function GET(request: Request) {
               sent++
             } catch (sendErr) {
               console.error('Error sending direct WhatsApp message:', sendErr)
+              // Optional: direct sends do not have a customer record with email,
+              // so we currently just record this as a failure.
               failed++
             }
             break
