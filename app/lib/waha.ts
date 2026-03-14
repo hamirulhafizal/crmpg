@@ -43,6 +43,7 @@ export async function wahaFetch<T = unknown>(
   }
   if (!text) return undefined as T
   try {
+    console.log('waha response---->', JSON.parse(text));
     return JSON.parse(text) as T
   } catch {
     return undefined as T

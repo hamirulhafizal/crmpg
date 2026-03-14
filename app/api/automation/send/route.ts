@@ -325,6 +325,8 @@ export async function GET(request: Request) {
                 return dob.getUTCMonth() === todayMonth && dob.getUTCDate() === todayDate
               })
 
+              console.log('todaysCustomers---->', todaysCustomers)
+
               for (const customer of todaysCustomers) {
                 try {
                   // Add random delay (3–6 seconds) between customers
