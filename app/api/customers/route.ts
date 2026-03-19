@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     const gender = searchParams.get('gender') || ''
     const ethnicity = searchParams.get('ethnicity') || ''
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
+    const accountStatus = searchParams.get('accountStatus') || '' // '', 'active', 'inactive', 'free'
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
 
@@ -49,46 +50,108 @@ export async function GET(request: Request) {
     // Apply sorting
     query = query.order(sortBy, { ascending: sortOrder === 'asc' })
 
-    // If birthday filtering is requested, we filter by month/day in JS because
-    // `dob` is a DATE column (recurring birthday ignores the year).
-    if (birthday === 'today' || birthday === 'month') {
-      const { data, error } = await query.not('dob', 'is', null)
+    const shouldUseJsFiltering =
+      birthday === 'today' || birthday === 'month' || !!accountStatus
+
+    if (shouldUseJsFiltering) {
+      // If birthday filtering is requested, we filter by month/day in JS because
+      // `dob` is a DATE column (recurring birthday ignores the year).
+      let queryForJs = query
+      if (birthday === 'today' || birthday === 'month') {
+        queryForJs = queryForJs.not('dob', 'is', null)
+      }
+
+      const { data, error } = await queryForJs
 
       if (error) {
         console.error('Error fetching customers:', error)
-        return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+
+      let filtered = data || []
+
+      if (birthday === 'today' || birthday === 'month') {
+        // Match existing birthday automation logic (UTC+8 / Malaysia).
+        const nowForTz = new Date()
+        const MALAYSIA_OFFSET_MINUTES = 8 * 60
+        const localTzNow = new Date(
+          nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000
         )
-      }
+        const todayMonth = localTzNow.getUTCMonth() + 1 // 1-12
+        const todayDate = localTzNow.getUTCDate() // 1-31
 
-      // Match existing birthday automation logic (UTC+8 / Malaysia).
-      const nowForTz = new Date()
-      const MALAYSIA_OFFSET_MINUTES = 8 * 60
-      const localTzNow = new Date(nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000)
-      const todayMonth = localTzNow.getUTCMonth() + 1 // 1-12
-      const todayDate = localTzNow.getUTCDate() // 1-31
-
-      const parseDob = (dob: unknown): { month: number; day: number } | null => {
-        if (!dob) return null
-        const s = typeof dob === 'string' ? dob : String(dob)
-        // Expected: YYYY-MM-DD from Postgres DATE
-        const parts = s.split('-')
-        if (parts.length < 3) return null
-        const month = Number(parts[1])
-        const day = Number(parts[2])
-        if (!Number.isFinite(month) || !Number.isFinite(day)) return null
-        return { month, day }
-      }
-
-      const filtered = (data || []).filter((c: any) => {
-        const parsed = parseDob(c?.dob)
-        if (!parsed) return false
-        if (birthday === 'today') {
-          return parsed.month === todayMonth && parsed.day === todayDate
+        const parseDob = (dob: unknown): { month: number; day: number } | null => {
+          if (!dob) return null
+          const s = typeof dob === 'string' ? dob : String(dob)
+          // Expected: YYYY-MM-DD from Postgres DATE
+          const parts = s.split('-')
+          if (parts.length < 3) return null
+          const month = Number(parts[1])
+          const day = Number(parts[2])
+          if (!Number.isFinite(month) || !Number.isFinite(day)) return null
+          return { month, day }
         }
-        return parsed.month === todayMonth
-      })
+
+        filtered = filtered.filter((c: any) => {
+          const parsed = parseDob(c?.dob)
+          if (!parsed) return false
+          if (birthday === 'today') {
+            return parsed.month === todayMonth && parsed.day === todayDate
+          }
+          return parsed.month === todayMonth
+        })
+      }
+
+      if (accountStatus) {
+        const parseOriginalDateToUTC = (value: unknown): number | null => {
+          if (!value) return null
+          if (typeof value !== 'string') return null
+
+          const s = value.trim()
+          // Expected format: `YYYY-MM-DD HH:mm:ss`
+          const m = s.match(
+            /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/
+          )
+          if (!m) {
+            const t = new Date(s).getTime()
+            return Number.isFinite(t) ? t : null
+          }
+
+          const [, y, mo, d, h, mi, sec] = m
+          const t = Date.UTC(
+            Number(y),
+            Number(mo) - 1,
+            Number(d),
+            Number(h),
+            Number(mi),
+            Number(sec)
+          )
+          return Number.isFinite(t) ? t : null
+        }
+
+        const getAccountStatusKey = (
+          originalData: any
+        ): 'inactive' | 'free' | 'active' | 'unknown' => {
+          const raw = originalData?.['Last Purchase Date']
+          if (raw === undefined || raw === null || raw === '') return 'unknown'
+
+          if (typeof raw === 'string') {
+            const s = raw.trim().toLowerCase()
+            if (s.includes('no sales transaction within a year')) return 'free'
+          }
+
+          const lastPurchaseMs = parseOriginalDateToUTC(raw)
+          if (!lastPurchaseMs) return 'unknown'
+
+          const oneYearMs = 365 * 24 * 60 * 60 * 1000
+          if (Date.now() - lastPurchaseMs > oneYearMs) return 'inactive'
+          return 'active'
+        }
+
+        filtered = filtered.filter((c: any) => {
+          return getAccountStatusKey(c?.original_data) === accountStatus
+        })
+      }
 
       // Apply pagination after filtering.
       const from = (page - 1) * limit
@@ -171,15 +234,38 @@ export async function POST(request: Request) {
         'name', 'dob', 'email', 'phone', 'location',
         'gender', 'ethnicity', 'age', 'prefix', 'first_name',
         'sender_name', 'save_name', 'pg_code', 'row_number',
-        'is_married', 'is_profile_verified'
+        'is_married',
+        // legacy (column removed): we normalize into original_data["Profile Verified"]
+        'is_profile_verified'
       ]
       
-      const originalData: any = {}
-      Object.keys(customer).forEach(key => {
+      // UI may send `original_data` already; keep it and merge any other
+      // "extra" fields into the JSON column.
+      const inputOriginalData =
+        customer.original_data && typeof customer.original_data === 'object'
+          ? customer.original_data
+          : null
+
+      const originalData: any = { ...(inputOriginalData || {}) }
+
+      Object.keys(customer).forEach((key) => {
+        if (key === 'original_data') return
         if (!mainFields.includes(key) && key !== 'id' && key !== 'user_id') {
           originalData[key] = customer[key]
         }
       })
+
+      // Backwards compatibility: if legacy `is_profile_verified` is provided,
+      // normalize it into `original_data["Profile Verified"]`.
+      const hasProfileVerified =
+        originalData['Profile Verified'] !== undefined &&
+        originalData['Profile Verified'] !== null &&
+        originalData['Profile Verified'] !== ''
+
+      if (!hasProfileVerified && customer.is_profile_verified !== undefined) {
+        originalData['Profile Verified'] =
+          customer.is_profile_verified === true || customer.is_profile_verified === 'true' ? 'Yes' : 'No'
+      }
 
       return {
         user_id: user.id,
@@ -198,7 +284,6 @@ export async function POST(request: Request) {
         pg_code: customer.PGCode || customer.pg_code || customer.PGCode || null,
         row_number: customer.row_number || customer.rowNumber || customer['row_number'] || null,
         is_married: customer.is_married === true || customer.is_married === 'true',
-        is_profile_verified: customer.is_profile_verified === true || customer.is_profile_verified === 'true',
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
       }
     })

@@ -71,6 +71,8 @@ export async function GET(request: Request) {
       .from('scheduled_messages')
       .select('id, user_id, phone, message, scheduled_at')
       .eq('status', 'pending')
+      // Treat NULL as enabled for backward compatibility when the column was newly added.
+      .or('is_enable.eq.true,is_enable.is.null')
       .lte('scheduled_at', new Date().toISOString())
       .is('locked_at', null)
       .order('scheduled_at', { ascending: true })
@@ -94,24 +96,26 @@ export async function GET(request: Request) {
 
     // 2. Lock rows so parallel cron runs don't double-send
     const nowIso = new Date().toISOString()
-    const { error: lockError } = await supabase
+    const { data: lockedRows, error: lockError } = await supabase
       .from('scheduled_messages')
       .update({ locked_at: nowIso })
       .in('id', ids)
       .eq('status', 'pending')
+      // Keep the same NULL=enabled semantics as the fetch query.
+      .or('is_enable.eq.true,is_enable.is.null')
       .is('locked_at', null)
+      .select('id')
 
-    if (lockError) {
-      console.error('Error locking scheduled messages:', lockError)
-      // We still attempt to process what we fetched; worst case a later run retries.
-    }
+    const lockedIdSet = new Set((lockedRows || []).map((r) => r.id))
+    // If locking failed, fall back to processing what we fetched (worst case a later run retries).
+    const dueToProcess = lockError ? due : due.filter((r) => lockedIdSet.has(r.id))
 
     let sent = 0
     let failed = 0
 
     // Group messages by user to minimise profile queries
     const byUser = new Map<string, ScheduledMessageRow[]>()
-    for (const row of due) {
+    for (const row of dueToProcess) {
       const group = byUser.get(row.user_id) || []
       group.push(row as ScheduledMessageRow)
       byUser.set(row.user_id, group)
@@ -162,7 +166,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      processed: due.length,
+      processed: dueToProcess.length,
       sent,
       failed,
     })

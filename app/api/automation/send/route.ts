@@ -226,6 +226,8 @@ export async function GET(request: Request) {
       .from('scheduled_messages')
       .select('*')
       .eq('status', 'pending')
+      // Treat NULL as enabled for backward compatibility when the column was newly added.
+      .or('is_enable.eq.true,is_enable.is.null')
       .lte('scheduled_at', nowIso)
       .is('locked_at', null)
       .order('scheduled_at', { ascending: true })
@@ -250,19 +252,26 @@ export async function GET(request: Request) {
 
     // 2. Lock rows to avoid duplicate processing
     const lockIso = new Date().toISOString()
-    const { error: lockError } = await supabase
+    const { data: lockedRows, error: lockError } = await supabase
       .from('scheduled_messages')
       .update({ locked_at: lockIso })
       .in('id', ids)
       .eq('status', 'pending')
+      // Keep the same NULL=enabled semantics as the fetch query.
+      .or('is_enable.eq.true,is_enable.is.null')
       .is('locked_at', null)
+      .select('id')
 
     if (lockError) {
       console.error('Error locking scheduled messages:', lockError)
     }
 
     // 3. Resolve WAHA sessions per user so we know which session to send from.
-    const userIds = Array.from(new Set((due as any[]).map((m) => m.user_id))) as string[]
+    const lockedIdSet = new Set((lockedRows || []).map((r) => r.id))
+    // If locking failed, fall back to processing what we fetched (worst case a later run retries).
+    const dueToProcess = lockError ? due : (due as ScheduledMessageRow[]).filter((r) => lockedIdSet.has(r.id))
+
+    const userIds = Array.from(new Set((dueToProcess as any[]).map((m) => m.user_id))) as string[]
     const { data: sessionRows, error: sessionError } = await supabase
       .from('waha_user_sessions')
       .select('user_id, session_name')
@@ -290,7 +299,7 @@ export async function GET(request: Request) {
     const todayMonth = localTzNow.getUTCMonth()
     const todayDate = localTzNow.getUTCDate()
 
-    for (const row of due as ScheduledMessageRow[]) {
+    for (const row of dueToProcess as ScheduledMessageRow[]) {
       try {
         const title = (row.title || '').toLowerCase().trim()
         const hasPhone = !!row.phone && row.phone.trim() !== ''
@@ -428,7 +437,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      processed: due.length,
+      processed: dueToProcess.length,
       sent,
       failed,
     })

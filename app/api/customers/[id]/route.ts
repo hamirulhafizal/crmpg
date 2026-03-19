@@ -92,7 +92,18 @@ export async function PUT(
     if (body.row_number !== undefined) updateData.row_number = body.row_number
     if (body.original_data !== undefined) updateData.original_data = body.original_data
     if (body.is_married !== undefined) updateData.is_married = body.is_married
-    if (body.is_profile_verified !== undefined) updateData.is_profile_verified = body.is_profile_verified
+    // Backwards compatibility: if legacy `is_profile_verified` is sent,
+    // store it under `original_data["Profile Verified"]` instead.
+    if (body.is_profile_verified !== undefined) {
+      const base =
+        body.original_data && typeof body.original_data === 'object' ? body.original_data : {}
+
+      updateData.original_data = {
+        ...base,
+        'Profile Verified':
+          body.is_profile_verified === true || body.is_profile_verified === 'true' ? 'Yes' : 'No',
+      }
+    }
 
     const { data, error } = await supabase
       .from('customers')

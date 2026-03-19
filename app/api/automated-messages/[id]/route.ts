@@ -56,6 +56,7 @@ export async function PUT(
     if (body.title !== undefined) update.title = String(body.title)
     if (body.phone !== undefined) update.phone = String(body.phone)
     if (body.message !== undefined) update.message = String(body.message)
+    if (body.is_enable !== undefined) update.is_enable = Boolean(body.is_enable)
     if (body.scheduled_at !== undefined) {
       const scheduledAt = new Date(body.scheduled_at)
       if (Number.isNaN(scheduledAt.getTime())) {

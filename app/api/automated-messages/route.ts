@@ -60,6 +60,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const { title, phone, message, scheduled_at } = body
+    const isEnabled = body.is_enable === undefined ? true : Boolean(body.is_enable)
 
     const isBirthdayTitle =
       typeof title === 'string' && title.toLowerCase().includes('birthday')
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
         phone: phone ? String(phone) : '',
         message: String(message),
         scheduled_at: scheduledAtDate.toISOString(),
+        is_enable: isEnabled,
         status: 'pending',
       })
       .select()

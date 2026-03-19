@@ -36,9 +36,75 @@ interface Customer {
   row_number: number | null
   original_data: any
   is_married: boolean | null
-  is_profile_verified: boolean | null
   created_at: string
   updated_at: string
+}
+
+const parseProfileVerified = (originalData: any): boolean | null => {
+  if (!originalData || typeof originalData !== 'object') return null
+  const raw = originalData['Profile Verified']
+
+  if (raw === undefined || raw === null || raw === '') return null
+  if (raw === true) return true
+  if (raw === false) return false
+
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase()
+    if (['true', 'yes', 'y', '1'].includes(v)) return true
+    if (['false', 'no', 'n', '0'].includes(v)) return false
+  }
+
+  if (typeof raw === 'number') {
+    if (raw === 1) return true
+    if (raw === 0) return false
+  }
+
+  return null
+}
+
+const parseOriginalDateToUTC = (value: unknown): number | null => {
+  if (!value) return null
+  if (typeof value !== 'string') return null
+
+  const s = value.trim()
+  // Expected format coming from your data source: `YYYY-MM-DD HH:mm:ss`
+  // Convert to a UTC timestamp to avoid timezone ambiguity.
+  const m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/
+  )
+  if (!m) {
+    const fallback = new Date(s)
+    const t = fallback.getTime()
+    return Number.isFinite(t) ? t : null
+  }
+
+  const [, y, mo, d, h, mi, sec] = m
+  const t = Date.UTC(
+    Number(y),
+    Number(mo) - 1,
+    Number(d),
+    Number(h),
+    Number(mi),
+    Number(sec)
+  )
+  return Number.isFinite(t) ? t : null
+}
+
+const getAccountStatus = (originalData: any): 'Inactive account' | 'Free account' | 'Active account' | 'Unknown' => {
+  const raw = originalData?.['Last Purchase Date']
+  if (raw === undefined || raw === null || raw === '') return 'Unknown'
+
+  if (typeof raw === 'string') {
+    const s = raw.trim().toLowerCase()
+    if (s.includes('no sales transaction within a year')) return 'Free account'
+  }
+
+  const lastPurchaseMs = parseOriginalDateToUTC(raw)
+  if (!lastPurchaseMs) return 'Unknown'
+
+  const oneYearMs = 365 * 24 * 60 * 60 * 1000
+  if (Date.now() - lastPurchaseMs > oneYearMs) return 'Inactive account'
+  return 'Active account'
 }
 
 export default function CustomersPage() {
@@ -69,6 +135,7 @@ export default function CustomersPage() {
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
+  const [accountStatusFilter, setAccountStatusFilter] = useState<'active' | 'inactive' | 'free' | ''>('')
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -89,7 +156,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -102,6 +169,7 @@ export default function CustomersPage() {
     setGenderFilter('')
     setEthnicityFilter('')
     setBirthdayFilter('')
+    setAccountStatusFilter('')
     setPage(1)
   }
 
@@ -229,6 +297,7 @@ export default function CustomersPage() {
       if (genderFilter) params.append('gender', genderFilter)
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
       if (birthdayFilter) params.append('birthday', birthdayFilter)
+      if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
 
       const response = await fetch(`/api/customers?${params}`)
       const result = await response.json()
@@ -558,6 +627,21 @@ export default function CustomersPage() {
               <option value="month">Born This Month</option>
             </select>
 
+            {/* Account Status Filter */}
+            <select
+              value={accountStatusFilter}
+              onChange={(e) => {
+                setAccountStatusFilter(e.target.value as 'active' | 'inactive' | 'free' | '')
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Account Status</option>
+              <option value="active">Active account</option>
+              <option value="inactive">Inactive account</option>
+              <option value="free">Free account</option>
+            </select>
+
             {/* View mode: paginated vs all */}
             <label className="flex items-center gap-2 px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
               <input
@@ -831,12 +915,142 @@ export default function CustomersPage() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={!!editingCustomer.is_profile_verified}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_profile_verified: e.target.checked })}
+                      checked={parseProfileVerified(editingCustomer.original_data) === true}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            'Profile Verified': e.target.checked ? 'Yes' : 'No',
+                          },
+                        })
+                      }
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
                     />
                     <span className="text-sm font-medium text-slate-700">Profile verified</span>
                   </label>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Rank</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Rank'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            Rank: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Branch'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            Branch: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Empire Size</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Empire Size'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            'Empire Size': e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Parent Name</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Parent Name'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            'Parent Name': e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Date Register</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Date Register'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            'Date Register': e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="YYYY-MM-DD HH:mm:ss"
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Total Frontline</label>
+                    <input
+                      type="text"
+                      value={editingCustomer.original_data?.['Total Frontline'] || ''}
+                      onChange={(e) =>
+                        setEditingCustomer({
+                          ...editingCustomer,
+                          original_data: {
+                            ...(editingCustomer.original_data || {}),
+                            'Total Frontline': e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Account Status</label>
+                    <div
+                      className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
+                      aria-live="polite"
+                    >
+                      {getAccountStatus(editingCustomer.original_data)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-3 mt-6">
@@ -891,6 +1105,8 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
 
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Status</th>
+
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                     <button
                       type="button"
@@ -915,7 +1131,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={16} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -954,7 +1170,33 @@ export default function CustomersPage() {
                         {customer.is_married === true ? 'Yes' : customer.is_married === false ? 'No' : '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-800">
-                        {customer.is_profile_verified === true ? 'Yes' : customer.is_profile_verified === false ? 'No' : '-'}
+                        {parseProfileVerified(customer.original_data) === true
+                          ? 'Yes'
+                          : parseProfileVerified(customer.original_data) === false
+                            ? 'No'
+                            : '-'}
+                      </td>
+
+                      <td className="px-4 py-3 text-sm">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            getAccountStatus(customer.original_data) === 'Inactive account'
+                              ? 'bg-red-50 text-red-700 border border-red-100'
+                              : getAccountStatus(customer.original_data) === 'Free account'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-100'
+                                : getAccountStatus(customer.original_data) === 'Active account'
+                                  ? 'bg-green-50 text-green-700 border border-green-100'
+                                  : 'bg-slate-50 text-slate-700 border border-slate-200'
+                          }`}
+                        >
+                          {getAccountStatus(customer.original_data) === 'Inactive account'
+                            ? 'Inactive'
+                            : getAccountStatus(customer.original_data) === 'Free account'
+                              ? 'Free account'
+                              : getAccountStatus(customer.original_data) === 'Active account'
+                                ? 'Active'
+                                : '-'}
+                        </span>
                       </td>
 
                       <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">

@@ -14,6 +14,7 @@ interface ScheduledMessage {
   scheduled_at: string
   status: 'pending' | 'sent' | 'failed'
   locked_at: string | null
+  is_enable: boolean | null
   created_at: string
 }
 
@@ -32,6 +33,7 @@ export default function AutomatedMessagesPage() {
     phone: '',
     message: DEFAULT_TEMPLATE,
     scheduled_at: '',
+    is_enable: true,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
@@ -99,6 +101,7 @@ export default function AutomatedMessagesPage() {
       phone: '',
       message: DEFAULT_TEMPLATE,
       scheduled_at: '',
+      is_enable: true,
     })
     setTitleType('birthday')
     setEditing(null)
@@ -138,6 +141,7 @@ export default function AutomatedMessagesPage() {
       phone: item.phone,
       message: item.message,
       scheduled_at: scheduledValue,
+      is_enable: item.is_enable ?? true,
     })
     setTitleType(inferredType)
     setEditing(item)
@@ -190,6 +194,7 @@ export default function AutomatedMessagesPage() {
         phone: isBirthdayTitle ? '' : form.phone,
         message: form.message,
         scheduled_at: scheduledAtIso,
+        is_enable: form.is_enable,
       }
 
       if (editing) {
@@ -335,6 +340,11 @@ export default function AutomatedMessagesPage() {
                       >
                         {item.status.toUpperCase()}
                       </span>
+                      {item.status === 'pending' && item.is_enable === false && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          DISABLED
+                        </span>
+                      )}
                     </div>
                     {item.phone && (
                       <p className="text-sm text-slate-600">
@@ -470,6 +480,39 @@ export default function AutomatedMessagesPage() {
                   <p className="text-xs text-slate-500 mt-1">
                     Messages will be sent at this time. Cron runs every minute, so there may be up to ~60s delay.
                   </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div className="min-w-0">
+                    <label className="block text-sm font-medium text-slate-700">Enabled</label>
+                    <p className="text-xs text-slate-500 mt-1">
+                      When disabled, this message will be skipped by the automation cron.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-[35%] md:w-[17%]"> 
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-label="Enable scheduled message"
+                      aria-checked={Boolean(form.is_enable)}
+                      onClick={() =>
+                        setForm((cur) => ({ ...cur, is_enable: !Boolean(cur.is_enable) }))
+                      }
+                      className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                        form.is_enable ? 'bg-blue-600' : 'bg-slate-300'
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          form.is_enable ? 'translate-x-6' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+
+                  </div>
                 </div>
 
                 <div>
