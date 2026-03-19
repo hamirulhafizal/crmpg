@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || ''
     const gender = searchParams.get('gender') || ''
     const ethnicity = searchParams.get('ethnicity') || ''
+    const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
 
@@ -48,7 +49,64 @@ export async function GET(request: Request) {
     // Apply sorting
     query = query.order(sortBy, { ascending: sortOrder === 'asc' })
 
-    // Apply pagination
+    // If birthday filtering is requested, we filter by month/day in JS because
+    // `dob` is a DATE column (recurring birthday ignores the year).
+    if (birthday === 'today' || birthday === 'month') {
+      const { data, error } = await query.not('dob', 'is', null)
+
+      if (error) {
+        console.error('Error fetching customers:', error)
+        return NextResponse.json(
+          { error: error.message },
+          { status: 500 }
+        )
+      }
+
+      // Match existing birthday automation logic (UTC+8 / Malaysia).
+      const nowForTz = new Date()
+      const MALAYSIA_OFFSET_MINUTES = 8 * 60
+      const localTzNow = new Date(nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000)
+      const todayMonth = localTzNow.getUTCMonth() + 1 // 1-12
+      const todayDate = localTzNow.getUTCDate() // 1-31
+
+      const parseDob = (dob: unknown): { month: number; day: number } | null => {
+        if (!dob) return null
+        const s = typeof dob === 'string' ? dob : String(dob)
+        // Expected: YYYY-MM-DD from Postgres DATE
+        const parts = s.split('-')
+        if (parts.length < 3) return null
+        const month = Number(parts[1])
+        const day = Number(parts[2])
+        if (!Number.isFinite(month) || !Number.isFinite(day)) return null
+        return { month, day }
+      }
+
+      const filtered = (data || []).filter((c: any) => {
+        const parsed = parseDob(c?.dob)
+        if (!parsed) return false
+        if (birthday === 'today') {
+          return parsed.month === todayMonth && parsed.day === todayDate
+        }
+        return parsed.month === todayMonth
+      })
+
+      // Apply pagination after filtering.
+      const from = (page - 1) * limit
+      const to = from + limit
+      const paged = filtered.slice(from, to)
+
+      return NextResponse.json({
+        data: paged,
+        pagination: {
+          page,
+          limit,
+          total: filtered.length,
+          totalPages: Math.ceil(filtered.length / limit),
+        },
+      })
+    }
+
+    // Default: apply pagination in the database.
     const from = (page - 1) * limit
     const to = from + limit - 1
     query = query.range(from, to)
@@ -112,7 +170,8 @@ export async function POST(request: Request) {
       const mainFields = [
         'name', 'dob', 'email', 'phone', 'location',
         'gender', 'ethnicity', 'age', 'prefix', 'first_name',
-        'sender_name', 'save_name', 'pg_code', 'row_number'
+        'sender_name', 'save_name', 'pg_code', 'row_number',
+        'is_married', 'is_profile_verified'
       ]
       
       const originalData: any = {}
@@ -138,6 +197,8 @@ export async function POST(request: Request) {
         save_name: customer.SaveName || customer.save_name || customer.SaveName || null,
         pg_code: customer.PGCode || customer.pg_code || customer.PGCode || null,
         row_number: customer.row_number || customer.rowNumber || customer['row_number'] || null,
+        is_married: customer.is_married === true || customer.is_married === 'true',
+        is_profile_verified: customer.is_profile_verified === true || customer.is_profile_verified === 'true',
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
       }
     })

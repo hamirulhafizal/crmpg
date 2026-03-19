@@ -91,6 +91,8 @@ export async function PUT(
     if (body.pg_code !== undefined) updateData.pg_code = body.pg_code
     if (body.row_number !== undefined) updateData.row_number = body.row_number
     if (body.original_data !== undefined) updateData.original_data = body.original_data
+    if (body.is_married !== undefined) updateData.is_married = body.is_married
+    if (body.is_profile_verified !== undefined) updateData.is_profile_verified = body.is_profile_verified
 
     const { data, error } = await supabase
       .from('customers')

@@ -35,6 +35,8 @@ interface Customer {
   pg_code: string | null
   row_number: number | null
   original_data: any
+  is_married: boolean | null
+  is_profile_verified: boolean | null
   created_at: string
   updated_at: string
 }
@@ -52,6 +54,9 @@ export default function CustomersPage() {
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null)
 
+  // View mode: paginated or show all
+  const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
+
   // Pagination
   const [page, setPage] = useState(1)
   const [limit] = useState(50)
@@ -63,6 +68,7 @@ export default function CustomersPage() {
   const [searchInput, setSearchInput] = useState('') // immediate input value; search is debounced
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
+  const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -83,7 +89,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, sortBy, sortOrder])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -95,6 +101,7 @@ export default function CustomersPage() {
     setSearch('')
     setGenderFilter('')
     setEthnicityFilter('')
+    setBirthdayFilter('')
     setPage(1)
   }
 
@@ -208,9 +215,12 @@ export default function CustomersPage() {
     setError(null)
 
     try {
+      const effectiveLimit = viewMode === 'all' ? '100000' : limit.toString()
+      const effectivePage = viewMode === 'all' ? '1' : page.toString()
+
       const params = new URLSearchParams({
-        page: page.toString(),
-        limit: limit.toString(),
+        page: effectivePage,
+        limit: effectiveLimit,
         sortBy,
         sortOrder,
       })
@@ -218,6 +228,7 @@ export default function CustomersPage() {
       if (search) params.append('search', search)
       if (genderFilter) params.append('gender', genderFilter)
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
+      if (birthdayFilter) params.append('birthday', birthdayFilter)
 
       const response = await fetch(`/api/customers?${params}`)
       const result = await response.json()
@@ -234,6 +245,12 @@ export default function CustomersPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const toggleSortByCreatedAt = () => {
+    setSortBy('created_at')
+    setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+    setPage(1)
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -402,7 +419,8 @@ export default function CustomersPage() {
     }
   }
 
-  if (loading || isLoading) {
+  // Full-page loading only on initial load (no data yet). Sorting/filtering refetches in background.
+  if (loading || (isLoading && customers.length === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -473,7 +491,7 @@ export default function CustomersPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
@@ -525,6 +543,34 @@ export default function CustomersPage() {
               <option value="Indian">Indian</option>
               <option value="Other">Other</option>
             </select>
+
+            {/* Birthday Filter */}
+            <select
+              value={birthdayFilter}
+              onChange={(e) => {
+                setBirthdayFilter(e.target.value as 'today' | 'month' | '')
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Birthdays</option>
+              <option value="today">Born Today</option>
+              <option value="month">Born This Month</option>
+            </select>
+
+            {/* View mode: paginated vs all */}
+            <label className="flex items-center gap-2 px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+              <input
+                type="checkbox"
+                checked={viewMode === 'all'}
+                onChange={(e) => {
+                  setViewMode(e.target.checked ? 'all' : 'paginated')
+                  setPage(1)
+                }}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+              />
+              <span className="text-sm font-medium whitespace-nowrap">Show all (no pagination)</span>
+            </label>
 
             {/* Clear filters */}
             <button
@@ -771,6 +817,26 @@ export default function CustomersPage() {
                       className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!editingCustomer.is_married}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_married: e.target.checked })}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                    />
+                    <span className="text-sm font-medium text-slate-700">Married</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!editingCustomer.is_profile_verified}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_profile_verified: e.target.checked })}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                    />
+                    <span className="text-sm font-medium text-slate-700">Profile verified</span>
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-3 mt-6">
@@ -822,6 +888,26 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Ethnicity</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Age</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Date of Birth</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
+
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={toggleSortByCreatedAt}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      title={sortOrder === 'desc' ? 'Newest first (click for oldest)' : 'Oldest first (click for newest)'}
+                    >
+                      Created at
+                      {sortBy === 'created_at' && (
+                        sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                        )
+                      )}
+                    </button>
+                  </th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -829,7 +915,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -864,6 +950,24 @@ export default function CustomersPage() {
                           })
                           : '-'}
                       </td>
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {customer.is_married === true ? 'Yes' : customer.is_married === false ? 'No' : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {customer.is_profile_verified === true ? 'Yes' : customer.is_profile_verified === false ? 'No' : '-'}
+                      </td>
+
+                      <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                        {customer.created_at
+                          ? new Date(customer.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                          : '-'}
+                      </td>
 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -894,8 +998,12 @@ export default function CustomersPage() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Pagination or "Showing all" */}
+          {viewMode === 'all' ? (
+            <div className="px-4 py-3 border-t border-slate-200 text-sm text-slate-600">
+              Showing all {total} customer{total !== 1 ? 's' : ''}
+            </div>
+          ) : totalPages > 1 ? (
             <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -915,7 +1023,7 @@ export default function CustomersPage() {
                 Next
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </main>
     </div>
