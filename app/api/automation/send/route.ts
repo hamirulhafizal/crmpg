@@ -2,8 +2,17 @@ import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
 import { wahaFetch } from '@/app/lib/waha'
+import {
+  formatLastPurchaseForTemplate,
+  formatRegistrationForTemplate,
+  getAccountStatusKey,
+  getLastPurchaseUtcMonthDate,
+  getRegistrationUtcMonthDate,
+} from '@/app/lib/customer-account-status'
+import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 
 const BATCH_SIZE = 20
+const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -38,6 +47,8 @@ interface Customer {
   sender_name: string | null
   save_name: string | null
   pg_code: string | null
+  original_data?: unknown
+  created_at?: string | null
 }
 
 interface ScheduledMessageRow {
@@ -59,6 +70,12 @@ interface EmailFallbackConfig {
 function renderCustomerTemplate(template: string, customer: Customer): string {
   if (!template) return ''
 
+  const lastPurchase = formatLastPurchaseForTemplate(customer.original_data)
+  const registration = formatRegistrationForTemplate(
+    customer.original_data,
+    customer.created_at ?? undefined
+  )
+
   // Map variables from customer record
   return template
     .replace(/{Name}/g, customer.name || '')
@@ -74,6 +91,8 @@ function renderCustomerTemplate(template: string, customer: Customer): string {
     .replace(/{SenderName}/g, customer.sender_name || customer.name || '')
     .replace(/{SaveName}/g, customer.save_name || '')
     .replace(/{PGCode}/g, customer.pg_code || '')
+    .replace(/{LastPurchaseDate}/g, lastPurchase)
+    .replace(/{RegistrationDate}/g, registration)
 }
 
 async function sendWhatsAppMessage(session: string, phone: string, text: string) {
@@ -301,8 +320,12 @@ export async function GET(request: Request) {
 
     for (const row of dueToProcess as ScheduledMessageRow[]) {
       try {
-        const title = (row.title || '').toLowerCase().trim()
+        const title = normalizedScheduledTitle(row.title)
         const hasPhone = !!row.phone && row.phone.trim() !== ''
+        const isDailyRecurringAutomation =
+          title === 'birthday' ||
+          title === 'inactive follow-up' ||
+          title === 'free account follow-up'
 
         const sessionName = sessionByUser.get(row.user_id)
         if (!sessionName) {
@@ -382,32 +405,157 @@ export async function GET(request: Request) {
             break
           }
 
-          // Default: direct send using configured phone
-          case '': {
-            try {
-              await sendWhatsAppMessage(sessionName, row.phone, row.message)
-              sent++
-            } catch (sendErr) {
-              console.error('Error sending direct WhatsApp message:', sendErr)
-              // Optional: direct sends do not have a customer record with email,
-              // so we currently just record this as a failure.
+          case 'inactive follow-up':
+          case 'free account follow-up': {
+            const kind = title === 'inactive follow-up' ? 'inactive' : 'free'
+
+            const { data: sentRows, error: sentErr } = await supabaseAdmin
+              .from('followup_campaign_sends')
+              .select('customer_id')
+              .eq('user_id', row.user_id)
+              .eq('kind', kind)
+
+            if (sentErr) {
+              console.error('Error loading follow-up send log:', sentErr)
               failed++
+              break
+            }
+
+            const alreadySent = new Set(
+              (sentRows || []).map((r: { customer_id: string }) => r.customer_id)
+            )
+
+            const { data: allCustomers, error: custError } = await supabaseAdmin
+              .from('customers')
+              .select('*')
+              .eq('user_id', row.user_id)
+              .not('phone', 'is', null)
+
+            if (custError) {
+              console.error('Error fetching customers for follow-up automation:', custError)
+              failed++
+              break
+            }
+
+            const candidates = (allCustomers || []).filter((c: Customer) => {
+              if (alreadySent.has(c.id)) return false
+              const status = getAccountStatusKey(c.original_data)
+              if (kind === 'inactive') {
+                if (status !== 'inactive') return false
+                const parts = getLastPurchaseUtcMonthDate(c.original_data)
+                if (!parts) return false
+                return parts.month === todayMonth && parts.day === todayDate
+              }
+              if (status !== 'free') return false
+              const regParts = getRegistrationUtcMonthDate(c.original_data, c.created_at)
+              if (!regParts) return false
+              return regParts.month === todayMonth && regParts.day === todayDate
+            })
+
+            const warmupEnabled = row.message.startsWith(WARMUP_MESSAGE_MARKER)
+            const followupTemplate = warmupEnabled
+              ? row.message.slice(WARMUP_MESSAGE_MARKER.length)
+              : row.message
+            const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
+
+            for (const customer of candidates) {
+              try {
+                const message = renderCustomerTemplate(followupTemplate, customer)
+
+                const exists = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+
+                let delivered = false
+                if (!exists) {
+                  console.log(
+                    'WhatsApp contact does not exist for customer, using email fallback:',
+                    customer.id
+                  )
+                  delivered = await sendEmailFallback(row.user_id, customer, message)
+                } else {
+                  try {
+                    if (warmupEnabled) {
+                      const isMalay = (customer.ethnicity || '').toLowerCase() === 'malay'
+                      const timeGreeting =
+                        localHour < 12
+                          ? 'Selamat Pagi'
+                          : localHour < 15
+                            ? 'Selamat Tengahari'
+                            : localHour < 18
+                            ? 'Selamat Petang'
+                            : 'Selamat Malam'
+
+                      const warmerTemplate = isMalay
+                        ? 'Salam, {SenderName}'
+                        : `${timeGreeting}, {SenderName}`
+
+                      const warmerText = renderCustomerTemplate(warmerTemplate, customer)
+                      await sendWhatsAppMessage(sessionName, customer.phone!, warmerText)
+                      // Delay between greeting and the main template.
+                      await randomDelayBetween(3000, 5000)
+                    }
+
+                    await sendWhatsAppMessage(sessionName, customer.phone!, message)
+                    delivered = true
+                  } catch (sendErr) {
+                    console.error(
+                      'Error sending follow-up WhatsApp message, attempting email fallback:',
+                      sendErr
+                    )
+                    delivered = await sendEmailFallback(row.user_id, customer, message)
+                  }
+                }
+
+                if (delivered) {
+                  const { error: insErr } = await supabaseAdmin.from('followup_campaign_sends').insert({
+                    user_id: row.user_id,
+                    customer_id: customer.id,
+                    kind,
+                    scheduled_message_id: row.id,
+                  })
+                  if (insErr) {
+                    console.error('Error recording follow-up send:', insErr)
+                    failed++
+                  } else {
+                    sent++
+                  }
+                } else {
+                  failed++
+                }
+
+                // Interval between customers to avoid bursts / rate limits.
+                await randomDelayBetween(1000, 2000)
+              } catch (err) {
+                console.error('Error preparing follow-up message:', err)
+                failed++
+              }
             }
             break
           }
 
           default: {
-            // Unsupported / misconfigured row; log and mark as failed
-            console.warn('Scheduled message has no recognised handler (missing phone and not birthday):', row.id)
-            failed++
+            if (!hasPhone) {
+              console.warn(
+                'Scheduled message has no recognised handler (missing phone and not a broadcast automation):',
+                row.id
+              )
+              failed++
+              break
+            }
+            try {
+              await sendWhatsAppMessage(sessionName, row.phone, row.message)
+              sent++
+            } catch (sendErr) {
+              console.error('Error sending direct WhatsApp message:', sendErr)
+              failed++
+            }
             break
           }
         }
 
         // Update scheduling depending on type:
-        // - Birthday: treat as a recurring daily job → keep status 'pending' and move scheduled_at to next day.
+        // - Broadcast automations: recurring daily job → keep status 'pending' and move scheduled_at to next day.
         // - Others: one-off → mark as 'sent'.
-        if (title === 'birthday') {
+        if (isDailyRecurringAutomation) {
           const nextRun = new Date()
           nextRun.setUTCDate(nextRun.getUTCDate() + 1)
 

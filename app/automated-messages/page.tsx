@@ -4,6 +4,11 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import {
+  SCHEDULED_TITLE_BIRTHDAY,
+  SCHEDULED_TITLE_FREE_FOLLOWUP,
+  SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
+} from '@/app/lib/scheduled-automation-titles'
 
 interface ScheduledMessage {
   id: string
@@ -18,7 +23,30 @@ interface ScheduledMessage {
   created_at: string
 }
 
-const DEFAULT_TEMPLATE = 'Hi {SenderName}, your PG Code is {PGCode}'
+const DEFAULT_TEMPLATE = 'Salam {SenderName}, ini PG Code {PGCode} {SenderName} ya'
+const DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE =
+  `saya semak kat system tiada pembelian sejak {LastPurchaseDate}
+
+boleh saya tahu, {SenderName} ada perlukan apa-apa bantuan ka ?`
+
+
+
+const DEFAULT_FREE_FOLLOWUP_TEMPLATE =
+  `saya semak kat system tiada jualan dalam tempoh setahun yang lalu
+
+boleh saya tahu, {SenderName} ada perlukan apa-apa bantuan ka ?`
+// Persist warm-greeting toggle without requiring a new DB column.
+// The worker detects this marker and strips it before rendering the template.
+const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
+
+type AutomationTitleType =
+  | 'birthday'
+  | 'inactive_followup'
+  | 'free_followup'
+  | 'profile'
+  | 'skde'
+  | 'gap'
+  | 'customer'
 
 export default function AutomatedMessagesPage() {
   const { user, loading } = useAuth()
@@ -34,12 +62,16 @@ export default function AutomatedMessagesPage() {
     message: DEFAULT_TEMPLATE,
     scheduled_at: '',
     is_enable: true,
+    warmup_enabled: false,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const [variables, setVariables] = useState<string[]>([])
-  const [titleType, setTitleType] = useState<'birthday' | 'profile' | 'skde' | 'gap' | 'customer'>('birthday')
-  const isBirthdayTitle = titleType === 'birthday'
+  const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
+  const isBroadcastAutomation =
+    titleType === 'birthday' ||
+    titleType === 'inactive_followup' ||
+    titleType === 'free_followup'
 
   useEffect(() => {
     if (!loading && !user) {
@@ -97,11 +129,12 @@ export default function AutomatedMessagesPage() {
 
   const openCreate = () => {
     setForm({
-      title: 'Birthday',
+      title: SCHEDULED_TITLE_BIRTHDAY,
       phone: '',
       message: DEFAULT_TEMPLATE,
       scheduled_at: '',
       is_enable: true,
+      warmup_enabled: false,
     })
     setTitleType('birthday')
     setEditing(null)
@@ -110,9 +143,11 @@ export default function AutomatedMessagesPage() {
 
   const openEdit = (item: ScheduledMessage) => {
     const rawTitle = (item.title || '').trim()
-    let inferredType: 'birthday' | 'profile' | 'skde' | 'gap' | 'customer' = 'customer'
+    let inferredType: AutomationTitleType = 'customer'
     const lower = rawTitle.toLowerCase()
-    if (lower.includes('birthday')) inferredType = 'birthday'
+    if (lower === 'birthday' || lower.includes('birthday')) inferredType = 'birthday'
+    else if (lower === 'inactive follow-up') inferredType = 'inactive_followup'
+    else if (lower === 'free account follow-up') inferredType = 'free_followup'
     else if (lower.startsWith('profile')) inferredType = 'profile'
     else if (lower.includes('skde')) inferredType = 'skde'
     else if (lower === 'gap') inferredType = 'gap'
@@ -121,7 +156,11 @@ export default function AutomatedMessagesPage() {
     if (item.scheduled_at) {
       const d = new Date(item.scheduled_at)
       if (!Number.isNaN(d.getTime())) {
-        if (inferredType === 'birthday') {
+        if (
+          inferredType === 'birthday' ||
+          inferredType === 'inactive_followup' ||
+          inferredType === 'free_followup'
+        ) {
           // For birthday flows we use a time-only input (HH:MM)
           const hh = String(d.getHours()).padStart(2, '0')
           const mm = String(d.getMinutes()).padStart(2, '0')
@@ -136,12 +175,16 @@ export default function AutomatedMessagesPage() {
       }
     }
 
+    const itemMessage = item.message || ''
+    const hasWarmup = itemMessage.startsWith(WARMUP_MESSAGE_MARKER)
+
     setForm({
       title: rawTitle,
       phone: item.phone,
-      message: item.message,
+      message: hasWarmup ? itemMessage.slice(WARMUP_MESSAGE_MARKER.length) : itemMessage,
       scheduled_at: scheduledValue,
       is_enable: item.is_enable ?? true,
+      warmup_enabled: hasWarmup,
     })
     setTitleType(inferredType)
     setEditing(item)
@@ -160,15 +203,15 @@ export default function AutomatedMessagesPage() {
       if (!form.title || !form.message || !form.scheduled_at) {
         throw new Error('Title, message and scheduled time are required')
       }
-      if (!isBirthdayTitle && !form.phone) {
-        throw new Error('Phone is required for non-birthday messages')
+      if (!isBroadcastAutomation && !form.phone) {
+        throw new Error('Phone is required for this message type')
       }
 
       // Normalise scheduled_at into a full ISO datetime.
-      // - For birthday flows (time-only input), schedule the *next* occurrence of that time.
+      // - For broadcast automations (time-only input), schedule the *next* occurrence of that time.
       // - For others (datetime-local), use the exact chosen datetime.
       let scheduledAtIso: string
-      if (isBirthdayTitle) {
+      if (isBroadcastAutomation) {
         const [hh, mm] = form.scheduled_at.split(':')
         if (!hh || mm === undefined) {
           throw new Error('Please provide a valid time')
@@ -191,8 +234,8 @@ export default function AutomatedMessagesPage() {
 
       const payload = {
         title: form.title,
-        phone: isBirthdayTitle ? '' : form.phone,
-        message: form.message,
+        phone: isBroadcastAutomation ? '' : form.phone,
+        message: form.warmup_enabled ? `${WARMUP_MESSAGE_MARKER}${form.message}` : form.message,
         scheduled_at: scheduledAtIso,
         is_enable: form.is_enable,
       }
@@ -293,10 +336,13 @@ export default function AutomatedMessagesPage() {
             </button>
           </div>
           <p className="text-sm text-slate-600 mb-6">
-            Create scheduled WhatsApp messages for specific phone numbers. Templates support variables like{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{SenderName}'}</code> and{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{PGCode}'}</code> which are resolved from your
-            profile when sending.
+            Create scheduled WhatsApp messages for specific phone numbers, or broadcast automations (birthday, inactive
+            follow-up, free-account follow-up) that run daily at the time you set. Templates support variables like{' '}
+            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{SenderName}'}</code>,{' '}
+            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{PGCode}'}</code>,{' '}
+            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{LastPurchaseDate}'}</code>, and{' '}
+            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{RegistrationDate}'}</code> from each customer
+            record.
           </p>
 
           {error && (
@@ -362,7 +408,11 @@ export default function AutomatedMessagesPage() {
                         minute: '2-digit',
                       })}
                     </p>
-                    <p className="text-sm text-slate-700 mt-1 line-clamp-2">{item.message}</p>
+                    <p className="text-sm text-slate-700 mt-1 line-clamp-2">
+                      {item.message.startsWith(WARMUP_MESSAGE_MARKER)
+                        ? item.message.slice(WARMUP_MESSAGE_MARKER.length)
+                        : item.message}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {item.status === 'pending' && (
@@ -413,25 +463,50 @@ export default function AutomatedMessagesPage() {
                     <select
                       value={titleType}
                       onChange={(e) => {
-                        const value = e.target.value as 'birthday' | 'profile' | 'skde' | 'gap' | 'customer'
+                        const value = e.target.value as AutomationTitleType
                         setTitleType(value)
                         setForm(current => {
-                          if (value === 'birthday') return { ...current, title: 'Birthday' }
+                          if (value === 'birthday')
+                            return { ...current, title: SCHEDULED_TITLE_BIRTHDAY, message: DEFAULT_TEMPLATE }
+                          if (value === 'inactive_followup')
+                            return {
+                              ...current,
+                              title: SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
+                              message: DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE,
+                            }
+                          if (value === 'free_followup')
+                            return {
+                              ...current,
+                              title: SCHEDULED_TITLE_FREE_FOLLOWUP,
+                              message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
+                            }
                           if (value === 'profile') return { ...current, title: 'Profile (coming soon)' }
                           if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
                           if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
-                          // customer-defined: clear title and let user type
                           return { ...current, title: '' }
                         })
                       }}
                       className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="birthday">Birthday</option>
+                      <option value="inactive_followup">Inactive follow-up (last purchase anniversary)</option>
+                      <option value="free_followup">Free account follow-up (registration anniversary)</option>
                       <option value="profile">Profile (coming soon)</option>
                       <option value="skde">SKDE (coming soon)</option>
                       <option value="gap">GAP (coming soon)</option>
                       <option value="customer">Customer (custom title)</option>
                     </select>
+
+                    {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
+                      <p className="text-xs text-slate-500 mt-2">
+                        Auto-send logic: this automation will check customers daily (Malaysia date) and
+                        send when the customer matches the selected rule:
+                        {titleType === 'inactive_followup'
+                          ? ' same month/day as their Last Purchase Date (inactive)'
+                          : ' same month/day as their Date Register (or record created date) (free)'}.
+                        Each customer is sent at most once for each automation type.
+                      </p>
+                    )}
 
                     {titleType === 'customer' && (
                       <input
@@ -445,7 +520,7 @@ export default function AutomatedMessagesPage() {
                   </div>
                 </div>
 
-                {!isBirthdayTitle && (
+                {!isBroadcastAutomation && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Target phone number</label>
                     <input
@@ -460,9 +535,9 @@ export default function AutomatedMessagesPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Scheduled time {isBirthdayTitle && '(time only)'}
+                    Scheduled time {isBroadcastAutomation && '(daily run — time only)'}
                   </label>
-                  {isBirthdayTitle ? (
+                  {isBroadcastAutomation ? (
                     <input
                       type="time"
                       value={form.scheduled_at}
@@ -478,7 +553,9 @@ export default function AutomatedMessagesPage() {
                     />
                   )}
                   <p className="text-xs text-slate-500 mt-1">
-                    Messages will be sent at this time. Cron runs every minute, so there may be up to ~60s delay.
+                    {isBroadcastAutomation
+                      ? 'Each day at this time (Malaysia date), matching customers receive at most one message per automation. Inactive: same month/day as last purchase. Free: same month/day as Date Register (or record created date).'
+                      : 'Messages will be sent at this time. Cron runs every minute, so there may be up to ~60s delay.'}
                   </p>
                 </div>
 
@@ -514,6 +591,43 @@ export default function AutomatedMessagesPage() {
 
                   </div>
                 </div>
+
+                {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
+                  <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="min-w-0">
+                      <label className="block text-sm font-medium text-slate-700">Warm greeting</label>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Malay: <span className="font-mono">Salam, {'{SenderName}'}</span>
+                        <br />
+                        Others: <span className="font-mono">Selamat Pagi/Petang/Malam, {'{SenderName}'}</span>
+                        <br />
+                        Send greeting, wait 3–5s, then send the main template.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-[35%] md:w-[17%]">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-label="Enable warm greeting"
+                        aria-checked={Boolean(form.warmup_enabled)}
+                        onClick={() =>
+                          setForm((cur) => ({ ...cur, warmup_enabled: !Boolean(cur.warmup_enabled) }))
+                        }
+                        className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                          form.warmup_enabled ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                            form.warmup_enabled ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Message template</label>

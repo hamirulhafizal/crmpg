@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { isBroadcastScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 
 /**
  * This route now manages concrete scheduled messages stored in `scheduled_messages`.
@@ -62,14 +63,13 @@ export async function POST(request: Request) {
     const { title, phone, message, scheduled_at } = body
     const isEnabled = body.is_enable === undefined ? true : Boolean(body.is_enable)
 
-    const isBirthdayTitle =
-      typeof title === 'string' && title.toLowerCase().includes('birthday')
+    const isBroadcast = isBroadcastScheduledTitle(title)
 
-    if (!title || !message || !scheduled_at || (!isBirthdayTitle && !phone)) {
+    if (!title || !message || !scheduled_at || (!isBroadcast && !phone)) {
       return NextResponse.json(
         {
-          error: isBirthdayTitle
-            ? 'title, message and scheduled_at are required for birthday automations'
+          error: isBroadcast
+            ? 'title, message and scheduled_at are required for broadcast automations'
             : 'title, phone, message and scheduled_at are required',
         },
         { status: 400 }
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         title: String(title),
-        phone: phone ? String(phone) : '',
+        phone: isBroadcast ? '' : String(phone),
         message: String(message),
         scheduled_at: scheduledAtDate.toISOString(),
         is_enable: isEnabled,

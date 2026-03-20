@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { getAccountStatusKey } from '@/app/lib/customer-account-status'
 
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
@@ -110,51 +111,6 @@ export async function GET(request: Request) {
       }
 
       if (accountStatus) {
-        const parseOriginalDateToUTC = (value: unknown): number | null => {
-          if (!value) return null
-          if (typeof value !== 'string') return null
-
-          const s = value.trim()
-          // Expected format: `YYYY-MM-DD HH:mm:ss`
-          const m = s.match(
-            /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?$/
-          )
-          if (!m) {
-            const t = new Date(s).getTime()
-            return Number.isFinite(t) ? t : null
-          }
-
-          const [, y, mo, d, h, mi, sec] = m
-          const t = Date.UTC(
-            Number(y),
-            Number(mo) - 1,
-            Number(d),
-            Number(h),
-            Number(mi),
-            Number(sec)
-          )
-          return Number.isFinite(t) ? t : null
-        }
-
-        const getAccountStatusKey = (
-          originalData: any
-        ): 'inactive' | 'free' | 'active' | 'unknown' => {
-          const raw = originalData?.['Last Purchase Date']
-          if (raw === undefined || raw === null || raw === '') return 'unknown'
-
-          if (typeof raw === 'string') {
-            const s = raw.trim().toLowerCase()
-            if (s.includes('no sales transaction within a year')) return 'free'
-          }
-
-          const lastPurchaseMs = parseOriginalDateToUTC(raw)
-          if (!lastPurchaseMs) return 'unknown'
-
-          const oneYearMs = 365 * 24 * 60 * 60 * 1000
-          if (Date.now() - lastPurchaseMs > oneYearMs) return 'inactive'
-          return 'active'
-        }
-
         filtered = filtered.filter((c: any) => {
           return getAccountStatusKey(c?.original_data) === accountStatus
         })

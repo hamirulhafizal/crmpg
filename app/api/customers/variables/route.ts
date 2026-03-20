@@ -67,7 +67,13 @@ export async function GET() {
       .filter(col => !['id', 'user_id', 'original_data', 'created_at', 'updated_at'].includes(col))
       .map(toVarName)
 
-    return NextResponse.json({ variables })
+    const extra = ['LastPurchaseDate', 'RegistrationDate']
+    const merged = [...variables]
+    for (const v of extra) {
+      if (!merged.includes(v)) merged.push(v)
+    }
+
+    return NextResponse.json({ variables: merged })
   } catch (err: any) {
     console.error('Error fetching customer variables:', err)
     return NextResponse.json(
