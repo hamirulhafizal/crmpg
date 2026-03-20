@@ -239,18 +239,37 @@ export async function GET(request: Request) {
     const supabase = supabaseAdmin
     const nowIso = new Date().toISOString()
 
+    // Some environments may lag schema changes (or point to a different DB).
+    // Probe once so cron can still run even if `is_enable` is unavailable.
+    let supportsIsEnable = true
+    const { error: isEnableProbeError } = await supabase
+      .from('scheduled_messages')
+      .select('id, is_enable')
+      .limit(1)
+    if (isEnableProbeError?.code === '42703') {
+      supportsIsEnable = false
+      console.warn(
+        'scheduled_messages.is_enable is unavailable in this environment; proceeding without enable filter'
+      )
+    } else if (isEnableProbeError) {
+      console.warn('Unable to verify is_enable support:', isEnableProbeError)
+    }
+
 
     // 1. Get due, pending, unlocked scheduled messages
-    const { data: due, error: fetchError } = await supabase
+    let fetchQuery = supabase
       .from('scheduled_messages')
       .select('*')
       .eq('status', 'pending')
-      // Treat NULL as enabled for backward compatibility when the column was newly added.
-      .or('is_enable.eq.true,is_enable.is.null')
       .lte('scheduled_at', nowIso)
       .is('locked_at', null)
       .order('scheduled_at', { ascending: true })
       .limit(BATCH_SIZE)
+    if (supportsIsEnable) {
+      // Treat NULL as enabled for backward compatibility when the column was newly added.
+      fetchQuery = fetchQuery.or('is_enable.eq.true,is_enable.is.null')
+    }
+    const { data: due, error: fetchError } = await fetchQuery
 
 
     if (fetchError) {
@@ -271,15 +290,18 @@ export async function GET(request: Request) {
 
     // 2. Lock rows to avoid duplicate processing
     const lockIso = new Date().toISOString()
-    const { data: lockedRows, error: lockError } = await supabase
+    let lockQuery = supabase
       .from('scheduled_messages')
       .update({ locked_at: lockIso })
       .in('id', ids)
       .eq('status', 'pending')
-      // Keep the same NULL=enabled semantics as the fetch query.
-      .or('is_enable.eq.true,is_enable.is.null')
       .is('locked_at', null)
       .select('id')
+    if (supportsIsEnable) {
+      // Keep the same NULL=enabled semantics as the fetch query.
+      lockQuery = lockQuery.or('is_enable.eq.true,is_enable.is.null')
+    }
+    const { data: lockedRows, error: lockError } = await lockQuery
 
     if (lockError) {
       console.error('Error locking scheduled messages:', lockError)
