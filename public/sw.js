@@ -1,5 +1,6 @@
 // Service Worker for PWA
-const CACHE_NAME = 'public-gold-crm-v2';
+// Bump when caching strategy changes so old HTML/documents are dropped.
+const CACHE_NAME = 'public-gold-crm-v3';
 const urlsToCache = [
   '/',
   '/manifest.json',
@@ -53,6 +54,12 @@ self.addEventListener('fetch', (event) => {
 
   // Skip external requests
   if (!event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
+  // Never intercept full document loads: Next.js needs fresh HTML after deploy,
+  // and cache-first here caused stale /customers (etc.) until hard reload.
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
     return;
   }
 

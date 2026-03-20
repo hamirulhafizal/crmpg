@@ -4,6 +4,13 @@ import { createClient } from '@/app/lib/supabase/server'
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
   try {
+    const noStoreHeaders = {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Surrogate-Control': 'no-store',
+    }
+
     const supabase = await createClient()
     
     // Get current user
@@ -12,7 +19,7 @@ export async function GET(request: Request) {
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401 }
+        { status: 401, headers: noStoreHeaders }
       )
     }
 
@@ -36,7 +43,7 @@ export async function GET(request: Request) {
 
     // Apply search filter
     if (search) {
-      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`)
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,pg_code.ilike.%${search}%`)
     }
 
     // Apply filters
@@ -65,7 +72,7 @@ export async function GET(request: Request) {
 
       if (error) {
         console.error('Error fetching customers:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
+        return NextResponse.json({ error: error.message }, { status: 500, headers: noStoreHeaders })
       }
 
       let filtered = data || []
@@ -166,7 +173,7 @@ export async function GET(request: Request) {
           total: filtered.length,
           totalPages: Math.ceil(filtered.length / limit),
         },
-      })
+      }, { headers: noStoreHeaders })
     }
 
     // Default: apply pagination in the database.
@@ -180,7 +187,7 @@ export async function GET(request: Request) {
       console.error('Error fetching customers:', error)
       return NextResponse.json(
         { error: error.message },
-        { status: 500 }
+        { status: 500, headers: noStoreHeaders }
       )
     }
 
@@ -192,12 +199,12 @@ export async function GET(request: Request) {
         total: count || 0,
         totalPages: Math.ceil((count || 0) / limit),
       },
-    })
+    }, { headers: noStoreHeaders })
   } catch (error: any) {
     console.error('Error in GET /api/customers:', error)
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     )
   }
 }

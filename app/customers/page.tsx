@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 
@@ -40,9 +40,31 @@ interface Customer {
   updated_at: string
 }
 
+/** JSON columns sometimes arrive as string; normalize so Verified / account UI stay correct. */
+const normalizeCustomerOriginalData = (originalData: unknown): Record<string, unknown> | null => {
+  if (originalData == null) return null
+  if (typeof originalData === 'object' && !Array.isArray(originalData)) {
+    return originalData as Record<string, unknown>
+  }
+  if (typeof originalData === 'string') {
+    const s = originalData.trim()
+    if (!s) return null
+    try {
+      const parsed = JSON.parse(s) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 const parseProfileVerified = (originalData: any): boolean | null => {
-  if (!originalData || typeof originalData !== 'object') return null
-  const raw = originalData['Profile Verified']
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data['Profile Verified']
 
   if (raw === undefined || raw === null || raw === '') return null
   if (raw === true) return true
@@ -91,7 +113,8 @@ const parseOriginalDateToUTC = (value: unknown): number | null => {
 }
 
 const getAccountStatus = (originalData: any): 'Inactive account' | 'Free account' | 'Active account' | 'Unknown' => {
-  const raw = originalData?.['Last Purchase Date']
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = data?.['Last Purchase Date']
   if (raw === undefined || raw === null || raw === '') return 'Unknown'
 
   if (typeof raw === 'string') {
@@ -145,6 +168,13 @@ export default function CustomersPage() {
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [isImporting, setIsImporting] = useState(false)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -252,7 +282,9 @@ export default function CustomersPage() {
         sortBy,
         sortOrder,
       })
-      const response = await fetch(`/api/customers?${params}`)
+      const response = await fetch(`/api/customers?${params}`, {
+        cache: 'no-store',
+      })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to fetch customers')
       const allCustomers: Customer[] = result.data || []
@@ -281,6 +313,7 @@ export default function CustomersPage() {
   const fetchCustomers = async () => {
     setIsLoading(true)
     setError(null)
+    setCustomers([])
 
     try {
       const effectiveLimit = viewMode === 'all' ? '100000' : limit.toString()
@@ -299,19 +332,24 @@ export default function CustomersPage() {
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
 
-      const response = await fetch(`/api/customers?${params}`)
+      const response = await fetch(`/api/customers?${params}`, {
+        cache: 'no-store',
+      })
       const result = await response.json()
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch customers')
       }
 
+      if (!isMountedRef.current) return
       setCustomers(result.data || [])
       setTotal(result.pagination?.total || 0)
       setTotalPages(result.pagination?.totalPages || 1)
     } catch (err: any) {
+      if (!isMountedRef.current) return
       setError(err.message || 'Failed to load customers')
     } finally {
+      if (!isMountedRef.current) return
       setIsLoading(false)
     }
   }
@@ -568,7 +606,7 @@ export default function CustomersPage() {
             <div className="md:col-span-2 flex gap-2">
               <input
                 type="text"
-                placeholder="Search by name, email, or phone..."
+                placeholder="Search by name, email, phone, or PG code..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
