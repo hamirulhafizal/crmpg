@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { getAccountStatusKey } from '@/app/lib/customer-account-status'
+import {
+  getAccountStatusKey,
+  getLastPurchaseUtcMonthDate,
+  getLastPurchaseUtcYmd,
+  getRegistrationUtcMonthDate,
+  getRegistrationUtcYmd,
+} from '@/app/lib/customer-account-status'
 
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
@@ -32,9 +38,14 @@ export async function GET(request: Request) {
     const gender = searchParams.get('gender') || ''
     const ethnicity = searchParams.get('ethnicity') || ''
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
-    const accountStatus = searchParams.get('accountStatus') || '' // '', 'active', 'inactive', 'free'
+    const accountStatus = searchParams.get('accountStatus') || '' // '', 'active', 'inactive', 'free', 'free_today', 'free_by_date'
+    const registerDate = searchParams.get('registerDate') || '' // 'YYYY-MM-DD'
+    const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
+    const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
+    const isComputedDateSort =
+      sortBy === 'register_date' || sortBy === 'last_purchase_date'
 
     // Build query
     let query = supabase
@@ -56,10 +67,20 @@ export async function GET(request: Request) {
     }
 
     // Apply sorting
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' })
+    if (!isComputedDateSort) {
+      query = query.order(sortBy, { ascending: sortOrder === 'asc' })
+    } else {
+      // Stable default ordering before JS computed-date sort.
+      query = query.order('created_at', { ascending: false })
+    }
 
     const shouldUseJsFiltering =
-      birthday === 'today' || birthday === 'month' || !!accountStatus
+      birthday === 'today' ||
+      birthday === 'month' ||
+      !!accountStatus ||
+      !!registerMonth ||
+      !!lastPurchaseMonth ||
+      isComputedDateSort
 
     if (shouldUseJsFiltering) {
       // If birthday filtering is requested, we filter by month/day in JS because
@@ -111,8 +132,87 @@ export async function GET(request: Request) {
       }
 
       if (accountStatus) {
+        const nowForTz = new Date()
+        const MALAYSIA_OFFSET_MINUTES = 8 * 60
+        const localTzNow = new Date(
+          nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000
+        )
+        const todayMonth = localTzNow.getUTCMonth()
+        const todayDate = localTzNow.getUTCDate()
+
         filtered = filtered.filter((c: any) => {
-          return getAccountStatusKey(c?.original_data) === accountStatus
+          const statusKey = getAccountStatusKey(c?.original_data)
+          if (accountStatus === 'free_today') {
+            if (statusKey !== 'free') return false
+            const reg = getRegistrationUtcMonthDate(c?.original_data, c?.created_at)
+            if (!reg) return false
+            return reg.month === todayMonth && reg.day === todayDate
+          }
+          if (accountStatus === 'free_by_date') {
+            if (!registerDate || statusKey !== 'free') return false
+            return getRegistrationUtcYmd(c?.original_data, c?.created_at) === registerDate
+          }
+          return statusKey === accountStatus
+        })
+      }
+
+      if (registerMonth) {
+        const targetMonth = Number(registerMonth)
+        if (Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12) {
+          filtered = filtered.filter((c: any) => {
+            const reg = getRegistrationUtcMonthDate(c?.original_data, c?.created_at)
+            if (!reg) return false
+            return reg.month + 1 === targetMonth
+          })
+        }
+      }
+
+      if (lastPurchaseMonth) {
+        const targetMonth = Number(lastPurchaseMonth)
+        if (Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12) {
+          filtered = filtered.filter((c: any) => {
+            const lp = getLastPurchaseUtcMonthDate(c?.original_data)
+            if (!lp) return false
+            return lp.month + 1 === targetMonth
+          })
+        }
+      }
+
+      if (isComputedDateSort) {
+        const asc = sortOrder === 'asc'
+        filtered = [...filtered].sort((a: any, b: any) => {
+          const avRaw =
+            sortBy === 'register_date'
+              ? getRegistrationUtcYmd(a?.original_data, a?.created_at)
+              : getLastPurchaseUtcYmd(a?.original_data)
+          const bvRaw =
+            sortBy === 'register_date'
+              ? getRegistrationUtcYmd(b?.original_data, b?.created_at)
+              : getLastPurchaseUtcYmd(b?.original_data)
+
+          // Register Date sort is anniversary-like (ignore year).
+          // Last Purchase sort remains full date (includes year).
+          const toMonthDay = (ymd: string | null): string | null => {
+            if (!ymd) return null
+            const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+            if (!m) return null
+            return `${m[2]}-${m[3]}`
+          }
+
+          const av =
+            sortBy === 'register_date'
+              ? toMonthDay(avRaw)
+              : avRaw
+          const bv =
+            sortBy === 'register_date'
+              ? toMonthDay(bvRaw)
+              : bvRaw
+
+          if (!av && !bv) return 0
+          if (!av) return 1
+          if (!bv) return -1
+          const cmp = av.localeCompare(bv)
+          return asc ? cmp : -cmp
         })
       }
 

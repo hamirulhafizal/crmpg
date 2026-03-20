@@ -112,6 +112,17 @@ const parseOriginalDateToUTC = (value: unknown): number | null => {
   return Number.isFinite(t) ? t : null
 }
 
+const formatOriginalDate = (value: unknown): string => {
+  if (!value || typeof value !== 'string') return '-'
+  const t = parseOriginalDateToUTC(value)
+  if (t == null) return value
+  const d = new Date(t)
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const yyyy = d.getUTCFullYear()
+  return `${dd}/${mm}/${yyyy}`
+}
+
 const getAccountStatus = (originalData: any): 'Inactive account' | 'Free account' | 'Active account' | 'Unknown' => {
   const data = normalizeCustomerOriginalData(originalData)
   const raw = data?.['Last Purchase Date']
@@ -158,7 +169,10 @@ export default function CustomersPage() {
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
-  const [accountStatusFilter, setAccountStatusFilter] = useState<'active' | 'inactive' | 'free' | ''>('')
+  const [accountStatusFilter, setAccountStatusFilter] = useState<'active' | 'inactive' | 'free' | 'free_today' | 'free_by_date' | ''>('')
+  const [registerDateFilter, setRegisterDateFilter] = useState('')
+  const [registerMonthFilter, setRegisterMonthFilter] = useState('')
+  const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -186,7 +200,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerDateFilter, registerMonthFilter, lastPurchaseMonthFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -200,6 +214,9 @@ export default function CustomersPage() {
     setEthnicityFilter('')
     setBirthdayFilter('')
     setAccountStatusFilter('')
+    setRegisterDateFilter('')
+    setRegisterMonthFilter('')
+    setLastPurchaseMonthFilter('')
     setPage(1)
   }
 
@@ -331,6 +348,11 @@ export default function CustomersPage() {
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
+      if (accountStatusFilter === 'free_by_date' && registerDateFilter) {
+        params.append('registerDate', registerDateFilter)
+      }
+      if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
+      if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
 
       const response = await fetch(`/api/customers?${params}`, {
         cache: 'no-store',
@@ -354,9 +376,13 @@ export default function CustomersPage() {
     }
   }
 
-  const toggleSortByCreatedAt = () => {
-    setSortBy('created_at')
-    setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date') => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setSortBy(field)
+      setSortOrder('desc')
+    }
     setPage(1)
   }
 
@@ -669,7 +695,7 @@ export default function CustomersPage() {
             <select
               value={accountStatusFilter}
               onChange={(e) => {
-                setAccountStatusFilter(e.target.value as 'active' | 'inactive' | 'free' | '')
+                setAccountStatusFilter(e.target.value as 'active' | 'inactive' | 'free' | 'free_today' | 'free_by_date' | '')
                 setPage(1)
               }}
               className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -678,6 +704,66 @@ export default function CustomersPage() {
               <option value="active">Active account</option>
               <option value="inactive">Inactive account</option>
               <option value="free">Free account</option>
+              <option value="free_today">Free account (today register date)</option>
+              <option value="free_by_date">Free account (custom register date)</option>
+            </select>
+
+            {accountStatusFilter === 'free_by_date' && (
+              <input
+                type="date"
+                value={registerDateFilter}
+                onChange={(e) => {
+                  setRegisterDateFilter(e.target.value)
+                  setPage(1)
+                }}
+                className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            )}
+
+            <select
+              value={registerMonthFilter}
+              onChange={(e) => {
+                setRegisterMonthFilter(e.target.value)
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Register month (all)</option>
+              <option value="1">Jan</option>
+              <option value="2">Feb</option>
+              <option value="3">Mar</option>
+              <option value="4">Apr</option>
+              <option value="5">May</option>
+              <option value="6">Jun</option>
+              <option value="7">Jul</option>
+              <option value="8">Aug</option>
+              <option value="9">Sep</option>
+              <option value="10">Oct</option>
+              <option value="11">Nov</option>
+              <option value="12">Dec</option>
+            </select>
+
+            <select
+              value={lastPurchaseMonthFilter}
+              onChange={(e) => {
+                setLastPurchaseMonthFilter(e.target.value)
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Last purchase month (all)</option>
+              <option value="1">Jan</option>
+              <option value="2">Feb</option>
+              <option value="3">Mar</option>
+              <option value="4">Apr</option>
+              <option value="5">May</option>
+              <option value="6">Jun</option>
+              <option value="7">Jul</option>
+              <option value="8">Aug</option>
+              <option value="9">Sep</option>
+              <option value="10">Oct</option>
+              <option value="11">Nov</option>
+              <option value="12">Dec</option>
             </select>
 
             {/* View mode: paginated vs all */}
@@ -1148,7 +1234,41 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                     <button
                       type="button"
-                      onClick={toggleSortByCreatedAt}
+                      onClick={() => toggleSort('register_date')}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                    >
+                      Register Date
+                      {sortBy === 'register_date' && (
+                        sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                        )
+                      )}
+                    </button>
+                  </th>
+
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('last_purchase_date')}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                    >
+                      Last Purchase
+                      {sortBy === 'last_purchase_date' && (
+                        sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                        )
+                      )}
+                    </button>
+                  </th>
+
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('created_at')}
                       className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                       title={sortOrder === 'desc' ? 'Newest first (click for oldest)' : 'Oldest first (click for newest)'}
                     >
@@ -1169,7 +1289,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={18} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -1235,6 +1355,23 @@ export default function CustomersPage() {
                                 ? 'Active'
                                 : '-'}
                         </span>
+                      </td>
+
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {customer.original_data?.['Date Register']
+                          ? formatOriginalDate(customer.original_data?.['Date Register'])
+                          : customer.created_at
+                            ? (() => {
+                                const d = new Date(customer.created_at)
+                                const dd = String(d.getUTCDate()).padStart(2, '0')
+                                const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+                                const yyyy = d.getUTCFullYear()
+                                return `${dd}/${mm}/${yyyy}`
+                              })()
+                            : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {formatOriginalDate(customer.original_data?.['Last Purchase Date'])}
                       </td>
 
                       <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">

@@ -102,6 +102,18 @@ export function getLastPurchaseUtcMonthDate(originalData: unknown): {
   return { month: d.getUTCMonth(), day: d.getUTCDate() }
 }
 
+export function getLastPurchaseUtcYmd(originalData: unknown): string | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = data?.['Last Purchase Date']
+  if (raw === undefined || raw === null || raw === '') return null
+  if (typeof raw === 'string' && raw.trim().toLowerCase().includes('no sales transaction within a year')) {
+    return null
+  }
+  const ms = typeof raw === 'string' ? parseFlexibleDateToUtcMs(raw) : null
+  if (ms == null) return null
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
 export function getRegistrationUtcMonthDate(
   originalData: unknown,
   createdAt: string | null | undefined
@@ -119,6 +131,27 @@ export function getRegistrationUtcMonthDate(
     const d = new Date(createdAt)
     if (!Number.isNaN(d.getTime())) {
       return { month: d.getUTCMonth(), day: d.getUTCDate() }
+    }
+  }
+  return null
+}
+
+export function getRegistrationUtcYmd(
+  originalData: unknown,
+  createdAt: string | null | undefined
+): string | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  const reg = data?.['Date Register']
+  if (typeof reg === 'string' && reg.trim()) {
+    const ms = parseFlexibleDateToUtcMs(reg)
+    if (ms != null) {
+      return new Date(ms).toISOString().slice(0, 10)
+    }
+  }
+  if (createdAt) {
+    const d = new Date(createdAt)
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10)
     }
   }
   return null
