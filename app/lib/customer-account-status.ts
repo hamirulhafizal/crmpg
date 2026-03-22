@@ -265,7 +265,9 @@ export function getAccountStatusKey(input: unknown): AccountStatusKey {
   // Dalam ~3 bulan terakhir ada belian: Inactive / Active (bulan semasa Malaysia).
   if (!isLastPurchaseInCurrentMalaysiaMonth(lastMs, now)) return 'inactive'
 
-  if (monthly) return 'active'
+  // check if last purchase is within 1 month of now
+  if (lastMs > now - 30 * 24 * 60 * 60 * 1000) return 'active'
+  // if (monthly) return 'active'
 
   return 'inactive'
 }

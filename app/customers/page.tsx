@@ -1213,10 +1213,12 @@ export default function CustomersPage() {
         {/* Account status counts (all customers in your database) */}
         <div className="mb-6">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <h2 className="text-sm font-semibold text-slate-800">Account status</h2>
+
+            {/* // suport theme color */}
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-white">Account status</h2>
             <div className="flex items-center gap-3 text-xs text-slate-500">
               {statsLoading ? (
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 dark:text-white">
                   <svg className="animate-spin h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path
@@ -1228,9 +1230,9 @@ export default function CustomersPage() {
                   Updating counts…
                 </span>
               ) : null}
-              <span>
+              <span className="dark:text-white">
                 Total{' '}
-                <strong className="text-slate-700">
+                <strong className="text-slate-700 dark:text-white">
                   {Object.values(statusCounts).reduce((a, b) => a + b, 0)}
                 </strong>
               </span>
@@ -1287,7 +1289,7 @@ export default function CustomersPage() {
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-slate-500 dark:text-white">
             Counts reflect all saved customers. They refresh after create, edit, or delete.
           </p>
         </div>
