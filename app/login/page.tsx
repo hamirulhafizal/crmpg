@@ -61,19 +61,19 @@ export default function LoginPage() {
       }
 
       console.log('Login successful:', data)
-      
+
       // Wait a moment for session to be set
       await new Promise(resolve => setTimeout(resolve, 100))
-      
+
       // Redirect to dashboard on success
       router.push('/dashboard')
       router.refresh() // Refresh to ensure session is loaded
     } catch (error: any) {
       console.error('Login failed:', error)
-      
+
       // Provide more specific error messages
       let errorMessage = error.message || 'Invalid email or password. Please try again.'
-      
+
       if (error.message?.includes('Failed to fetch') || error.message?.includes('CORS')) {
         errorMessage = 'Unable to connect to authentication server. Please check: 1) Supabase project is not paused, 2) Environment variables are set correctly, 3) Try using Google OAuth login instead.'
       } else if (error.message?.includes('Invalid login credentials')) {
@@ -81,7 +81,7 @@ export default function LoginPage() {
       } else if (error.message?.includes('Email not confirmed')) {
         errorMessage = 'Please check your email and confirm your account before signing in.'
       }
-      
+
       setMessage({
         type: 'error',
         text: errorMessage,
@@ -127,11 +127,10 @@ export default function LoginPage() {
           {/* Message Alert */}
           {message && (
             <div
-              className={`p-4 rounded-xl transition-all duration-300 ${
-                message.type === 'success'
+              className={`p-4 rounded-xl transition-all duration-300 ${message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : 'bg-red-50 text-red-800 border border-red-200'
-              }`}
+                }`}
             >
               <p className="text-sm font-medium">{message.text}</p>
             </div>
@@ -142,22 +141,21 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setLoginMethod('password')}
-              className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${
-                loginMethod === 'password'
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${loginMethod === 'password'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               Email & Password
             </button>
             <button
+              hidden={true}
               type="button"
               onClick={() => setLoginMethod('magic')}
-              className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${
-                loginMethod === 'magic'
+              className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${loginMethod === 'magic'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               Magic Link
             </button>
@@ -295,7 +293,7 @@ export default function LoginPage() {
           )}
 
           {/* Divider */}
-          <div className="relative my-6">
+          <div hidden={true} className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-300"></div>
             </div>
@@ -306,6 +304,7 @@ export default function LoginPage() {
 
           {/* Google OAuth Button */}
           <button
+            hidden={true}
             onClick={handleGoogleLogin}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl border-2 border-slate-300 hover:border-slate-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm"

@@ -92,6 +92,8 @@ export async function PUT(
     if (body.row_number !== undefined) updateData.row_number = body.row_number
     if (body.original_data !== undefined) updateData.original_data = body.original_data
     if (body.is_married !== undefined) updateData.is_married = body.is_married
+    if (body.last_purchase_at !== undefined) updateData.last_purchase_at = body.last_purchase_at
+    if (body.is_monthly_buyer !== undefined) updateData.is_monthly_buyer = body.is_monthly_buyer
     // Backwards compatibility: if legacy `is_profile_verified` is sent,
     // store it under `original_data["Profile Verified"]` instead.
     if (body.is_profile_verified !== undefined) {

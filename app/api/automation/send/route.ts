@@ -49,6 +49,8 @@ interface Customer {
   pg_code: string | null
   original_data?: unknown
   created_at?: string | null
+  last_purchase_at?: string | null
+  is_monthly_buyer?: boolean | null
 }
 
 interface ScheduledMessageRow {
@@ -70,7 +72,7 @@ interface EmailFallbackConfig {
 function renderCustomerTemplate(template: string, customer: Customer): string {
   if (!template) return ''
 
-  const lastPurchase = formatLastPurchaseForTemplate(customer.original_data)
+  const lastPurchase = formatLastPurchaseForTemplate(customer)
   const registration = formatRegistrationForTemplate(
     customer.original_data,
     customer.created_at ?? undefined
@@ -461,10 +463,10 @@ export async function GET(request: Request) {
 
             const candidates = (allCustomers || []).filter((c: Customer) => {
               if (alreadySent.has(c.id)) return false
-              const status = getAccountStatusKey(c.original_data)
+              const status = getAccountStatusKey(c)
               if (kind === 'inactive') {
                 if (status !== 'inactive') return false
-                const parts = getLastPurchaseUtcMonthDate(c.original_data)
+                const parts = getLastPurchaseUtcMonthDate(c)
                 if (!parts) return false
                 return parts.month === todayMonth && parts.day === todayDate
               }

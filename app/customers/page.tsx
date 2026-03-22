@@ -5,6 +5,21 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
+import {
+  getAccountStatusKey,
+  getAccountStatusLabel,
+  formatLastPurchaseDisplayForUi,
+  type AccountStatusKey,
+} from '@/app/lib/customer-account-status'
+
+const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
+  temporary: 0,
+  freeze: 0,
+  active: 0,
+  free: 0,
+  inactive: 0,
+  unknown: 0,
+}
 
 const runConfetti = () => {
   if (typeof window === 'undefined') return
@@ -38,6 +53,8 @@ interface Customer {
   is_married: boolean | null
   created_at: string
   updated_at: string
+  last_purchase_at?: string | null
+  is_monthly_buyer?: boolean | null
 }
 
 /** JSON columns sometimes arrive as string; normalize so Verified / account UI stay correct. */
@@ -123,24 +140,6 @@ const formatOriginalDate = (value: unknown): string => {
   return `${dd}/${mm}/${yyyy}`
 }
 
-const getAccountStatus = (originalData: any): 'Inactive account' | 'Free account' | 'Active account' | 'Unknown' => {
-  const data = normalizeCustomerOriginalData(originalData)
-  const raw = data?.['Last Purchase Date']
-  if (raw === undefined || raw === null || raw === '') return 'Unknown'
-
-  if (typeof raw === 'string') {
-    const s = raw.trim().toLowerCase()
-    if (s.includes('no sales transaction within a year')) return 'Free account'
-  }
-
-  const lastPurchaseMs = parseOriginalDateToUTC(raw)
-  if (!lastPurchaseMs) return 'Unknown'
-
-  const oneYearMs = 365 * 24 * 60 * 60 * 1000
-  if (Date.now() - lastPurchaseMs > oneYearMs) return 'Inactive account'
-  return 'Active account'
-}
-
 export default function CustomersPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
@@ -169,12 +168,14 @@ export default function CustomersPage() {
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
-  const [accountStatusFilter, setAccountStatusFilter] = useState<'active' | 'inactive' | 'free' | 'free_today' | 'free_by_date' | ''>('')
-  const [registerDateFilter, setRegisterDateFilter] = useState('')
+  const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
   const [registerMonthFilter, setRegisterMonthFilter] = useState('')
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  const [statusCounts, setStatusCounts] = useState<Record<AccountStatusKey, number>>(EMPTY_STATUS_COUNTS)
+  const [statsLoading, setStatsLoading] = useState(false)
 
   // Google Contacts sync
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
@@ -196,11 +197,34 @@ export default function CustomersPage() {
     }
   }, [user, loading, router])
 
+  const fetchAccountStats = useCallback(async () => {
+    if (!user) return
+    setStatsLoading(true)
+    try {
+      const response = await fetch('/api/customers/stats', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to load stats')
+      if (!isMountedRef.current) return
+      if (result.counts && typeof result.counts === 'object') {
+        setStatusCounts({ ...EMPTY_STATUS_COUNTS, ...result.counts })
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[customers] stats fetch failed:', e)
+      }
+    } finally {
+      if (isMountedRef.current) setStatsLoading(false)
+    }
+  }, [user])
+
   useEffect(() => {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerDateFilter, registerMonthFilter, lastPurchaseMonthFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerMonthFilter, lastPurchaseMonthFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -214,7 +238,6 @@ export default function CustomersPage() {
     setEthnicityFilter('')
     setBirthdayFilter('')
     setAccountStatusFilter('')
-    setRegisterDateFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
     setPage(1)
@@ -348,9 +371,6 @@ export default function CustomersPage() {
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
-      if (accountStatusFilter === 'free_by_date' && registerDateFilter) {
-        params.append('registerDate', registerDateFilter)
-      }
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
 
@@ -367,6 +387,7 @@ export default function CustomersPage() {
       setCustomers(result.data || [])
       setTotal(result.pagination?.total || 0)
       setTotalPages(result.pagination?.totalPages || 1)
+      void fetchAccountStats()
     } catch (err: any) {
       if (!isMountedRef.current) return
       setError(err.message || 'Failed to load customers')
@@ -376,12 +397,12 @@ export default function CustomersPage() {
     }
   }
 
-  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date') => {
+  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date' | 'pg_code') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
     } else {
       setSortBy(field)
-      setSortOrder('desc')
+      setSortOrder(field === 'pg_code' ? 'asc' : 'desc')
     }
     setPage(1)
   }
@@ -695,7 +716,7 @@ export default function CustomersPage() {
             <select
               value={accountStatusFilter}
               onChange={(e) => {
-                setAccountStatusFilter(e.target.value as 'active' | 'inactive' | 'free' | 'free_today' | 'free_by_date' | '')
+                setAccountStatusFilter((e.target.value || '') as AccountStatusKey | '')
                 setPage(1)
               }}
               className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -704,21 +725,10 @@ export default function CustomersPage() {
               <option value="active">Active account</option>
               <option value="inactive">Inactive account</option>
               <option value="free">Free account</option>
-              <option value="free_today">Free account (today register date)</option>
-              <option value="free_by_date">Free account (custom register date)</option>
+              <option value="freeze">Freeze account</option>
+              <option value="temporary">Temporary account</option>
+              <option value="unknown">Unknown</option>
             </select>
-
-            {accountStatusFilter === 'free_by_date' && (
-              <input
-                type="date"
-                value={registerDateFilter}
-                onChange={(e) => {
-                  setRegisterDateFilter(e.target.value)
-                  setPage(1)
-                }}
-                className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            )}
 
             <select
               value={registerMonthFilter}
@@ -1169,7 +1179,7 @@ export default function CustomersPage() {
                       className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
                       aria-live="polite"
                     >
-                      {getAccountStatus(editingCustomer.original_data)}
+                      {getAccountStatusLabel(editingCustomer)}
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
@@ -1200,6 +1210,88 @@ export default function CustomersPage() {
           </div>
         )}
 
+        {/* Account status counts (all customers in your database) */}
+        <div className="mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-slate-800">Account status</h2>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              {statsLoading ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <svg className="animate-spin h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Updating counts…
+                </span>
+              ) : null}
+              <span>
+                Total{' '}
+                <strong className="text-slate-700">
+                  {Object.values(statusCounts).reduce((a, b) => a + b, 0)}
+                </strong>
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {(
+              [
+                {
+                  key: 'active' as const,
+                  label: 'Active',
+                  sub: 'Monthly buyer',
+                  className: 'border-green-200 bg-green-50/80 text-green-900',
+                },
+                {
+                  key: 'inactive' as const,
+                  label: 'Inactive',
+                  sub: 'Recent, not monthly',
+                  className: 'border-red-200 bg-red-50/80 text-red-900',
+                },
+                {
+                  key: 'free' as const,
+                  label: 'Free',
+                  sub: '> 12 mo. no buy',
+                  className: 'border-amber-200 bg-amber-50/80 text-amber-950',
+                },
+                {
+                  key: 'freeze' as const,
+                  label: 'Freeze',
+                  sub: '3–12 mo. no buy',
+                  className: 'border-orange-200 bg-orange-50/80 text-orange-950',
+                },
+                {
+                  key: 'temporary' as const,
+                  label: 'Temporary',
+                  sub: 'No PG code',
+                  className: 'border-violet-200 bg-violet-50/80 text-violet-950',
+                },
+                {
+                  key: 'unknown' as const,
+                  label: 'Unknown',
+                  sub: 'Needs data',
+                  className: 'border-slate-200 bg-slate-50 text-slate-800',
+                },
+              ] as const
+            ).map(({ key, label, sub, className }) => (
+              <div
+                key={key}
+                className={`rounded-2xl border px-4 py-3 shadow-sm transition-transform duration-200 hover:scale-[1.02] ${className}`}
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{statusCounts[key]}</p>
+                <p className="mt-0.5 text-[10px] opacity-80 leading-tight">{sub}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Counts reflect all saved customers. They refresh after create, edit, or delete.
+          </p>
+        </div>
+
         {/* Customers Table */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200/50 overflow-hidden">
           <div className="overflow-x-auto">
@@ -1217,7 +1309,26 @@ export default function CustomersPage() {
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Sender Name</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Save Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">PG Code</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('pg_code')}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded uppercase tracking-wider"
+                      title={sortOrder === 'desc' ? 'Z–A / high–low (click for A–Z)' : 'A–Z / low–high (click for Z–A)'}
+                    >
+                      PG Code
+                      {sortBy === 'pg_code' &&
+                        (sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        ))}
+                    </button>
+                  </th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Name</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Email</th>
@@ -1272,7 +1383,7 @@ export default function CustomersPage() {
                       className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                       title={sortOrder === 'desc' ? 'Newest first (click for oldest)' : 'Oldest first (click for newest)'}
                     >
-                      Created at
+                      Imported at
                       {sortBy === 'created_at' && (
                         sortOrder === 'desc' ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -1294,7 +1405,9 @@ export default function CustomersPage() {
                     </td>
                   </tr>
                 ) : (
-                  customers.map((customer) => (
+                  customers.map((customer) => {
+                    const accountKey = getAccountStatusKey(customer)
+                    return (
                     <tr key={customer.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3">
                         <input
@@ -1338,22 +1451,30 @@ export default function CustomersPage() {
                       <td className="px-4 py-3 text-sm">
                         <span
                           className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            getAccountStatus(customer.original_data) === 'Inactive account'
+                            accountKey === 'inactive'
                               ? 'bg-red-50 text-red-700 border border-red-100'
-                              : getAccountStatus(customer.original_data) === 'Free account'
+                              : accountKey === 'free'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-100'
-                                : getAccountStatus(customer.original_data) === 'Active account'
+                                : accountKey === 'active'
                                   ? 'bg-green-50 text-green-700 border border-green-100'
-                                  : 'bg-slate-50 text-slate-700 border border-slate-200'
+                                  : accountKey === 'temporary'
+                                    ? 'bg-violet-50 text-violet-800 border border-violet-100'
+                                    : accountKey === 'freeze'
+                                      ? 'bg-orange-50 text-orange-800 border border-orange-100'
+                                      : 'bg-slate-50 text-slate-700 border border-slate-200'
                           }`}
                         >
-                          {getAccountStatus(customer.original_data) === 'Inactive account'
+                          {accountKey === 'inactive'
                             ? 'Inactive'
-                            : getAccountStatus(customer.original_data) === 'Free account'
+                            : accountKey === 'free'
                               ? 'Free account'
-                              : getAccountStatus(customer.original_data) === 'Active account'
+                              : accountKey === 'active'
                                 ? 'Active'
-                                : '-'}
+                                : accountKey === 'temporary'
+                                  ? 'Temporary'
+                                  : accountKey === 'freeze'
+                                    ? 'Freeze'
+                                    : '-'}
                         </span>
                       </td>
 
@@ -1371,7 +1492,7 @@ export default function CustomersPage() {
                             : '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-800">
-                        {formatOriginalDate(customer.original_data?.['Last Purchase Date'])}
+                        {formatLastPurchaseDisplayForUi(customer)}
                       </td>
 
                       <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
@@ -1409,7 +1530,8 @@ export default function CustomersPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
             </table>

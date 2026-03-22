@@ -24,18 +24,18 @@ row_number: {{rowNumber}}
 - If D.O.B. is provided and valid: calculate age from today's date.
 - If D.O.B. is missing or invalid: estimate from name/context (e.g. student vs adult); use a reasonable integer.
 
-**Prefix** (exactly one: En, Pn, Tn, Cik)
-- Male, age > 28 → En. Male, age ≤ 28 → Tn.
+**Prefix** (exactly one: Pn, Tn, Cik)
+- Male → Tn.
 - Female, age > 28 → Pn. Female, age ≤ 28 → Cik.
 
 **FirstName**
 - The main given name only. Strip common Malaysian prefixes/particles: Muhd, Mohamad, Muhammad, Nur, Noor, Siti, Nurul, Ahmad, Abdul, etc. Keep one clear first name (e.g. "Aisyah", "Wei Ming", "Hafizal").
 
 **SenderName**
-- Exactly: Prefix + space + FirstName (e.g. "Pn Aisyah", "En Hafizal").
+- Exactly: Prefix + space + FirstName (e.g. "Pn Aisyah", "Tn Hafizal").
 
 **SaveName**
-- Exactly: PGCode + " - " + SenderName. If PGCode is empty, use " - " + SenderName only.
+- Exactly: SenderName + " - " + PGCode. If PGCode is empty, use " - " + SenderName only.
 
 ## Output
 Return a single JSON object with these keys only (no extra text):

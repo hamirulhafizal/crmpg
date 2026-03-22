@@ -38,8 +38,7 @@ export async function GET(request: Request) {
     const gender = searchParams.get('gender') || ''
     const ethnicity = searchParams.get('ethnicity') || ''
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
-    const accountStatus = searchParams.get('accountStatus') || '' // '', 'active', 'inactive', 'free', 'free_today', 'free_by_date'
-    const registerDate = searchParams.get('registerDate') || '' // 'YYYY-MM-DD'
+    const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
     const sortBy = searchParams.get('sortBy') || 'created_at'
@@ -132,27 +131,8 @@ export async function GET(request: Request) {
       }
 
       if (accountStatus) {
-        const nowForTz = new Date()
-        const MALAYSIA_OFFSET_MINUTES = 8 * 60
-        const localTzNow = new Date(
-          nowForTz.getTime() + MALAYSIA_OFFSET_MINUTES * 60 * 1000
-        )
-        const todayMonth = localTzNow.getUTCMonth()
-        const todayDate = localTzNow.getUTCDate()
-
         filtered = filtered.filter((c: any) => {
-          const statusKey = getAccountStatusKey(c?.original_data)
-          if (accountStatus === 'free_today') {
-            if (statusKey !== 'free') return false
-            const reg = getRegistrationUtcMonthDate(c?.original_data, c?.created_at)
-            if (!reg) return false
-            return reg.month === todayMonth && reg.day === todayDate
-          }
-          if (accountStatus === 'free_by_date') {
-            if (!registerDate || statusKey !== 'free') return false
-            return getRegistrationUtcYmd(c?.original_data, c?.created_at) === registerDate
-          }
-          return statusKey === accountStatus
+          return getAccountStatusKey(c) === accountStatus
         })
       }
 
@@ -171,7 +151,7 @@ export async function GET(request: Request) {
         const targetMonth = Number(lastPurchaseMonth)
         if (Number.isFinite(targetMonth) && targetMonth >= 1 && targetMonth <= 12) {
           filtered = filtered.filter((c: any) => {
-            const lp = getLastPurchaseUtcMonthDate(c?.original_data)
+            const lp = getLastPurchaseUtcMonthDate(c)
             if (!lp) return false
             return lp.month + 1 === targetMonth
           })
@@ -184,11 +164,11 @@ export async function GET(request: Request) {
           const avRaw =
             sortBy === 'register_date'
               ? getRegistrationUtcYmd(a?.original_data, a?.created_at)
-              : getLastPurchaseUtcYmd(a?.original_data)
+              : getLastPurchaseUtcYmd(a)
           const bvRaw =
             sortBy === 'register_date'
               ? getRegistrationUtcYmd(b?.original_data, b?.created_at)
-              : getLastPurchaseUtcYmd(b?.original_data)
+              : getLastPurchaseUtcYmd(b)
 
           // Register Date sort is anniversary-like (ignore year).
           // Last Purchase sort remains full date (includes year).

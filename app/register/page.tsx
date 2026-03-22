@@ -225,7 +225,7 @@ export default function RegisterPage() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-6">
+          <div hidden={true} className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-300"></div>
             </div>
@@ -236,6 +236,7 @@ export default function RegisterPage() {
 
           {/* Magic Link Option */}
           <button
+            hidden={true}
             onClick={handleMagicLink}
             disabled={loading || !email}
             className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
@@ -244,7 +245,7 @@ export default function RegisterPage() {
           </button>
 
           {/* Divider */}
-          <div className="relative my-6">
+          <div hidden={true} className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-300"></div>
             </div>
@@ -255,6 +256,7 @@ export default function RegisterPage() {
 
           {/* Google OAuth Button */}
           <button
+            hidden={true}
             onClick={handleGoogleSignUp}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl border-2 border-slate-300 hover:border-slate-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm"
