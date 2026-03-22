@@ -315,6 +315,23 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return null;
     }
 
+    /**
+     * True when last purchase YYYY-MM-DD falls in the current calendar month (Malaysia),
+     * matching app logic for Active / monthly buyer.
+     */
+    function isLastPurchaseInCurrentMalaysiaMonth(isoDateStr) {
+        if (!isoDateStr || typeof isoDateStr !== 'string') return false;
+        var match = isoDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (!match) return false;
+        var ly = parseInt(match[1], 10);
+        var lm = parseInt(match[2], 10);
+        var fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: 'numeric' });
+        var parts = fmt.formatToParts(new Date());
+        var cy = parseInt(parts.find(function (p) { return p.type === 'year'; }).value, 10);
+        var cm = parseInt(parts.find(function (p) { return p.type === 'month'; }).value, 10);
+        return ly === cy && lm === cm;
+    }
+
     function buildCustomerPayload(row, processed, userId) {
         var name = row.Name || row.name || null;
         var dob = row['D.O.B.'] || row['D.O.B'] || row.DOB || row.dob || null;
@@ -326,6 +343,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         Object.keys(row).forEach(function (k) {
             if (mainFields.indexOf(k) === -1 && k !== 'id' && k !== 'user_id') originalData[k] = row[k];
         });
+        var lastPurchaseIso = parseDate(row['Last Purchase Date'] || row['last_purchase_date'] || null);
         var payload = {
             user_id: userId,
             name: name,
@@ -341,6 +359,8 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             sender_name: (processed && processed.SenderName) || row.SenderName || null,
             save_name: (processed && processed.SaveName) || row.SaveName || null,
             pg_code: pgCode,
+            last_purchase_at: lastPurchaseIso,
+            is_monthly_buyer: isLastPurchaseInCurrentMalaysiaMonth(lastPurchaseIso),
             original_data: Object.keys(originalData).length ? originalData : null
         };
         return payload;
