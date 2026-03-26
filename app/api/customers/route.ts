@@ -111,11 +111,15 @@ export async function GET(request: Request) {
         const parseDob = (dob: unknown): { month: number; day: number } | null => {
           if (!dob) return null
           const s = typeof dob === 'string' ? dob : String(dob)
-          // Expected: YYYY-MM-DD from Postgres DATE
-          const parts = s.split('-')
-          if (parts.length < 3) return null
-          const month = Number(parts[1])
-          const day = Number(parts[2])
+
+          // Postgres DATE usually comes as `YYYY-MM-DD`, but be defensive:
+          // - may include time (e.g. `YYYY-MM-DDT00:00:00Z`)
+          // - may include extra text
+          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+          if (!m) return null
+
+          const month = Number(m[2])
+          const day = Number(m[3])
           if (!Number.isFinite(month) || !Number.isFinite(day)) return null
           return { month, day }
         }

@@ -177,6 +177,15 @@ export default function CustomersPage() {
   const [statusCounts, setStatusCounts] = useState<Record<AccountStatusKey, number>>(EMPTY_STATUS_COUNTS)
   const [statsLoading, setStatsLoading] = useState(false)
 
+  // Malaysia calendar labels for birthday filter (year excluded).
+  const malaysiaNow = new Date(Date.now() + 8 * 60 * 60 * 1000)
+  const todayDay = String(malaysiaNow.getUTCDate()).padStart(2, '0')
+  const todayMonth = String(malaysiaNow.getUTCMonth() + 1).padStart(2, '0')
+  const thisMonthName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    month: 'long',
+  }).format(new Date())
+
   // Google Contacts sync
   const [isGoogleConnected, setIsGoogleConnected] = useState(false)
   const [isCheckingConnection, setIsCheckingConnection] = useState(true)
@@ -708,8 +717,8 @@ export default function CustomersPage() {
               className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Birthdays</option>
-              <option value="today">Born Today</option>
-              <option value="month">Born This Month</option>
+              <option value="today">Born Today ({todayDay}/{todayMonth})</option>
+              <option value="month">Born This Month ({thisMonthName})</option>
             </select>
 
             {/* Account Status Filter */}
@@ -722,11 +731,11 @@ export default function CustomersPage() {
               className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Account Status</option>
-              <option value="active">Active account</option>
-              <option value="inactive">Inactive account</option>
-              <option value="free">Free account</option>
-              <option value="freeze">Freeze account</option>
-              <option value="temporary">Temporary account</option>
+              <option value="free">Free account (daftar, tak beli lebih 12 mo, ada PG)</option>
+              <option value="freeze">Freeze account (daftar, tak beli 3–12 mo, ada PG)</option>
+              <option value="inactive">Inactive account (daftar, belian terakhir bulan lepas)</option>
+              <option value="temporary">Temporary account (daftar, tiada PG code, tak beli)</option>
+              <option value="active">Active account (monthly buyer dalam bulan semasa)</option>
               <option value="unknown">Unknown</option>
             </select>
 

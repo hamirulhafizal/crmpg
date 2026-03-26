@@ -8,6 +8,7 @@ import {
   SCHEDULED_TITLE_BIRTHDAY,
   SCHEDULED_TITLE_FREE_FOLLOWUP,
   SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
+  normalizedScheduledTitle,
 } from '@/app/lib/scheduled-automation-titles'
 
 interface ScheduledMessage {
@@ -68,6 +69,20 @@ export default function AutomatedMessagesPage() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const [variables, setVariables] = useState<string[]>([])
   const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
+
+  // Prevent duplicated broadcast automations:
+  // If there's already a pending + enabled scheduled message with the same title,
+  // disable the corresponding option in the "Title" select.
+  const isBroadcastTitleOngoing = (scheduledTitle: string): boolean => {
+    const wanted = normalizedScheduledTitle(scheduledTitle)
+    return items.some((i) => {
+      if (i.status !== 'pending') return false
+      if (i.is_enable === false) return false // treat NULL as enabled (cron compatible)
+      if (editing && i.id === editing.id) return false // allow current row while editing
+      return normalizedScheduledTitle(i.title) === wanted
+    })
+  }
+
   const isBroadcastAutomation =
     titleType === 'birthday' ||
     titleType === 'inactive_followup' ||
@@ -488,13 +503,30 @@ export default function AutomatedMessagesPage() {
                       }}
                       className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="birthday">Birthday</option>
-                      <option value="inactive_followup">Inactive follow-up (last purchase anniversary)</option>
-                      <option value="free_followup">Free account follow-up (registration anniversary)</option>
-                      <option value="profile">Profile (coming soon)</option>
-                      <option value="skde">SKDE (coming soon)</option>
-                      <option value="gap">GAP (coming soon)</option>
-                      <option value="customer">Customer (custom title)</option>
+                      <option value="birthday" disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_BIRTHDAY)}>
+                        Birthday
+                      </option>
+                      <option
+                        value="free_followup"
+                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_FREE_FOLLOWUP)}
+                      >
+                        Free account follow-up (registration anniversary)
+                      </option>
+                      <option
+                        disabled
+                        value="inactive_followup"
+                        title={
+                          isBroadcastTitleOngoing(SCHEDULED_TITLE_INACTIVE_FOLLOWUP)
+                            ? 'Already scheduled'
+                            : 'Coming soon'
+                        }
+                      >
+                        Inactive follow-up (last purchase anniversary)
+                      </option>
+                      <option disabled value="profile">Profile (coming soon)</option>
+                      <option disabled value="skde">SKDE (coming soon)</option>
+                      <option disabled value="gap">GAP (coming soon)</option>
+                      {/* <option value="customer">Customer (custom title)</option> */}
                     </select>
 
                     {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
