@@ -454,12 +454,6 @@ export default function AutomatedMessagesPage() {
           )}
         </div>
 
-        {/* <div className="text-sm text-slate-500">
-          <Link href="/whatsapp-services" className="text-blue-600 hover:underline">
-            ← Back to WhatsApp Services
-          </Link>
-          {' '}(send birthday wishes and view today’s list)
-        </div> */}
       </main>
 
       {/* Create / Edit Modal */}
