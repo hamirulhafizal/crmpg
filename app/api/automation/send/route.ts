@@ -97,16 +97,80 @@ function renderCustomerTemplate(template: string, customer: Customer): string {
     .replace(/{RegistrationDate}/g, registration)
 }
 
+function humanizeWhatsAppText(input: string): string {
+  // Conservative "humanization" to reduce identical-looking automation.
+  // - Add occasional extra spaces between words.
+  // - Add occasional '.' variation at end of sentences ('.' -> '..'/'...').
+  const extraSpaceBetweenWordsProbability = 0.25
+
+  let text = input.replace(/(\S) (\S)/g, (match, a: string, b: string) => {
+    const twoSpaces = Math.random() < extraSpaceBetweenWordsProbability
+    return `${a}${twoSpaces ? '  ' : ' '}${b}`
+  })
+
+  // Only extend single '.' that are sentence-ending (followed by whitespace/end).
+  // We avoid touching '...' by ensuring the next char is NOT another '.'.
+  const extendDoubleProbability = 0.12 // '.' -> '..'
+  const extendTripleProbability = 0.03 // '.' -> '...'
+
+  text = text.replace(/(?<!\.)(\.)(?!\.)(\s*($|\n))/g, (match, dot: string, ws: string) => {
+    const r = Math.random()
+    if (r < extendTripleProbability) return `${dot}..${ws}`
+    if (r < extendDoubleProbability + extendTripleProbability) return `${dot}.${ws}`
+    return match
+  })
+
+  return text
+}
+
 async function sendWhatsAppMessage(session: string, phone: string, text: string) {
   const digits = normalisePhoneToMsisdn(phone)
   const chatId = `${digits}@c.us`
+  const humanText = humanizeWhatsAppText(text)
+
+  // WAHA "human-like" typing indicators.
+  // These should never block the actual send; if typing endpoints fail,
+  // we still proceed with sending the text.
+  const baseDelayMs = 900
+  const perCharExtraMs = 6
+  const maxDelayMs = 2600
+  const computed = baseDelayMs + Math.min(humanText.length, 250) * perCharExtraMs
+  const typingDelayMs = Math.max(baseDelayMs, Math.min(maxDelayMs, computed))
+  const minTyping = Math.max(400, Math.floor(typingDelayMs * 0.8))
+  const maxTyping = Math.max(minTyping + 50, Math.floor(typingDelayMs * 1.1))
+
+  try {
+    await wahaFetch('/api/startTyping', {
+      method: 'POST',
+      body: JSON.stringify({
+        session,
+        chatId,
+      }),
+    })
+  } catch (e) {
+    console.warn('startTyping failed; continuing with sendText:', e)
+  }
+
+  await randomDelayBetween(minTyping, maxTyping)
+
+  try {
+    await wahaFetch('/api/stopTyping', {
+      method: 'POST',
+      body: JSON.stringify({
+        session,
+        chatId,
+      }),
+    })
+  } catch (e) {
+    console.warn('stopTyping failed; continuing with sendText:', e)
+  }
 
   await wahaFetch('/api/sendText', {
     method: 'POST',
     body: JSON.stringify({
       session,
       chatId,
-      text,
+      text: humanText,
     }),
   })
 }
@@ -412,12 +476,12 @@ export async function GET(request: Request) {
                         'Error sending birthday WhatsApp message, attempting email fallback:',
                         sendErr
                       )
-                      // const emailSent = await sendEmailFallback(row.user_id, customer, message)
-                      // if (emailSent) {
-                      //   sent++
-                      // } else {
-                      //   failed++
-                      // }
+                      const emailSent = await sendEmailFallback(row.user_id, customer, message)
+                      if (emailSent) {
+                        sent++
+                      } else {
+                        failed++
+                      }
                     }
                   }
                 } catch (err) {
@@ -515,7 +579,7 @@ export async function GET(request: Request) {
                       const warmerText = renderCustomerTemplate(warmerTemplate, customer)
                       await sendWhatsAppMessage(sessionName, customer.phone!, warmerText)
                       // Delay between greeting and the main template.
-                      await randomDelayBetween(3000, 5000)
+                      await randomDelayBetween(30000, 60000)
                     }
 
                     await sendWhatsAppMessage(sessionName, customer.phone!, message)
@@ -547,7 +611,7 @@ export async function GET(request: Request) {
                 }
 
                 // Interval between customers to avoid bursts / rate limits.
-                await randomDelayBetween(1000, 2000)
+                await randomDelayBetween(30000, 60000)
               } catch (err) {
                 console.error('Error preparing follow-up message:', err)
                 failed++

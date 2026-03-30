@@ -108,20 +108,59 @@ export async function GET(request: Request) {
         const todayMonth = localTzNow.getUTCMonth() + 1 // 1-12
         const todayDate = localTzNow.getUTCDate() // 1-31
 
-        const parseDob = (dob: unknown): { month: number; day: number } | null => {
+        const parseDob = (
+          dob: unknown
+        ): { month: number; day: number } | null => {
           if (!dob) return null
-          const s = typeof dob === 'string' ? dob : String(dob)
+          const s = typeof dob === 'string' ? dob.trim() : String(dob).trim()
+          if (!s) return null
 
-          // Postgres DATE usually comes as `YYYY-MM-DD`, but be defensive:
-          // - may include time (e.g. `YYYY-MM-DDT00:00:00Z`)
-          // - may include extra text
-          const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
-          if (!m) return null
+          // 1) `YYYY-MM-DD...` (Postgres DATE or DATE with time)
+          const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+          if (m1) {
+            const month = Number(m1[2])
+            const day = Number(m1[3])
+            if (!Number.isFinite(month) || !Number.isFinite(day)) return null
+            return { month, day }
+          }
 
-          const month = Number(m[2])
-          const day = Number(m[3])
-          if (!Number.isFinite(month) || !Number.isFinite(day)) return null
-          return { month, day }
+          // 2) `Mar 26, 2025`-style (some imports / string DOB)
+          const m2 = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})/)
+          if (m2) {
+            const monthName = String(m2[1]).toLowerCase()
+            const day = Number(m2[2])
+            const monthMap: Record<string, number> = {
+              jan: 1,
+              january: 1,
+              feb: 2,
+              february: 2,
+              mar: 3,
+              march: 3,
+              apr: 4,
+              april: 4,
+              may: 5,
+              jun: 6,
+              june: 6,
+              jul: 7,
+              july: 7,
+              aug: 8,
+              august: 8,
+              sep: 9,
+              sept: 9,
+              september: 9,
+              oct: 10,
+              october: 10,
+              nov: 11,
+              november: 11,
+              dec: 12,
+              december: 12,
+            }
+            const month = monthMap[monthName]
+            if (!month || !Number.isFinite(day)) return null
+            return { month, day }
+          }
+
+          return null
         }
 
         filtered = filtered.filter((c: any) => {
