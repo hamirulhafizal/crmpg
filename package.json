@@ -15,6 +15,7 @@
     "canvas-confetti": "^1.9.4",
     "exceljs": "^4.4.0",
     "googleapis": "^166.0.0",
+    "malaysia-postcodes": "^2.7.3",
     "next": "15.5.7",
     "nodemailer": "^7.0.5",
     "openai": "^6.9.1",

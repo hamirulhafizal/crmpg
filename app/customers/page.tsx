@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
+import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
 import {
   getAccountStatusKey,
   getAccountStatusLabel,
@@ -928,9 +929,13 @@ export default function CustomersPage() {
 
         {/* Create/Edit Modal */}
         {(isCreating || isEditing) && editingCustomer && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              // {/* // on mobile and below screen size add padding 0 */}
+
+          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}>
             <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
+              
+              {/* // on mobile and below screen size add padding-bottom 2rem */}
+              <div className={`p-6 ${window.innerWidth < 768 ? 'pb-24' : 'pb-6'}`}>
                 <h2 className="text-xl font-semibold text-slate-900 mb-4">
                   {isCreating ? 'Create Customer' : 'Edit Customer'}
                 </h2>
@@ -1005,13 +1010,16 @@ export default function CustomersPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
-                    <input
-                      type="text"
+                    <label htmlFor="customer-location" className="block text-sm font-medium text-slate-700 mb-1">
+                      Location
+                    </label>
+                    <CustomerLocationCombobox
+                      id="customer-location"
                       value={editingCustomer.location || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, location: e.target.value })}
+                      onChange={(location) => setEditingCustomer({ ...editingCustomer, location })}
                       className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <p className="mt-1 text-xs text-slate-500">Locality / town (Malaysia). Type to search or enter any text.</p>
                   </div>
 
                   <div>
@@ -1431,8 +1439,12 @@ export default function CustomersPage() {
                   customers.map((customer) => {
                     const accountKey = getAccountStatusKey(customer)
                     return (
-                    <tr key={customer.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
+                    <tr
+                      key={customer.id}
+                      onClick={() => handleEdit(customer)}
+                      className="cursor-pointer hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={selectedIds.has(customer.id)}
@@ -1533,10 +1545,13 @@ export default function CustomersPage() {
                           : '-'}
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleEdit(customer)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleEdit(customer)
+                            }}
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                             title="Edit"
                           >
@@ -1545,7 +1560,10 @@ export default function CustomersPage() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => handleDelete(customer.id)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDelete(customer.id)
+                            }}
                             className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
                             title="Delete"
                           >
