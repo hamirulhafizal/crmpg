@@ -51,6 +51,7 @@ interface Customer {
   row_number: number | null
   original_data: any
   is_married: boolean | null
+  is_friend: boolean | null
   created_at: string
   updated_at: string
   last_purchase_at?: string | null
@@ -1058,6 +1059,16 @@ export default function CustomersPage() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      checked={!!editingCustomer.is_friend}
+                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_friend: e.target.checked })}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                    />
+                    <span className="text-sm font-medium text-slate-700">Friend</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
                       checked={parseProfileVerified(editingCustomer.original_data) === true}
                       onChange={(e) =>
                         setEditingCustomer({
@@ -1349,6 +1360,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Age</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Date of Birth</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Friend</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Status</th>
@@ -1411,7 +1423,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={18} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={19} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -1450,6 +1462,9 @@ export default function CustomersPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-800">
                         {customer.is_married === true ? 'Yes' : customer.is_married === false ? 'No' : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-800">
+                        {customer.is_friend === true ? 'Yes' : customer.is_friend === false ? 'No' : '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-800">
                         {parseProfileVerified(customer.original_data) === true

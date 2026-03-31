@@ -321,6 +321,7 @@ export async function POST(request: Request) {
         'gender', 'ethnicity', 'age', 'prefix', 'first_name',
         'sender_name', 'save_name', 'pg_code', 'row_number',
         'is_married',
+        'is_friend',
         // legacy (column removed): we normalize into original_data["Profile Verified"]
         'is_profile_verified'
       ]
@@ -370,6 +371,7 @@ export async function POST(request: Request) {
         pg_code: customer.PGCode || customer.pg_code || customer.PGCode || null,
         row_number: customer.row_number || customer.rowNumber || customer['row_number'] || null,
         is_married: customer.is_married === true || customer.is_married === 'true',
+        is_friend: customer.is_friend === true || customer.is_friend === 'true',
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
       }
     })

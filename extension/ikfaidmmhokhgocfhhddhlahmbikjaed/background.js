@@ -363,7 +363,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var pgCode = row.PGCode || row.pg_code || null;
         var email = row.Email || row.email || null;
         var phone = row.Telephone || row.phone || null;
-        var mainFields = ['name', 'dob', 'email', 'phone', 'location', 'gender', 'ethnicity', 'age', 'prefix', 'first_name', 'sender_name', 'save_name', 'pg_code', 'Name', 'Email', 'Telephone', 'D.O.B.', 'PGCode', 'Gender', 'Ethnicity', 'Age', 'Prefix', 'FirstName', 'SenderName', 'SaveName', 'Location'];
+        var mainFields = ['name', 'dob', 'email', 'phone', 'location', 'gender', 'ethnicity', 'age', 'prefix', 'first_name', 'sender_name', 'save_name', 'pg_code', 'is_friend', 'Name', 'Email', 'Telephone', 'D.O.B.', 'PGCode', 'Gender', 'Ethnicity', 'Age', 'Prefix', 'FirstName', 'SenderName', 'SaveName', 'Location'];
         var originalData = {};
         Object.keys(row).forEach(function (k) {
             if (mainFields.indexOf(k) === -1 && k !== 'id' && k !== 'user_id') originalData[k] = row[k];
@@ -386,6 +386,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             pg_code: pgCode,
             last_purchase_at: lastPurchaseIso,
             is_monthly_buyer: isLastPurchaseInCurrentMalaysiaMonth(lastPurchaseIso),
+            is_friend: false,
             original_data: Object.keys(originalData).length ? originalData : null
         };
         return payload;
@@ -444,7 +445,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var existingMap = {};
         if (pgCodes.length > 0) {
             setProgress(2, 'Checking existing...');
-            var url = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&select=id,pg_code';
+            var url = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&select=id,pg_code,is_friend';
             var headers = { apikey: anonKey, Authorization: 'Bearer ' + accessToken };
             if (pgCodes.length <= 100) {
                 url += '&pg_code=in.(' + pgCodes.map(function (c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',') + ')';
@@ -454,18 +455,24 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 if (res.ok) {
                     var list = await res.json();
                     (list || []).forEach(function (c) {
-                        if (c.pg_code) existingMap[c.pg_code] = c.id;
+                        if (c.pg_code) {
+                            existingMap[c.pg_code] = { id: c.id, is_friend: c.is_friend === true };
+                        }
                     });
                 }
             } catch (e) { /* ignore */ }
             if (pgCodes.length > 100) {
                 for (var b = 0; b < pgCodes.length; b += 100) {
                     var batch = pgCodes.slice(b, b + 100);
-                    var batchUrl = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&pg_code=in.(' + batch.map(function (c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',') + ')&select=id,pg_code';
+                    var batchUrl = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&pg_code=in.(' + batch.map(function (c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',') + ')&select=id,pg_code,is_friend';
                     var r = await fetch(batchUrl, { headers: headers });
                     if (r.ok) {
                         var arr = await r.json();
-                        (arr || []).forEach(function (c) { if (c.pg_code) existingMap[c.pg_code] = c.id; });
+                        (arr || []).forEach(function (c) {
+                            if (c.pg_code) {
+                                existingMap[c.pg_code] = { id: c.id, is_friend: c.is_friend === true };
+                            }
+                        });
                     }
                 }
             }
@@ -491,10 +498,18 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
             var payload = buildCustomerPayload(row, processResult, userId);
             var pgCode = (payload.pg_code || '').trim();
-            var existingId = pgCode ? existingMap[pgCode] : null;
+            var existing = pgCode ? existingMap[pgCode] : null;
+            var existingId = existing && existing.id;
 
             try {
                 if (existingId) {
+                    var patchBody = Object.assign({}, payload);
+                    delete patchBody.is_friend;
+                    if (pgCode && existing.is_friend === true) {
+                        delete patchBody.name;
+                        delete patchBody.sender_name;
+                        delete patchBody.save_name;
+                    }
                     var patchRes = await fetch(supabaseUrl + '/rest/v1/customers?id=eq.' + existingId, {
                         method: 'PATCH',
                         headers: {
@@ -503,7 +518,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             'Content-Type': 'application/json',
                             Prefer: 'return=minimal'
                         },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(patchBody)
                     });
                     if (patchRes.ok) updated++;
                 } else {
@@ -521,7 +536,12 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                         var created = await postRes.json();
                         if (created && created[0] && created[0].id) {
                             inserted++;
-                            if (pgCode) existingMap[pgCode] = created[0].id;
+                            if (pgCode) {
+                                existingMap[pgCode] = {
+                                    id: created[0].id,
+                                    is_friend: created[0].is_friend === true
+                                };
+                            }
                         }
                     }
                 }
