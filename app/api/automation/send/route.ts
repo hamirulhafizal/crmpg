@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
-import { wahaFetch } from '@/app/lib/waha'
+import { getWahaConfig, wahaFetch } from '@/app/lib/waha'
 import {
   formatLastPurchaseForTemplate,
   formatRegistrationForTemplate,
@@ -189,63 +189,86 @@ function normalisePhoneToMsisdn(phone: string): string {
   return digits
 }
 
-async function checkWhatsAppNumberExists(session: string, phone: string): Promise<boolean> {
+/** WAHA `/api/contacts/check-exists` result — same auth as `wahaFetch`. */
+type WhatsAppContactCheck =
+  | { ok: true; numberExists: boolean }
+  | { ok: false; reason: string }
+
+async function checkWhatsAppNumberExists(session: string, phone: string): Promise<WhatsAppContactCheck> {
+  const { baseUrl, apiKey } = getWahaConfig()
+  if (!baseUrl || !apiKey) {
+    console.warn('WAHA_API_BASE_URL or WAHA_API_KEY missing; contact check unavailable')
+    return { ok: false, reason: 'waha_not_configured' }
+  }
+
   try {
     const digits = normalisePhoneToMsisdn(phone)
-    const url = `https://${process.env.NEXT_PUBLIC_WAHA_URL}/api/contacts/check-exists?phone=${encodeURIComponent(
-      digits
-    )}&session=${encodeURIComponent(session)}`
+    const url = `${baseUrl}/api/contacts/check-exists?phone=${encodeURIComponent(digits)}&session=${encodeURIComponent(session)}`
 
-    const res = await fetch(url)
+    const res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+    })
 
     if (!res.ok) {
-      console.error('Failed to check WhatsApp contact existence, proceeding with send:', res.status)
-      // Fail-open to avoid blocking sends if the external API is down.
-      return true
+      console.error('WhatsApp contact check HTTP error:', res.status)
+      return { ok: false, reason: `http_${res.status}` }
     }
 
-    const data: any = await res.json().catch(() => null)
-
-    // Expected WAHA response:
-    // { "numberExists": false }
-    // { "numberExists": true, "chatId": "80028243066938@lid" }
-    if (!data || typeof data.numberExists !== 'boolean') {
-      // If the shape is unexpected, fail-open so messages still go out.
-      return true
+    const data: unknown = await res.json().catch(() => null)
+    const rec = data && typeof data === 'object' ? (data as Record<string, unknown>) : null
+    if (rec && typeof rec.numberExists === 'boolean') {
+      return { ok: true, numberExists: rec.numberExists }
     }
 
-    return data.numberExists
+    console.error('WhatsApp contact check: unexpected response shape')
+    return { ok: false, reason: 'bad_response' }
   } catch (err) {
-    console.error('Error calling WhatsApp contact check API, proceeding with send:', err)
-    // Fail-open if the check itself fails.
-    return true
+    console.error('WhatsApp contact check failed:', err)
+    return { ok: false, reason: 'network_or_fetch' }
   }
 }
 
+function pickGmailAppPassword(row: Record<string, unknown> | null | undefined): string | null {
+  if (!row) return null
+  const a = row.gmail_app_password
+  const b = row.gmaill_app_password
+  const raw = (typeof a === 'string' ? a : typeof b === 'string' ? b : '').trim()
+  return raw.length > 0 ? raw : null
+}
+
 async function getEmailFallbackConfig(userId: string): Promise<EmailFallbackConfig | null> {
-  // Look up Gmail app password from WAHA user sessions
   const { data: sessionRow, error: sessionError } = await supabaseAdmin
     .from('waha_user_sessions')
-    .select('gmaill_app_password, gmail_message')
+    .select('*')
     .eq('user_id', userId)
-    .not('gmaill_app_password', 'is', null)
     .limit(1)
     .maybeSingle()
 
-  if (sessionError || !sessionRow?.gmaill_app_password) {
+  if (sessionError || !sessionRow) {
     return null
   }
 
-  // Use the authenticated user's primary email as the Gmail account
+  const row = sessionRow as Record<string, unknown>
+  const appPassword = pickGmailAppPassword(row)
+  if (!appPassword) {
+    return null
+  }
+
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
   if (error || !data?.user?.email) {
     return null
   }
 
+  const gmailTemplate =
+    typeof row.gmail_message === 'string' ? row.gmail_message : row.gmail_message != null ? String(row.gmail_message) : null
+
   return {
     fromEmail: data.user.email,
-    appPassword: sessionRow.gmaill_app_password,
-    gmailTemplate: (sessionRow as any).gmail_message || null,
+    appPassword,
+    gmailTemplate,
   }
 }
 
@@ -454,36 +477,53 @@ export async function GET(request: Request) {
 
                   const message = renderCustomerTemplate(row.message, customer)
 
-                  const exists = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+                  const contactCheck = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+                  const tryEmail = () => sendEmailFallback(row.user_id, customer, message)
+                  const tryWa = () => sendWhatsAppMessage(sessionName, customer.phone!, message)
 
-                  if (!exists) {
-                    console.log(
-                      'WhatsApp contact does not exist for customer, using email fallback:',
-                      customer.id
-                    )
-                    const emailSent = await sendEmailFallback(row.user_id, customer, message)
-                    if (emailSent) {
-                      sent++
-                    } else {
-                      failed++
-                    }
-                  } else {
+                  let birthdayDelivered = false
+                  if (contactCheck.ok && contactCheck.numberExists) {
                     try {
-                      await sendWhatsAppMessage(sessionName, customer.phone!, message)
-                      sent++
+                      await tryWa()
+                      birthdayDelivered = true
                     } catch (sendErr) {
                       console.error(
                         'Error sending birthday WhatsApp message, attempting email fallback:',
                         sendErr
                       )
-                      const emailSent = await sendEmailFallback(row.user_id, customer, message)
-                      if (emailSent) {
-                        sent++
-                      } else {
-                        failed++
+                      birthdayDelivered = await tryEmail()
+                    }
+                  } else if (contactCheck.ok && !contactCheck.numberExists) {
+                    console.log('WhatsApp number not on WhatsApp; trying email first:', customer.id)
+                    birthdayDelivered = await tryEmail()
+                    if (!birthdayDelivered) {
+                      try {
+                        await tryWa()
+                        birthdayDelivered = true
+                      } catch {
+                        birthdayDelivered = false
+                      }
+                    }
+                  } else {
+                    console.log(
+                      'WhatsApp contact check unavailable; trying email first:',
+                      customer.id,
+                      !contactCheck.ok ? contactCheck.reason : ''
+                    )
+                    birthdayDelivered = await tryEmail()
+                    if (!birthdayDelivered) {
+                      try {
+                        await tryWa()
+                        birthdayDelivered = true
+                      } catch (waErr) {
+                        console.error('Birthday: email skipped/failed and WhatsApp failed:', waErr)
+                        birthdayDelivered = false
                       }
                     }
                   }
+
+                  if (birthdayDelivered) sent++
+                  else failed++
                 } catch (err) {
                   console.error('Error preparing birthday message:', err)
                   failed++
@@ -550,39 +590,36 @@ export async function GET(request: Request) {
               try {
                 const message = renderCustomerTemplate(followupTemplate, customer)
 
-                const exists = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+                const contactCheck = await checkWhatsAppNumberExists(sessionName, customer.phone!)
 
-                let delivered = false
-                if (!exists) {
-                  console.log(
-                    'WhatsApp contact does not exist for customer, using email fallback:',
-                    customer.id
-                  )
-                  delivered = await sendEmailFallback(row.user_id, customer, message)
-                } else {
-                  try {
-                    if (warmupEnabled) {
-                      const isMalay = (customer.ethnicity || '').toLowerCase() === 'malay'
-                      const timeGreeting =
-                        localHour < 12
-                          ? 'Selamat Pagi'
-                          : localHour < 15
-                            ? 'Selamat Tengahari'
-                            : localHour < 18
+                const sendFollowUpWhatsApp = async () => {
+                  if (warmupEnabled) {
+                    const isMalay = (customer.ethnicity || '').toLowerCase() === 'malay'
+                    const timeGreeting =
+                      localHour < 12
+                        ? 'Selamat Pagi'
+                        : localHour < 15
+                          ? 'Selamat Tengahari'
+                          : localHour < 18
                             ? 'Selamat Petang'
                             : 'Selamat Malam'
 
-                      const warmerTemplate = isMalay
-                        ? 'Salam, {SenderName}'
-                        : `${timeGreeting}, {SenderName}`
+                    const warmerTemplate = isMalay
+                      ? 'Salam, {SenderName}'
+                      : `${timeGreeting}, {SenderName}`
 
-                      const warmerText = renderCustomerTemplate(warmerTemplate, customer)
-                      await sendWhatsAppMessage(sessionName, customer.phone!, warmerText)
-                      // Delay between greeting and the main template.
-                      await randomDelayBetween(30000, 60000)
-                    }
+                    const warmerText = renderCustomerTemplate(warmerTemplate, customer)
+                    await sendWhatsAppMessage(sessionName, customer.phone!, warmerText)
+                    await randomDelayBetween(30000, 60000)
+                  }
 
-                    await sendWhatsAppMessage(sessionName, customer.phone!, message)
+                  await sendWhatsAppMessage(sessionName, customer.phone!, message)
+                }
+
+                let delivered = false
+                if (contactCheck.ok && contactCheck.numberExists) {
+                  try {
+                    await sendFollowUpWhatsApp()
                     delivered = true
                   } catch (sendErr) {
                     console.error(
@@ -590,6 +627,32 @@ export async function GET(request: Request) {
                       sendErr
                     )
                     delivered = await sendEmailFallback(row.user_id, customer, message)
+                  }
+                } else if (contactCheck.ok && !contactCheck.numberExists) {
+                  console.log('Follow-up: number not on WhatsApp; email first:', customer.id)
+                  delivered = await sendEmailFallback(row.user_id, customer, message)
+                  if (!delivered) {
+                    try {
+                      await sendFollowUpWhatsApp()
+                      delivered = true
+                    } catch {
+                      delivered = false
+                    }
+                  }
+                } else {
+                  console.log(
+                    'Follow-up: contact check unavailable; email first:',
+                    customer.id,
+                    !contactCheck.ok ? contactCheck.reason : ''
+                  )
+                  delivered = await sendEmailFallback(row.user_id, customer, message)
+                  if (!delivered) {
+                    try {
+                      await sendFollowUpWhatsApp()
+                      delivered = true
+                    } catch {
+                      delivered = false
+                    }
                   }
                 }
 
