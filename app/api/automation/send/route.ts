@@ -394,12 +394,23 @@ export async function GET(request: Request) {
 
     if (lockError) {
       console.error('Error locking scheduled messages:', lockError)
+      // Do not continue with unlocked rows; this can cause duplicate sends
+      // when another worker run successfully locks/processes the same rows.
+      return NextResponse.json({ error: 'Failed to lock scheduled messages' }, { status: 500 })
     }
 
     // 3. Resolve WAHA sessions per user so we know which session to send from.
     const lockedIdSet = new Set((lockedRows || []).map((r) => r.id))
-    // If locking failed, fall back to processing what we fetched (worst case a later run retries).
-    const dueToProcess = lockError ? due : (due as ScheduledMessageRow[]).filter((r) => lockedIdSet.has(r.id))
+    const dueToProcess = (due as ScheduledMessageRow[]).filter((r) => lockedIdSet.has(r.id))
+
+    if (dueToProcess.length === 0) {
+      return NextResponse.json({
+        success: true,
+        processed: 0,
+        sent: 0,
+        failed: 0,
+      })
+    }
 
     const userIds = Array.from(new Set((dueToProcess as any[]).map((m) => m.user_id))) as string[]
     const { data: sessionRows, error: sessionError } = await supabase
@@ -533,9 +544,10 @@ export async function GET(request: Request) {
             break
           }
 
-          case 'inactive follow-up':
+          //  case 'inactive follow-up': // not used
           case 'free account follow-up': {
-            const kind = title === 'inactive follow-up' ? 'inactive' : 'free'
+            // const kind = title === 'inactive follow-up' ? 'inactive' : 'free'
+            const kind = 'free'
 
             const { data: sentRows, error: sentErr } = await supabaseAdmin
               .from('followup_campaign_sends')
