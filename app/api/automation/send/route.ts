@@ -446,7 +446,7 @@ export async function GET(request: Request) {
         const hasPhone = !!row.phone && row.phone.trim() !== ''
         const isDailyRecurringAutomation =
           title === 'birthday' ||
-          title === 'inactive follow-up' ||
+          // title === 'inactive follow-up' ||
           title === 'free account follow-up'
 
         const sessionName = sessionByUser.get(row.user_id)
@@ -544,9 +544,8 @@ export async function GET(request: Request) {
             break
           }
 
-          //  case 'inactive follow-up': // not used
+          //case 'inactive follow-up':
           case 'free account follow-up': {
-            // const kind = title === 'inactive follow-up' ? 'inactive' : 'free'
             const kind = 'free'
 
             const { data: sentRows, error: sentErr } = await supabaseAdmin
@@ -580,12 +579,12 @@ export async function GET(request: Request) {
             const candidates = (allCustomers || []).filter((c: Customer) => {
               if (alreadySent.has(c.id)) return false
               const status = getAccountStatusKey(c)
-              if (kind === 'inactive') {
-                if (status !== 'inactive') return false
-                const parts = getLastPurchaseUtcMonthDate(c)
-                if (!parts) return false
-                return parts.month === todayMonth && parts.day === todayDate
-              }
+              // if (kind === 'inactive') {
+              //   if (status !== 'inactive') return false
+              //   const parts = getLastPurchaseUtcMonthDate(c)
+              //   if (!parts) return false
+              //   return parts.month === todayMonth && parts.day === todayDate
+              // }
               if (status !== 'free') return false
               const regParts = getRegistrationUtcMonthDate(c.original_data, c.created_at)
               if (!regParts) return false
