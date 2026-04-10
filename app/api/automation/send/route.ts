@@ -69,6 +69,13 @@ interface EmailFallbackConfig {
   gmailTemplate: string | null
 }
 
+function isMissingIsEnableColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  if (error.code === '42703') return true
+  const msg = (error.message || '').toLowerCase()
+  return msg.includes('is_enable') && msg.includes('does not exist')
+}
+
 function renderCustomerTemplate(template: string, customer: Customer): string {
   if (!template) return ''
 
@@ -335,7 +342,7 @@ export async function GET(request: Request) {
       .from('scheduled_messages')
       .select('id, is_enable')
       .limit(1)
-    if (isEnableProbeError?.code === '42703') {
+    if (isMissingIsEnableColumn(isEnableProbeError || undefined)) {
       supportsIsEnable = false
       console.warn(
         'scheduled_messages.is_enable is unavailable in this environment; proceeding without enable filter'
@@ -358,7 +365,24 @@ export async function GET(request: Request) {
       // Treat NULL as enabled for backward compatibility when the column was newly added.
       fetchQuery = fetchQuery.or('is_enable.eq.true,is_enable.is.null')
     }
-    const { data: due, error: fetchError } = await fetchQuery
+    let { data: due, error: fetchError } = await fetchQuery
+
+    if (fetchError && isMissingIsEnableColumn(fetchError || undefined)) {
+      supportsIsEnable = false
+      console.warn(
+        'Fetch query referenced scheduled_messages.is_enable but column is missing; retrying without enable filter'
+      )
+      const retry = await supabase
+        .from('scheduled_messages')
+        .select('*')
+        .eq('status', 'pending')
+        .lte('scheduled_at', nowIso)
+        .is('locked_at', null)
+        .order('scheduled_at', { ascending: true })
+        .limit(BATCH_SIZE)
+      due = retry.data
+      fetchError = retry.error
+    }
 
 
     if (fetchError) {
@@ -390,7 +414,23 @@ export async function GET(request: Request) {
       // Keep the same NULL=enabled semantics as the fetch query.
       lockQuery = lockQuery.or('is_enable.eq.true,is_enable.is.null')
     }
-    const { data: lockedRows, error: lockError } = await lockQuery
+    let { data: lockedRows, error: lockError } = await lockQuery
+
+    if (lockError && isMissingIsEnableColumn(lockError || undefined)) {
+      supportsIsEnable = false
+      console.warn(
+        'Lock query referenced scheduled_messages.is_enable but column is missing; retrying without enable filter'
+      )
+      const retry = await supabase
+        .from('scheduled_messages')
+        .update({ locked_at: lockIso })
+        .in('id', ids)
+        .eq('status', 'pending')
+        .is('locked_at', null)
+        .select('id')
+      lockedRows = retry.data
+      lockError = retry.error
+    }
 
     if (lockError) {
       console.error('Error locking scheduled messages:', lockError)
