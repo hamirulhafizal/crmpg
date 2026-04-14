@@ -13,6 +13,7 @@ import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
+const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -74,11 +75,25 @@ interface WahaSessionInfo {
   status?: string
 }
 
+interface WahaUserSessionRow {
+  user_id: string
+  session_name: string
+  last_known_waha_status?: string | null
+  session_expired_notified_at?: string | null
+}
+
 function isMissingIsEnableColumn(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false
   if (error.code === '42703') return true
   const msg = (error.message || '').toLowerCase()
   return msg.includes('is_enable') && msg.includes('does not exist')
+}
+
+function isMissingColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  if (error.code === '42703') return true
+  const msg = (error.message || '').toLowerCase()
+  return msg.includes('does not exist')
 }
 
 function renderCustomerTemplate(template: string, customer: Customer): string {
@@ -328,6 +343,25 @@ function isExpiredWahaSessionStatus(status: string | null | undefined): boolean 
   return normalized === 'STOPPED' || normalized === 'FAILED'
 }
 
+function normalizeWahaStatus(status: string | null | undefined): string {
+  return (status || '').trim().toUpperCase()
+}
+
+function shouldSendExpiredNotice(
+  previousStatus: string | null | undefined,
+  currentStatus: string | null | undefined,
+  lastNotifiedAt: string | null | undefined
+): boolean {
+  if (!isExpiredWahaSessionStatus(currentStatus)) return false
+  if (!isExpiredWahaSessionStatus(previousStatus)) return true
+  if (!lastNotifiedAt) return true
+
+  const last = Date.parse(lastNotifiedAt)
+  if (Number.isNaN(last)) return true
+
+  return Date.now() - last >= SESSION_EXPIRED_NOTICE_COOLDOWN_MS
+}
+
 async function sendWahaSessionExpiredNotice(userId: string, sessionName: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
   if (error || !data?.user?.email) {
@@ -512,30 +546,77 @@ export async function GET(request: Request) {
     }
 
     const userIds = Array.from(new Set((dueToProcess as any[]).map((m) => m.user_id))) as string[]
-    const { data: sessionRows, error: sessionError } = await supabase
+    let supportsSessionExpiryTracking = true
+    let sessionRows: WahaUserSessionRow[] | null = null
+    let sessionError: { code?: string; message?: string } | null = null
+
+    const sessionQuery = await supabase
       .from('waha_user_sessions')
-      .select('user_id, session_name')
+      .select('user_id, session_name, last_known_waha_status, session_expired_notified_at')
       .in('user_id', userIds)
+    sessionRows = sessionQuery.data as WahaUserSessionRow[] | null
+    sessionError = sessionQuery.error as { code?: string; message?: string } | null
+
+    if (sessionError && isMissingColumn(sessionError || undefined)) {
+      supportsSessionExpiryTracking = false
+      const retry = await supabase
+        .from('waha_user_sessions')
+        .select('user_id, session_name')
+        .in('user_id', userIds)
+      sessionRows = retry.data as WahaUserSessionRow[] | null
+      sessionError = retry.error as { code?: string; message?: string } | null
+    }
 
     if (sessionError) {
       console.error('Error fetching WAHA sessions for users:', sessionError)
     }
 
-    const sessionByUser = new Map<string, string>()
-    for (const s of sessionRows || []) {
+    const sessionByUser = new Map<string, WahaUserSessionRow>()
+    for (const s of (sessionRows || []) as WahaUserSessionRow[]) {
       if (!sessionByUser.has(s.user_id) && s.session_name) {
-        sessionByUser.set(s.user_id, s.session_name)
+        sessionByUser.set(s.user_id, s)
       }
     }
 
     const usersWithExpiredSession = new Set<string>()
-    for (const [userId, sessionName] of sessionByUser.entries()) {
+    const usersToNotifyExpiredSession: Array<{ userId: string; sessionName: string }> = []
+    for (const [userId, sessionRow] of sessionByUser.entries()) {
+      const sessionName = sessionRow.session_name
       try {
         const waSession = await wahaFetch<WahaSessionInfo>(
           `/api/sessions/${encodeURIComponent(sessionName)}`
         )
-        if (isExpiredWahaSessionStatus(waSession?.status)) {
+        const currentStatus = normalizeWahaStatus(waSession?.status)
+        if (isExpiredWahaSessionStatus(currentStatus)) {
           usersWithExpiredSession.add(userId)
+        }
+
+        const notifyNow = shouldSendExpiredNotice(
+          sessionRow.last_known_waha_status,
+          currentStatus,
+          sessionRow.session_expired_notified_at
+        )
+        if (notifyNow) {
+          usersToNotifyExpiredSession.push({ userId, sessionName })
+        }
+
+        if (supportsSessionExpiryTracking) {
+          const updatePayload: Record<string, string | null> = {
+            last_known_waha_status: currentStatus || null,
+          }
+          if (notifyNow) {
+            updatePayload.session_expired_notified_at = new Date().toISOString()
+          }
+
+          const { error: trackErr } = await supabase
+            .from('waha_user_sessions')
+            .update(updatePayload)
+            .eq('user_id', userId)
+            .eq('session_name', sessionName)
+
+          if (trackErr) {
+            console.error('Failed updating WAHA session status tracking:', userId, sessionName, trackErr)
+          }
         }
       } catch (waErr) {
         console.error(
@@ -547,10 +628,8 @@ export async function GET(request: Request) {
     }
 
     if (usersWithExpiredSession.size > 0) {
-      for (const userId of usersWithExpiredSession) {
-        const sessionName = sessionByUser.get(userId)
-        if (!sessionName) continue
-        await sendWahaSessionExpiredNotice(userId, sessionName)
+      for (const item of usersToNotifyExpiredSession) {
+        await sendWahaSessionExpiredNotice(item.userId, item.sessionName)
       }
 
       const blockedIds = dueToProcess
@@ -596,7 +675,8 @@ export async function GET(request: Request) {
           // title === 'inactive follow-up' ||
           title === 'free account follow-up'
 
-        const sessionName = sessionByUser.get(row.user_id)
+        const session = sessionByUser.get(row.user_id)
+        const sessionName = session?.session_name
         if (!sessionName) {
           console.warn('No WAHA session configured for user, skipping message row:', row.user_id, row.id)
           failed++
