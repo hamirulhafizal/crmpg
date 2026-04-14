@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -12,7 +12,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+  const requestedNext = searchParams.get('next') || '/dashboard'
+  const nextPath = requestedNext.startsWith('/') ? requestedNext : '/dashboard'
 
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,7 +26,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
         },
       })
 
@@ -65,8 +68,8 @@ export default function LoginPage() {
       // Wait a moment for session to be set
       await new Promise(resolve => setTimeout(resolve, 100))
 
-      // Redirect to dashboard on success
-      router.push('/dashboard')
+      // Redirect to requested path on success
+      router.push(nextPath)
       router.refresh() // Refresh to ensure session is loaded
     } catch (error: any) {
       console.error('Login failed:', error)
@@ -99,7 +102,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
         },
       })
 

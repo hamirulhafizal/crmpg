@@ -69,6 +69,11 @@ interface EmailFallbackConfig {
   gmailTemplate: string | null
 }
 
+interface WahaSessionInfo {
+  name: string
+  status?: string
+}
+
 function isMissingIsEnableColumn(error: { code?: string; message?: string } | null | undefined): boolean {
   if (!error) return false
   if (error.code === '42703') return true
@@ -318,6 +323,60 @@ async function sendEmailFallback(userId: string, customer: Customer, text: strin
   }
 }
 
+function isExpiredWahaSessionStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toUpperCase()
+  return normalized === 'STOPPED' || normalized === 'FAILED'
+}
+
+async function sendWahaSessionExpiredNotice(userId: string, sessionName: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+  if (error || !data?.user?.email) {
+    console.error('Unable to load user email for WAHA expiry notice:', error)
+    return false
+  }
+
+  const smtpUser = process.env.GMAIL_USER
+  const smtpPass = process.env.GMAIL_PASS
+  if (!smtpUser || !smtpPass) {
+    console.error('GMAIL_USER/GMAIL_PASS missing; cannot send WAHA expiry notice email')
+    return false
+  }
+
+  const loginUrl = 'https://crmpg.vercel.app/login?next=%2Fwaha-integration'
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      service: 'gmail',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    })
+
+    await transporter.sendMail({
+      from: smtpUser,
+      to: data.user.email,
+      subject: 'Action needed: WAHA session expired',
+      text: [
+        'Your WAHA session is no longer active and needs to be reconnected.',
+        '',
+        `Session: ${sessionName}`,
+        '',
+        'Please log in and rescan your WAHA QR code here:',
+        loginUrl,
+      ].join('\n'),
+    })
+
+    return true
+  } catch (err) {
+    console.error('Failed to send WAHA session expired notice email:', err)
+    return false
+  }
+}
+
 // Use GET so you can call this via an HTTP GET (e.g. from Supabase cron if you switch to net.http_get).
 // The logic is identical; only the HTTP verb changes.
 export async function GET(request: Request) {
@@ -469,6 +528,54 @@ export async function GET(request: Request) {
       }
     }
 
+    const usersWithExpiredSession = new Set<string>()
+    for (const [userId, sessionName] of sessionByUser.entries()) {
+      try {
+        const waSession = await wahaFetch<WahaSessionInfo>(
+          `/api/sessions/${encodeURIComponent(sessionName)}`
+        )
+        if (isExpiredWahaSessionStatus(waSession?.status)) {
+          usersWithExpiredSession.add(userId)
+        }
+      } catch (waErr) {
+        console.error(
+          'Unable to load WAHA session status from WAHA API:',
+          sessionName,
+          waErr
+        )
+      }
+    }
+
+    if (usersWithExpiredSession.size > 0) {
+      for (const userId of usersWithExpiredSession) {
+        const sessionName = sessionByUser.get(userId)
+        if (!sessionName) continue
+        await sendWahaSessionExpiredNotice(userId, sessionName)
+      }
+
+      const blockedIds = dueToProcess
+        .filter((row) => usersWithExpiredSession.has(row.user_id))
+        .map((row) => row.id)
+      if (blockedIds.length > 0) {
+        await supabase
+          .from('scheduled_messages')
+          .update({ locked_at: null })
+          .in('id', blockedIds)
+      }
+    }
+
+    const processableRows = dueToProcess.filter((row) => !usersWithExpiredSession.has(row.user_id))
+
+    if (processableRows.length === 0) {
+      return NextResponse.json({
+        success: true,
+        processed: 0,
+        sent: 0,
+        failed: 0,
+        skippedExpiredSessions: dueToProcess.length,
+      })
+    }
+
     let sent = 0
     let failed = 0
 
@@ -480,7 +587,7 @@ export async function GET(request: Request) {
     const todayMonth = localTzNow.getUTCMonth()
     const todayDate = localTzNow.getUTCDate()
 
-    for (const row of dueToProcess as ScheduledMessageRow[]) {
+    for (const row of processableRows as ScheduledMessageRow[]) {
       try {
         const title = normalizedScheduledTitle(row.title)
         const hasPhone = !!row.phone && row.phone.trim() !== ''
@@ -787,9 +894,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      processed: dueToProcess.length,
+      processed: processableRows.length,
       sent,
       failed,
+      skippedExpiredSessions: dueToProcess.length - processableRows.length,
     })
   } catch (err: any) {
     console.error('Error in /api/automation/send worker:', err)

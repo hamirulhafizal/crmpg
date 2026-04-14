@@ -57,7 +57,10 @@ export async function updateSession(request: NextRequest) {
     (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/register')
   ) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    const next = request.nextUrl.searchParams.get('next')
+    const safeNext = next && next.startsWith('/') ? next : '/dashboard'
+    url.pathname = safeNext
+    url.search = ''
     return NextResponse.redirect(url)
   }
 

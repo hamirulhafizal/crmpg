@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const isComputedDateSort =
-      sortBy === 'register_date' || sortBy === 'last_purchase_date'
+      sortBy === 'register_date' || sortBy === 'last_purchase_date' || sortBy === 'dob'
 
     // Build query
     let query = supabase
@@ -207,11 +207,15 @@ export async function GET(request: Request) {
           const avRaw =
             sortBy === 'register_date'
               ? getRegistrationUtcYmd(a?.original_data, a?.created_at)
-              : getLastPurchaseUtcYmd(a)
+              : sortBy === 'dob'
+                ? (typeof a?.dob === 'string' ? a.dob : null)
+                : getLastPurchaseUtcYmd(a)
           const bvRaw =
             sortBy === 'register_date'
               ? getRegistrationUtcYmd(b?.original_data, b?.created_at)
-              : getLastPurchaseUtcYmd(b)
+              : sortBy === 'dob'
+                ? (typeof b?.dob === 'string' ? b.dob : null)
+                : getLastPurchaseUtcYmd(b)
 
           // Register Date sort is anniversary-like (ignore year).
           // Last Purchase sort remains full date (includes year).
@@ -223,11 +227,11 @@ export async function GET(request: Request) {
           }
 
           const av =
-            sortBy === 'register_date'
+            sortBy === 'register_date' || sortBy === 'dob'
               ? toMonthDay(avRaw)
               : avRaw
           const bv =
-            sortBy === 'register_date'
+            sortBy === 'register_date' || sortBy === 'dob'
               ? toMonthDay(bvRaw)
               : bvRaw
 

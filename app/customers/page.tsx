@@ -408,12 +408,12 @@ export default function CustomersPage() {
     }
   }
 
-  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date' | 'pg_code') => {
+  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
     } else {
       setSortBy(field)
-      setSortOrder(field === 'pg_code' ? 'asc' : 'desc')
+      setSortOrder(field === 'pg_code' || field === 'dob' ? 'asc' : 'desc')
     }
     setPage(1)
   }
@@ -1366,7 +1366,23 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Gender</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Ethnicity</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Age</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Date of Birth</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('dob')}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      title={sortOrder === 'desc' ? 'Newest DOB first (click for oldest)' : 'Oldest DOB first (click for newest)'}
+                    >
+                      Date of Birth
+                      {sortBy === 'dob' && (
+                        sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                        )
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Friend</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
@@ -1465,11 +1481,13 @@ export default function CustomersPage() {
                       <td className="px-4 py-3 text-sm text-slate-800">{customer.age || '-'}</td>
                       <td className="px-4 py-3 text-sm text-slate-800">
                         {customer.dob
-                          ? new Date(customer.dob).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
-                          })
+                          ? (() => {
+                              const d = new Date(customer.dob)
+                              const dd = String(d.getUTCDate()).padStart(2, '0')
+                              const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+                              const yyyy = d.getUTCFullYear()
+                              return `${dd}/${mm}/${yyyy}`
+                            })()
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-800">
