@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function LoginPage() {
@@ -12,10 +12,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
-  const searchParams = useSearchParams()
   const supabase = createClient()
-  const requestedNext = searchParams.get('next') || '/dashboard'
-  const nextPath = requestedNext.startsWith('/') ? requestedNext : '/dashboard'
+
+  const getNextPath = () => {
+    if (typeof window === 'undefined') return '/dashboard'
+    const requestedNext = new URLSearchParams(window.location.search).get('next') || '/dashboard'
+    return requestedNext.startsWith('/') ? requestedNext : '/dashboard'
+  }
 
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,6 +26,7 @@ export default function LoginPage() {
     setMessage(null)
 
     try {
+      const nextPath = getNextPath()
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
@@ -52,6 +56,7 @@ export default function LoginPage() {
     setMessage(null)
 
     try {
+      const nextPath = getNextPath()
       console.log('Attempting email/password login for:', email)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -99,6 +104,7 @@ export default function LoginPage() {
     setMessage(null)
 
     try {
+      const nextPath = getNextPath()
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
