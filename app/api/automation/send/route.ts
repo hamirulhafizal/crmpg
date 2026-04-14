@@ -359,7 +359,7 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
     await transporter.sendMail({
       from: smtpUser,
       to: data.user.email,
-      subject: 'Action needed: WAHA session expired',
+      subject: 'CRMPG - Action needed: WAHA session expired',
       text: [
         'Your WAHA session is no longer active and needs to be reconnected.',
         '',
