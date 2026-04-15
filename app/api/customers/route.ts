@@ -45,6 +45,14 @@ export async function GET(request: Request) {
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const isComputedDateSort =
       sortBy === 'register_date' || sortBy === 'last_purchase_date' || sortBy === 'dob'
+    const hasAnyFilter =
+      !!search ||
+      !!gender ||
+      !!ethnicity ||
+      !!birthday ||
+      !!accountStatus ||
+      !!registerMonth ||
+      !!lastPurchaseMonth
 
     // Build query
     let query = supabase
@@ -79,24 +87,68 @@ export async function GET(request: Request) {
       !!accountStatus ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
-      isComputedDateSort
+      isComputedDateSort ||
+      hasAnyFilter
 
     if (shouldUseJsFiltering) {
-      // If birthday filtering is requested, we filter by month/day in JS because
-      // `dob` is a DATE column (recurring birthday ignores the year).
-      let queryForJs = query
-      if (birthday === 'today' || birthday === 'month') {
-        queryForJs = queryForJs.not('dob', 'is', null)
+      // Fetch all candidate rows in batches before JS filters.
+      // This avoids accidental truncation when PostgREST row caps are low.
+      const JS_FETCH_BATCH_SIZE = 1000
+      const MAX_BATCH_LOOPS = 2000
+      let offset = 0
+      let loops = 0
+      const allRows: any[] = []
+
+      while (loops < MAX_BATCH_LOOPS) {
+        loops += 1
+
+        let batchQuery = supabase
+          .from('customers')
+          .select('*')
+          .eq('user_id', user.id)
+
+        if (search) {
+          batchQuery = batchQuery.or(
+            `name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,pg_code.ilike.%${search}%`
+          )
+        }
+        if (gender) {
+          batchQuery = batchQuery.eq('gender', gender)
+        }
+        if (ethnicity) {
+          batchQuery = batchQuery.eq('ethnicity', ethnicity)
+        }
+        if (birthday === 'today' || birthday === 'month') {
+          batchQuery = batchQuery.not('dob', 'is', null)
+        }
+
+        // Keep deterministic order across pages while accumulating.
+        if (!isComputedDateSort) {
+          batchQuery = batchQuery.order(sortBy, { ascending: sortOrder === 'asc' })
+        } else {
+          batchQuery = batchQuery.order('created_at', { ascending: false })
+        }
+
+        batchQuery = batchQuery.range(offset, offset + JS_FETCH_BATCH_SIZE - 1)
+
+        const { data: batchRows, error } = await batchQuery
+        if (error) {
+          console.error('Error fetching customers:', error)
+          return NextResponse.json({ error: error.message }, { status: 500, headers: noStoreHeaders })
+        }
+
+        const rows = batchRows || []
+        if (rows.length === 0) break
+
+        allRows.push(...rows)
+        offset += rows.length
       }
 
-      const { data, error } = await queryForJs
-
-      if (error) {
-        console.error('Error fetching customers:', error)
-        return NextResponse.json({ error: error.message }, { status: 500, headers: noStoreHeaders })
+      if (loops >= MAX_BATCH_LOOPS) {
+        console.warn('Customers JS filtering reached max fetch loops; results may be truncated')
       }
 
-      let filtered = data || []
+      let filtered = allRows
 
       if (birthday === 'today' || birthday === 'month') {
         // Match existing birthday automation logic (UTC+8 / Malaysia).
@@ -243,18 +295,25 @@ export async function GET(request: Request) {
         })
       }
 
-      // Apply pagination after filtering.
+      // Any active filter should return full matching set for the logged-in user
+      // (no page slicing).
+      const shouldReturnAllForFilteredView = hasAnyFilter
       const from = (page - 1) * limit
       const to = from + limit
-      const paged = filtered.slice(from, to)
+      const paged = shouldReturnAllForFilteredView ? filtered : filtered.slice(from, to)
+      const responsePage = shouldReturnAllForFilteredView ? 1 : page
+      const responseLimit = shouldReturnAllForFilteredView ? filtered.length || limit : limit
+      const responseTotalPages = shouldReturnAllForFilteredView
+        ? (filtered.length > 0 ? 1 : 0)
+        : Math.ceil(filtered.length / limit)
 
       return NextResponse.json({
         data: paged,
         pagination: {
-          page,
-          limit,
+          page: responsePage,
+          limit: responseLimit,
           total: filtered.length,
-          totalPages: Math.ceil(filtered.length / limit),
+          totalPages: responseTotalPages,
         },
       }, { headers: noStoreHeaders })
     }

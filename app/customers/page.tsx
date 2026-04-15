@@ -367,8 +367,12 @@ export default function CustomersPage() {
     setCustomers([])
 
     try {
-      const effectiveLimit = viewMode === 'all' ? '100000' : limit.toString()
-      const effectivePage = viewMode === 'all' ? '1' : page.toString()
+      // Birthday filtering must evaluate against the full customer list, not only
+      // the current paginated slice.
+      const shouldFetchAllForBirthday = birthdayFilter === 'today' || birthdayFilter === 'month'
+      const effectiveLimit =
+        viewMode === 'all' || shouldFetchAllForBirthday ? '100000' : limit.toString()
+      const effectivePage = viewMode === 'all' || shouldFetchAllForBirthday ? '1' : page.toString()
 
       const params = new URLSearchParams({
         page: effectivePage,
