@@ -686,27 +686,26 @@ export async function GET(request: Request) {
         switch (title) {
           // Birthday automation: title contains "birthday" and phone is empty
           case 'birthday': {
-            const { data: allCustomers, error: custError } = await supabase
-              .from('customers')
-              .select('*')
-              .eq('user_id', row.user_id)
-              .not('dob', 'is', null)
-              .not('phone', 'is', null)
+            const { data: customers, error: customersError } = await supabase.rpc(
+              'get_customers_by_birthday',
+              {
+                p_user_id: row.user_id,
+                p_month: todayMonth + 1,
+                p_day: todayDate,
+              }
+            )
 
-            if (custError) {
-              console.error('Error fetching customers for birthday automation:', custError)
+            if (customersError) {
+              console.error('Error fetching customers for birthday automation:', customersError)
               failed++
               break
             }
 
-            if (allCustomers && allCustomers.length > 0) {
-              const todaysCustomers = (allCustomers as Customer[]).filter((c) => {
-                if (!c.dob) return false
-                const dob = new Date(c.dob)
-                return dob.getUTCMonth() === todayMonth && dob.getUTCDate() === todayDate
-              })
+            const todaysCustomers = (customers || []) as Customer[]
+            if (todaysCustomers.length > 0) {
 
-              console.log('todaysCustomers---->', todaysCustomers)
+              console.log(`${row.user_id} - ${todaysCustomers.length} cs`)
+              // console.log('todaysCustomers---->', todaysCustomers)
 
               for (const customer of todaysCustomers) {
                 try {
