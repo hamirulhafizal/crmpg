@@ -1,16 +1,26 @@
 'use client'
 
 import { useAuth } from '@/app/contexts/auth-context'
+import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import PWAInstallPrompt from '@/app/components/PWAInstallPrompt'
 import PWAInstallButton from '@/app/components/PWAInstallButton'
 
 export default function DashboardPage() {
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, signOut, refreshUser } = useAuth()
   const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
   const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
+
+  const [passwordGateLoading, setPasswordGateLoading] = useState(true)
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [passwordDialogError, setPasswordDialogError] = useState<string | null>(null)
+  const [passwordSubmitLoading, setPasswordSubmitLoading] = useState(false)
+  const [showSetupPasswords, setShowSetupPasswords] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -34,6 +44,76 @@ export default function DashboardPage() {
       })
     return () => { cancelled = true }
   }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      setPasswordGateLoading(true)
+      setNeedsPasswordSetup(false)
+      return
+    }
+    let cancelled = false
+    setPasswordGateLoading(true)
+
+    ;(async () => {
+      const { data, error } = await supabase.rpc('user_has_password')
+      if (cancelled) return
+      if (error) {
+        console.error('user_has_password:', error.message)
+        setNeedsPasswordSetup(false)
+      } else {
+        setNeedsPasswordSetup(data === false)
+      }
+      setPasswordGateLoading(false)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, supabase])
+
+  const handleCreatePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordDialogError(null)
+
+    if (newPassword.length < 6) {
+      setPasswordDialogError('Password must be at least 6 characters.')
+      return
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordDialogError('Passwords do not match.')
+      return
+    }
+
+    setPasswordSubmitLoading(true)
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+      if (updateError) throw updateError
+
+      const { data: hasPw, error: rpcError } = await supabase.rpc('user_has_password')
+      if (rpcError) {
+        setNeedsPasswordSetup(false)
+        await refreshUser()
+        setNewPassword('')
+        setConfirmNewPassword('')
+        setShowSetupPasswords(false)
+        return
+      }
+      if (hasPw === true) {
+        setNeedsPasswordSetup(false)
+        setNewPassword('')
+        setConfirmNewPassword('')
+        setShowSetupPasswords(false)
+        await refreshUser()
+      } else {
+        setPasswordDialogError('Password could not be verified. Please try signing in again.')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+      setPasswordDialogError(message)
+    } finally {
+      setPasswordSubmitLoading(false)
+    }
+  }
 
   const handleSignOut = async () => {
     await signOut()
@@ -74,8 +154,114 @@ export default function DashboardPage() {
     return null
   }
 
+  if (passwordGateLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <svg
+            className="animate-spin h-8 w-8 text-blue-600 mx-auto"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          <p className="mt-4 text-slate-600">Loading your account…</p>
+        </div>
+      </div>
+    )
+  }
+
+  const showPasswordGate = needsPasswordSetup
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
+      {showPasswordGate && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="password-setup-title"
+          aria-describedby="password-setup-desc"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl border border-slate-200/80 transition-all duration-200">
+            <h2 id="password-setup-title" className="text-xl font-semibold text-slate-900 mb-1">
+              Create a password
+            </h2>
+            <p id="password-setup-desc" className="text-sm text-slate-600 mb-6">
+              Your account was created with Google and doesn&apos;t have a password yet. Set one so you can also sign in with email and password.
+            </p>
+            <form onSubmit={handleCreatePassword} className="space-y-4">
+              {passwordDialogError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                  {passwordDialogError}
+                </div>
+              )}
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <label htmlFor="dashboard-new-password" className="block text-sm font-medium text-slate-700">
+                    New password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowSetupPasswords((v) => !v)}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors shrink-0"
+                    aria-pressed={showSetupPasswords}
+                    aria-label={showSetupPasswords ? 'Hide passwords' : 'Show passwords'}
+                  >
+                    {showSetupPasswords ? 'Hide passwords' : 'Show passwords'}
+                  </button>
+                </div>
+                <input
+                  id="dashboard-new-password"
+                  type={showSetupPasswords ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900"
+                />
+              </div>
+              <div>
+                <label htmlFor="dashboard-confirm-password" className="block text-sm font-medium text-slate-700 mb-2">
+                  Confirm password
+                </label>
+                <input
+                  id="dashboard-confirm-password"
+                  type={showSetupPasswords ? 'text' : 'password'}
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={passwordSubmitLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-lg shadow-blue-500/25"
+              >
+                {passwordSubmitLoading ? 'Saving…' : 'Save password'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

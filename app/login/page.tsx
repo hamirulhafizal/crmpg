@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -13,6 +13,30 @@ export default function LoginPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
   const supabase = createClient()
+
+  const passwordInputRef = useRef<HTMLInputElement>(null)
+  const passwordVisibilityToggleRef = useRef<HTMLInputElement>(null)
+  const passwordVisibilityLabelRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    const input = passwordInputRef.current
+    const toggle = passwordVisibilityToggleRef.current
+    const labelEl = passwordVisibilityLabelRef.current
+    if (!input || !toggle || !labelEl) return
+
+    const syncFromToggle = () => {
+      const show = toggle.checked
+      input.type = show ? 'text' : 'password'
+      labelEl.textContent = show ? 'Hide password' : 'Show password'
+    }
+
+    toggle.addEventListener('change', syncFromToggle)
+    syncFromToggle()
+
+    return () => {
+      toggle.removeEventListener('change', syncFromToggle)
+    }
+  }, [])
 
   const getNextPath = () => {
     if (typeof window === 'undefined') return '/dashboard'
@@ -137,8 +161,8 @@ export default function LoginPage() {
           {message && (
             <div
               className={`p-4 rounded-xl transition-all duration-300 ${message.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : 'bg-red-50 text-red-800 border border-red-200'
                 }`}
             >
               <p className="text-sm font-medium">{message.text}</p>
@@ -151,8 +175,8 @@ export default function LoginPage() {
               type="button"
               onClick={() => setLoginMethod('password')}
               className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${loginMethod === 'password'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
                 }`}
             >
               Email & Password
@@ -162,8 +186,8 @@ export default function LoginPage() {
               type="button"
               onClick={() => setLoginMethod('magic')}
               className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all duration-200 ${loginMethod === 'magic'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-blue-600 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
                 }`}
             >
               Magic Link
@@ -201,14 +225,30 @@ export default function LoginPage() {
                   </Link>
                 </div>
                 <input
+                  ref={passwordInputRef}
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
+                  autoComplete="current-password"
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900 placeholder:text-slate-400"
                 />
+                <div className="mt-3">
+                  <label
+                    htmlFor="login-show-password"
+                    className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600 select-none"
+                  >
+                    <input
+                      ref={passwordVisibilityToggleRef}
+                      id="login-show-password"
+                      type="checkbox"
+                      className="h-4 w-4 shrink-0 rounded-full border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200 focus:ring-offset-0 accent-blue-600"
+                    />
+                    <span ref={passwordVisibilityLabelRef}>Show password</span>
+                  </label>
+                </div>
               </div>
 
               <button
@@ -302,7 +342,9 @@ export default function LoginPage() {
           )}
 
           {/* Divider */}
-          <div hidden={true} className="relative my-6">
+          <div
+            // hidden={true}
+            className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-300"></div>
             </div>
@@ -313,7 +355,7 @@ export default function LoginPage() {
 
           {/* Google OAuth Button */}
           <button
-            hidden={true}
+            // hidden={true}
             onClick={handleGoogleLogin}
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl border-2 border-slate-300 hover:border-slate-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm"
