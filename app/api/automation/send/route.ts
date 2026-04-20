@@ -13,7 +13,9 @@ import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
-const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 12 * 60 * 60 * 1000
+
+// set for 5minutes
+const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 5 * 60 * 1000
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -597,6 +599,8 @@ export async function GET(request: Request) {
           usersWithUnavailableSession.add(userId)
         }
 
+        console.log('currentStatus---->', currentStatus)
+
         const notifyNow = shouldSendExpiredNotice(
           sessionRow.last_known_waha_status,
           currentStatus,
@@ -641,6 +645,9 @@ export async function GET(request: Request) {
         }
       }
     }
+
+    console.log('usersWithUnavailableSession---->', usersWithUnavailableSession)
+    console.log('usersToNotifyExpiredSession---->', usersToNotifyExpiredSession)
 
     if (usersWithUnavailableSession.size > 0) {
       for (const item of usersToNotifyExpiredSession) {
@@ -761,7 +768,7 @@ export async function GET(request: Request) {
 
 
                     console.log('contactCheck---->', contactCheck)
-                    
+
                     console.log(
                       'WhatsApp contact check unavailable; trying email first:',
                       customer.id,
