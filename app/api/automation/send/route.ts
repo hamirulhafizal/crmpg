@@ -338,9 +338,14 @@ async function sendEmailFallback(userId: string, customer: Customer, text: strin
   }
 }
 
-function isExpiredWahaSessionStatus(status: string | null | undefined): boolean {
+function isWorkingWahaSessionStatus(status: string | null | undefined): boolean {
   const normalized = (status || '').trim().toUpperCase()
-  return normalized === 'STOPPED' || normalized === 'FAILED'
+  return normalized === 'WORKING'
+}
+
+function isReconnectRequiredWahaSessionStatus(status: string | null | undefined): boolean {
+  const normalized = (status || '').trim().toUpperCase()
+  return normalized !== 'WORKING'
 }
 
 function normalizeWahaStatus(status: string | null | undefined): string {
@@ -352,8 +357,8 @@ function shouldSendExpiredNotice(
   currentStatus: string | null | undefined,
   lastNotifiedAt: string | null | undefined
 ): boolean {
-  if (!isExpiredWahaSessionStatus(currentStatus)) return false
-  if (!isExpiredWahaSessionStatus(previousStatus)) return true
+  if (!isReconnectRequiredWahaSessionStatus(currentStatus)) return false
+  if (!isReconnectRequiredWahaSessionStatus(previousStatus)) return true
   if (!lastNotifiedAt) return true
 
   const last = Date.parse(lastNotifiedAt)
@@ -578,7 +583,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const usersWithExpiredSession = new Set<string>()
+    const usersWithUnavailableSession = new Set<string>()
     const usersToNotifyExpiredSession: Array<{ userId: string; sessionName: string }> = []
     for (const [userId, sessionRow] of sessionByUser.entries()) {
       const sessionName = sessionRow.session_name
@@ -587,8 +592,9 @@ export async function GET(request: Request) {
           `/api/sessions/${encodeURIComponent(sessionName)}`
         )
         const currentStatus = normalizeWahaStatus(waSession?.status)
-        if (isExpiredWahaSessionStatus(currentStatus)) {
-          usersWithExpiredSession.add(userId)
+        // Strict gate: scheduled message delivery is allowed only on WORKING sessions.
+        if (!isWorkingWahaSessionStatus(currentStatus)) {
+          usersWithUnavailableSession.add(userId)
         }
 
         const notifyNow = shouldSendExpiredNotice(
@@ -624,16 +630,25 @@ export async function GET(request: Request) {
           sessionName,
           waErr
         )
+        // Fail-safe: if WAHA status cannot be verified, treat as unavailable.
+        usersWithUnavailableSession.add(userId)
+        if (shouldSendExpiredNotice(
+          sessionRow.last_known_waha_status,
+          'UNKNOWN',
+          sessionRow.session_expired_notified_at
+        )) {
+          usersToNotifyExpiredSession.push({ userId, sessionName })
+        }
       }
     }
 
-    if (usersWithExpiredSession.size > 0) {
+    if (usersWithUnavailableSession.size > 0) {
       for (const item of usersToNotifyExpiredSession) {
         await sendWahaSessionExpiredNotice(item.userId, item.sessionName)
       }
 
       const blockedIds = dueToProcess
-        .filter((row) => usersWithExpiredSession.has(row.user_id))
+        .filter((row) => usersWithUnavailableSession.has(row.user_id))
         .map((row) => row.id)
       if (blockedIds.length > 0) {
         await supabase
@@ -643,7 +658,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const processableRows = dueToProcess.filter((row) => !usersWithExpiredSession.has(row.user_id))
+    const processableRows = dueToProcess.filter((row) => !usersWithUnavailableSession.has(row.user_id))
 
     if (processableRows.length === 0) {
       return NextResponse.json({
@@ -742,6 +757,11 @@ export async function GET(request: Request) {
                       }
                     }
                   } else {
+                    
+
+
+                    console.log('contactCheck---->', contactCheck)
+                    
                     console.log(
                       'WhatsApp contact check unavailable; trying email first:',
                       customer.id,
