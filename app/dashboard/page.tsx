@@ -5,14 +5,13 @@ import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import PWAInstallPrompt from '@/app/components/PWAInstallPrompt'
-import PWAInstallButton from '@/app/components/PWAInstallButton'
 
 export default function DashboardPage() {
   const { user, loading, signOut, refreshUser } = useAuth()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
+  const [checkingWahaSession, setCheckingWahaSession] = useState(true)
 
   const [passwordGateLoading, setPasswordGateLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
@@ -32,33 +31,53 @@ export default function DashboardPage() {
     if (!user) return
     let cancelled = false
 
-    const rawPhone = String(user.user_metadata?.phone || '').trim()
-    let sessionName = rawPhone.replace(/\D/g, '')
-    if (sessionName.startsWith('0')) {
-      sessionName = `60${sessionName.slice(1)}`
-    } else if (sessionName && !sessionName.startsWith('60')) {
-      sessionName = `60${sessionName}`
-    }
-
-    if (!sessionName) {
-      setHasActiveWahaSession(false)
-      return () => { cancelled = true }
-    }
-
-    fetch(`/api/waha/sessions/${encodeURIComponent(sessionName)}`)
-      .then(async (res) => {
-        if (!res.ok) return null
-        return res.json()
-      })
-      .then((data) => {
+    const checkActiveWahaSession = async () => {
+      if (!cancelled) setCheckingWahaSession(true)
+      try {
+        const res = await fetch('/api/waha/sessions', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!cancelled) setHasActiveWahaSession(false)
+          return
+        }
+        const data = await res.json()
         if (cancelled) return
-        const active = data?.status === 'WORKING'
+        const sessions = Array.isArray(data?.sessions) ? data.sessions : []
+        const active = sessions.some((session: { status?: string }) => {
+          const status = String(session?.status || '').toUpperCase()
+          return status === 'WORKING'
+        })
         setHasActiveWahaSession(active)
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setHasActiveWahaSession(false)
-      })
-    return () => { cancelled = true }
+      } finally {
+        if (!cancelled) setCheckingWahaSession(false)
+      }
+    }
+
+    void checkActiveWahaSession()
+
+    const handleWindowFocus = () => {
+      void checkActiveWahaSession()
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void checkActiveWahaSession()
+      }
+    }
+    const handlePageShow = () => {
+      void checkActiveWahaSession()
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', handleWindowFocus)
+      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [user])
 
   useEffect(() => {
@@ -293,7 +312,6 @@ export default function DashboardPage() {
                 </svg>
                 Excel Processor
               </Link>
-              <PWAInstallButton />
               <button
                 onClick={handleSignOut}
                 className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200 active:scale-[0.98]"
@@ -317,7 +335,25 @@ export default function DashboardPage() {
 
         {/* Tools Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
-          <h3 className="text-xl font-semibold text-slate-900 mb-6">Tools</h3>
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <h3 className="text-xl font-semibold text-slate-900">Tools</h3>
+            {checkingWahaSession ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
+                Checking WAHA...
+              </span>
+            ) : hasActiveWahaSession ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                WAHA connected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                WAHA not connected
+              </span>
+            )}
+          </div>
           <div className="space-y-3">
             <Link hidden
               href="/excel-processor"
@@ -377,7 +413,25 @@ export default function DashboardPage() {
               </div>
             </Link>
 
-            {hasActiveWahaSession && (
+            {checkingWahaSession && (
+              <div
+                aria-hidden="true"
+                className="px-4 py-3 rounded-xl border border-violet-100 bg-violet-50/60"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-6 w-6 rounded-md bg-violet-200/70 animate-pulse" />
+                    <div className="space-y-1.5">
+                      <div className="h-3 w-40 rounded bg-violet-200/70 animate-pulse" />
+                      <div className="h-2.5 w-60 rounded bg-violet-100/90 animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="h-5 w-5 rounded bg-violet-200/70 animate-pulse" />
+                </div>
+              </div>
+            )}
+
+            {!checkingWahaSession && hasActiveWahaSession && (
               <Link
                 href="/automated-messages"
                 className="block px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-violet-200"
@@ -486,9 +540,6 @@ export default function DashboardPage() {
         </div>
 
       </main>
-
-      {/* PWA Install Prompt */}
-      <PWAInstallPrompt />
     </div>
   )
 }

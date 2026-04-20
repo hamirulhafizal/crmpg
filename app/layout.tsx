@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./contexts/auth-context";
-import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
+import DisableServiceWorkers from "./components/DisableServiceWorkers";
 import ViewTransitions from "./components/ViewTransitions";
 import ClientScripts from "./components/ClientScripts";
 
@@ -47,13 +47,7 @@ export default function RootLayout({
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
         <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
         <link rel="icon" href="/favicon.ico" type="image/x-icon" />
-        <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#2563eb" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="PG CRM" />
-        <link rel="apple-touch-icon" href="/icons/image.png" />
         <link rel="dns-prefetch" href="https://app.nocodb.com" />
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
       </head>
@@ -72,7 +66,7 @@ export default function RootLayout({
         </noscript>
         
         <AuthProvider>
-          <ServiceWorkerRegistration />
+          <DisableServiceWorkers />
           <ViewTransitions />
           <ClientScripts />
         {children}
