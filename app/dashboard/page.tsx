@@ -31,12 +31,28 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return
     let cancelled = false
-    fetch('/api/waha/sessions')
-      .then((res) => res.json())
+
+    const rawPhone = String(user.user_metadata?.phone || '').trim()
+    let sessionName = rawPhone.replace(/\D/g, '')
+    if (sessionName.startsWith('0')) {
+      sessionName = `60${sessionName.slice(1)}`
+    } else if (sessionName && !sessionName.startsWith('60')) {
+      sessionName = `60${sessionName}`
+    }
+
+    if (!sessionName) {
+      setHasActiveWahaSession(false)
+      return () => { cancelled = true }
+    }
+
+    fetch(`/api/waha/sessions/${encodeURIComponent(sessionName)}`)
+      .then(async (res) => {
+        if (!res.ok) return null
+        return res.json()
+      })
       .then((data) => {
         if (cancelled) return
-        const sessions = data.sessions || []
-        const active = sessions.some((s: { status?: string }) => s.status === 'WORKING')
+        const active = data?.status === 'WORKING'
         setHasActiveWahaSession(active)
       })
       .catch(() => {
