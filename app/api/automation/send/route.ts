@@ -152,7 +152,7 @@ function humanizeWhatsAppText(input: string): string {
   return text
 }
 
-async function sendWhatsAppMessage(session: string, phone: string, text: string) {
+async function sendWhatsAppMessage(userId: string, session: string, phone: string, text: string) {
   const digits = normalisePhoneToMsisdn(phone)
   const chatId = `${digits}@c.us`
   const humanText = humanizeWhatsAppText(text)
@@ -175,7 +175,7 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
         session,
         chatId,
       }),
-    })
+    }, { userId })
   } catch (e) {
     console.warn('startTyping failed; continuing with sendText:', e)
   }
@@ -189,7 +189,7 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
         session,
         chatId,
       }),
-    })
+    }, { userId })
   } catch (e) {
     console.warn('stopTyping failed; continuing with sendText:', e)
   }
@@ -201,7 +201,7 @@ async function sendWhatsAppMessage(session: string, phone: string, text: string)
       chatId,
       text: humanText,
     }),
-  })
+  }, { userId })
 }
 
 function normalisePhoneToMsisdn(phone: string): string {
@@ -223,8 +223,8 @@ type WhatsAppContactCheck =
   | { ok: true; numberExists: boolean }
   | { ok: false; reason: string }
 
-async function checkWhatsAppNumberExists(session: string, phone: string): Promise<WhatsAppContactCheck> {
-  const { baseUrl, apiKey } = getWahaConfig()
+async function checkWhatsAppNumberExists(userId: string, session: string, phone: string): Promise<WhatsAppContactCheck> {
+  const { baseUrl, apiKey } = await getWahaConfig({ userId })
   if (!baseUrl || !apiKey) {
     console.warn('WAHA_API_BASE_URL or WAHA_API_KEY missing; contact check unavailable')
     return { ok: false, reason: 'waha_not_configured' }
@@ -591,7 +591,9 @@ export async function GET(request: Request) {
       const sessionName = sessionRow.session_name
       try {
         const waSession = await wahaFetch<WahaSessionInfo>(
-          `/api/sessions/${encodeURIComponent(sessionName)}`
+          `/api/sessions/${encodeURIComponent(sessionName)}`,
+          {},
+          { userId }
         )
         const currentStatus = normalizeWahaStatus(waSession?.status)
         // Strict gate: scheduled message delivery is allowed only on WORKING sessions.
@@ -736,9 +738,9 @@ export async function GET(request: Request) {
 
                   const message = renderCustomerTemplate(row.message, customer)
 
-                  const contactCheck = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+                  const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
                   const tryEmail = () => sendEmailFallback(row.user_id, customer, message)
-                  const tryWa = () => sendWhatsAppMessage(sessionName, customer.phone!, message)
+                  const tryWa = () => sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
 
                   let birthdayDelivered = false
                   if (contactCheck.ok && contactCheck.numberExists) {
@@ -854,7 +856,7 @@ export async function GET(request: Request) {
               try {
                 const message = renderCustomerTemplate(followupTemplate, customer)
 
-                const contactCheck = await checkWhatsAppNumberExists(sessionName, customer.phone!)
+                const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
 
                 const sendFollowUpWhatsApp = async () => {
                   if (warmupEnabled) {
@@ -873,11 +875,11 @@ export async function GET(request: Request) {
                       : `${timeGreeting}, {SenderName}`
 
                     const warmerText = renderCustomerTemplate(warmerTemplate, customer)
-                    await sendWhatsAppMessage(sessionName, customer.phone!, warmerText)
+                    await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, warmerText)
                     await randomDelayBetween(30000, 60000)
                   }
 
-                  await sendWhatsAppMessage(sessionName, customer.phone!, message)
+                  await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
                 }
 
                 let delivered = false
@@ -957,7 +959,7 @@ export async function GET(request: Request) {
               break
             }
             try {
-              await sendWhatsAppMessage(sessionName, row.phone, row.message)
+              await sendWhatsAppMessage(row.user_id, sessionName, row.phone, row.message)
               sent++
             } catch (sendErr) {
               console.error('Error sending direct WhatsApp message:', sendErr)

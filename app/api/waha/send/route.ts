@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
           session,
           chatId,
         }),
-      })
+      }, { userId: user.id })
     } catch (e) {
       // If typing endpoints fail, still send the message.
       console.warn('startTyping failed; continuing with sendText:', e)
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
           session,
           chatId,
         }),
-      })
+      }, { userId: user.id })
     } catch (e) {
       console.warn('stopTyping failed; continuing with sendText:', e)
     }
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
         chatId,
         text: humanText,
       }),
-    })
+    }, { userId: user.id })
 
     return NextResponse.json({ success: true, result })
   } catch (err: unknown) {

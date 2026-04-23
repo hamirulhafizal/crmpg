@@ -13,7 +13,7 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -30,7 +30,8 @@ export async function GET(
 
     const result = await wahaFetch<{ data?: string; value?: string }>(
       `/api/${encodeURIComponent(session)}/auth/qr?format=${format === 'raw' ? 'raw' : 'image'}`,
-      { headers: { Accept: 'application/json' } }
+      { headers: { Accept: 'application/json' } },
+      { userId: user.id }
     )
 
     if (format === 'raw' && result?.value) {

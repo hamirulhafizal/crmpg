@@ -44,7 +44,8 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/pwa-test') ||
       request.nextUrl.pathname.startsWith('/excel-processor') ||
       request.nextUrl.pathname.startsWith('/customers') ||
-      request.nextUrl.pathname.startsWith('/waha-integration'))
+      request.nextUrl.pathname.startsWith('/waha-integration') ||
+      request.nextUrl.pathname.startsWith('/admin'))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'

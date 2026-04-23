@@ -10,7 +10,7 @@ export async function GET() {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured (WAHA_API_BASE_URL / WAHA_API_KEY)' },
         { status: 503 }
@@ -40,7 +40,7 @@ export async function GET() {
       me?: { id?: string; pushName?: string } | null
       engine?: { engine?: string }
       config?: unknown
-    }>>('/api/sessions?all=true')
+    }>>('/api/sessions?all=true', {}, { userId: user.id })
 
     const sessions = allSessions.filter((s) => allowedNames.includes(s.name))
     return NextResponse.json({ sessions })
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured (WAHA_API_BASE_URL / WAHA_API_KEY)' },
         { status: 503 }
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
         start,
         config,
       }),
-    })
+    }, { userId: user.id })
 
     await supabase
       .from('waha_user_sessions')

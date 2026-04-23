@@ -13,7 +13,7 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -31,7 +31,7 @@ export async function GET(
       me?: { id?: string; pushName?: string } | null
       engine?: { engine?: string }
       config?: unknown
-    }>(`/api/sessions/${encodeURIComponent(session)}`)
+    }>(`/api/sessions/${encodeURIComponent(session)}`, {}, { userId: user.id })
     return NextResponse.json(result)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to get session'
@@ -50,7 +50,7 @@ export async function DELETE(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -89,7 +89,8 @@ export async function DELETE(
     try {
       await wahaFetch<unknown>(
         `/api/sessions/${encodeURIComponent(session)}`,
-        { method: 'DELETE' }
+        { method: 'DELETE' },
+        { userId: user.id }
       )
     } catch (err) {
       console.error('Failed to delete WAHA backend session, continuing with local cleanup:', err)

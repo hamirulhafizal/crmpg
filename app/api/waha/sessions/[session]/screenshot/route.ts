@@ -13,7 +13,7 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -25,7 +25,7 @@ export async function GET(
       return NextResponse.json({ error: 'Session name required' }, { status: 400 })
     }
 
-    const { baseUrl, apiKey } = getWahaConfig()
+    const { baseUrl, apiKey } = await getWahaConfig({ userId: user.id })
     const url = `${baseUrl}/api/screenshot?session=${encodeURIComponent(session)}`
     const res = await fetch(url, {
       headers: { 'X-Api-Key': apiKey, Accept: 'image/png' },

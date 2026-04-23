@@ -13,7 +13,7 @@ export async function POST(
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!isWahaConfigured()) {
+    if (!(await isWahaConfigured({ userId: user.id }))) {
       return NextResponse.json(
         { error: 'WAHA integration is not configured' },
         { status: 503 }
@@ -31,7 +31,8 @@ export async function POST(
       {
         method: 'POST',
         body: JSON.stringify(body),
-      }
+      },
+      { userId: user.id }
     )
     return NextResponse.json(result)
   } catch (err: unknown) {

@@ -28,7 +28,7 @@ function replaceTemplateVariables(template: string, profile: ProfileRow): string
     .replace(/{PGCode}/g, pgCode)
 }
 
-async function sendWhatsAppMessage(phone: string, text: string) {
+async function sendWhatsAppMessage(userId: string, phone: string, text: string) {
   // Normalise phone: keep digits only, ensure 60 prefix, add @c.us
   let digits = phone.replace(/[^0-9]/g, '')
   if (!digits.startsWith('60')) {
@@ -47,7 +47,7 @@ async function sendWhatsAppMessage(phone: string, text: string) {
       chatId,
       text,
     }),
-  })
+  }, { userId })
 }
 
 // GET /api/automation/cron
@@ -139,7 +139,7 @@ export async function GET(request: Request) {
         const finalMessage = replaceTemplateVariables(messageRow.message, profileData)
 
         try {
-          await sendWhatsAppMessage(messageRow.phone, finalMessage)
+          await sendWhatsAppMessage(userId, messageRow.phone, finalMessage)
 
           await supabase
             .from('scheduled_messages')
