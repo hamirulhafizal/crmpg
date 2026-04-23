@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { isWahaConfigured, wahaFetch } from '@/app/lib/waha'
+import { isWahaConfigured, WahaApiError, wahaFetch } from '@/app/lib/waha'
 
 // GET /api/waha/sessions - List WAHA sessions for the current user only
 export async function GET() {
@@ -114,6 +114,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to create session'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = err instanceof WahaApiError ? err.status : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

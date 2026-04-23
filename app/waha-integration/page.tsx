@@ -41,6 +41,7 @@ export default function WahaIntegrationPage() {
   const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [loadingPairingCode, setLoadingPairingCode] = useState(false)
   const [pairingPhone, setPairingPhone] = useState('')
+  const [pairingCodeCopied, setPairingCodeCopied] = useState(false)
 
   const [screenshotDialogSession, setScreenshotDialogSession] = useState<string | null>(null)
   const [screenshotKey, setScreenshotKey] = useState(0)
@@ -230,6 +231,7 @@ export default function WahaIntegrationPage() {
     }
     setLoadingPairingCode(true)
     setPairingCode(null)
+    setPairingCodeCopied(false)
     setError(null)
     try {
       const res = await fetch(
@@ -247,6 +249,17 @@ export default function WahaIntegrationPage() {
       setError(e instanceof Error ? e.message : 'Failed to request code')
     } finally {
       setLoadingPairingCode(false)
+    }
+  }
+
+  const handleCopyPairingCode = async () => {
+    if (!pairingCode) return
+    try {
+      await navigator.clipboard.writeText(pairingCode)
+      setPairingCodeCopied(true)
+      window.setTimeout(() => setPairingCodeCopied(false), 1400)
+    } catch {
+      setError('Unable to copy pairing code')
     }
   }
 
@@ -664,7 +677,16 @@ export default function WahaIntegrationPage() {
                     {pairingCode && (
                       <div className="mt-4 p-4 rounded-xl bg-slate-100">
                         <p className="text-sm text-slate-600 mb-1">Enter this code in WhatsApp:</p>
-                        <p className="text-2xl font-mono font-bold text-slate-900 tracking-wider">{pairingCode}</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-2xl font-mono font-bold text-slate-900 tracking-wider">{pairingCode}</p>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyPairingCode()}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            {pairingCodeCopied ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </>

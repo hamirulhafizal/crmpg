@@ -8,20 +8,40 @@ function normalizeBaseUrl(url: string): string {
 
 type ServerStatus = 'online' | 'offline'
 
+function indicatesServerReachable(status: number): boolean {
+  // Any non-5xx HTTP response proves the server is reachable.
+  // 4xx can happen for auth/route differences, but server is still online.
+  return status >= 200 && status < 500
+}
+
 async function checkServerStatus(baseUrl: string, apiKey: string): Promise<ServerStatus> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 4000)
   try {
-    const url = `${normalizeBaseUrl(baseUrl)}/api/sessions?all=true`
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-Api-Key': apiKey,
-      },
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    return res.ok ? 'online' : 'offline'
+    const root = normalizeBaseUrl(baseUrl)
+    const candidates = [
+      `${root}/api/sessions?all=true`,
+      `${root}/api/sessions`,
+      `${root}/api/health`,
+      `${root}/`,
+    ]
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'X-Api-Key': apiKey,
+          },
+          signal: controller.signal,
+          cache: 'no-store',
+        })
+        if (indicatesServerReachable(res.status)) return 'online'
+      } catch {
+        // Try the next candidate endpoint.
+      }
+    }
+    return 'offline'
   } catch {
     return 'offline'
   } finally {

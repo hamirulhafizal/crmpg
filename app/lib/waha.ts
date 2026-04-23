@@ -16,6 +16,15 @@ type WahaResolveOptions = {
   userId?: string | null
 }
 
+export class WahaApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'WahaApiError'
+    this.status = status
+  }
+}
+
 const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || 'https://api.publicgolds.com').replace(/\/$/, '')
 const ENV_API_KEY = process.env.WAHA_API_KEY || ''
 
@@ -61,6 +70,9 @@ export async function getWahaConfig(opts: WahaResolveOptions = {}): Promise<Waha
   const userId = opts.userId?.trim()
 
   // Resolve explicit per-user server assignment first.
+  // IMPORTANT: if a user is explicitly assigned to a WAHA server,
+  // we do NOT fall back to default/env. This prevents accidentally
+  // sending traffic with another server key.
   if (userId) {
     const admin = createServiceRoleClient()
     const { data: profile } = await admin
@@ -72,7 +84,13 @@ export async function getWahaConfig(opts: WahaResolveOptions = {}): Promise<Waha
     const assignedServerId = (profile?.waha_server_id || '').toString().trim()
     if (assignedServerId) {
       const assigned = await getWahaServerById(assignedServerId)
-      if (assigned?.baseUrl && assigned?.apiKey) return assigned
+      if (!assigned) {
+        throw new Error(`Assigned WAHA server not found: ${assignedServerId}`)
+      }
+      if (!assigned.baseUrl || !assigned.apiKey) {
+        throw new Error(`Assigned WAHA server is misconfigured: ${assignedServerId}`)
+      }
+      return assigned
     }
   }
 
@@ -116,7 +134,7 @@ export async function wahaFetch<T = unknown>(
     } catch {
       if (text) message = text.slice(0, 200)
     }
-    throw new Error(message)
+    throw new WahaApiError(message, res.status)
   }
   if (!text) return undefined as T
   try {

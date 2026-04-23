@@ -383,7 +383,7 @@ export default function DashboardPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6 text-slate-200" fill="black" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -394,7 +394,7 @@ export default function DashboardPage() {
                     </svg>
                     <div>
                       <span className="font-semibold text-slate-900">Admin · Web app settings</span>
-                      <p className="text-xs text-slate-300">WAHA servers and infrastructure</p>
+                      <p className="text-xs text-slate-600">Manage infrastructure and user management in one place.</p>
                     </div>
                   </div>
                   <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
