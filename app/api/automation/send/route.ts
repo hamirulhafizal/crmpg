@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
-import { getWahaConfig, wahaFetch } from '@/app/lib/waha'
+import { getWahaConfig, WahaApiError, wahaFetch } from '@/app/lib/waha'
 import {
   formatLastPurchaseForTemplate,
   formatRegistrationForTemplate,
@@ -96,6 +96,13 @@ function isMissingColumn(error: { code?: string; message?: string } | null | und
   if (error.code === '42703') return true
   const msg = (error.message || '').toLowerCase()
   return msg.includes('does not exist')
+}
+
+function isWahaSessionNotFoundError(err: unknown): boolean {
+  if (!(err instanceof WahaApiError)) return false
+  if (err.status !== 404) return false
+  const msg = (err.message || '').toLowerCase()
+  return msg.includes('session not found')
 }
 
 function renderCustomerTemplate(template: string, customer: Customer): string {
@@ -631,6 +638,37 @@ export async function GET(request: Request) {
           }
         }
       } catch (waErr) {
+        if (isWahaSessionNotFoundError(waErr)) {
+          console.warn('WAHA session not found, treating as unavailable:', sessionName, userId)
+          usersWithUnavailableSession.add(userId)
+
+          // Keep tracking state accurate so UI/admin can see this stale mapping.
+          if (supportsSessionExpiryTracking) {
+            const { error: trackErr } = await supabase
+              .from('waha_user_sessions')
+              .update({
+                last_known_waha_status: 'STOPPED',
+                session_expired_notified_at: new Date().toISOString(),
+              })
+              .eq('user_id', userId)
+              .eq('session_name', sessionName)
+            if (trackErr) {
+              console.error('Failed updating missing-session tracking:', userId, sessionName, trackErr)
+            }
+          }
+
+          // Remove stale mapping to stop repeated 404 checks every cron cycle.
+          const { error: deleteErr } = await supabase
+            .from('waha_user_sessions')
+            .delete()
+            .eq('user_id', userId)
+            .eq('session_name', sessionName)
+          if (deleteErr) {
+            console.error('Failed deleting stale WAHA session mapping:', userId, sessionName, deleteErr)
+          }
+          continue
+        }
+
         console.error(
           'Unable to load WAHA session status from WAHA API:',
           sessionName,
