@@ -16,7 +16,6 @@ const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
 
 // set for 1 day
 const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
-let gmailQuotaExceededForRun = false
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -97,17 +96,6 @@ function isMissingColumn(error: { code?: string; message?: string } | null | und
   if (error.code === '42703') return true
   const msg = (error.message || '').toLowerCase()
   return msg.includes('does not exist')
-}
-
-function isGmailDailyLimitError(err: unknown): boolean {
-  const e = err as { response?: string; message?: string; responseCode?: number } | null
-  const text = `${e?.message || ''}\n${e?.response || ''}`.toLowerCase()
-  return (
-    e?.responseCode === 550 &&
-    (text.includes('daily user sending limit exceeded') ||
-      text.includes('sending limits') ||
-      text.includes('5.4.5'))
-  )
 }
 
 function isWahaSessionNotFoundError(err: unknown): boolean {
@@ -322,9 +310,6 @@ async function getEmailFallbackConfig(userId: string): Promise<EmailFallbackConf
 
 async function sendEmailFallback(userId: string, customer: Customer, text: string): Promise<boolean> {
   if (!customer.email) return false
-  if (gmailQuotaExceededForRun) {
-    return false
-  }
 
   const cfg = await getEmailFallbackConfig(userId)
   if (!cfg) return false
@@ -357,10 +342,6 @@ async function sendEmailFallback(userId: string, customer: Customer, text: strin
 
     return true
   } catch (err) {
-    if (isGmailDailyLimitError(err)) {
-      gmailQuotaExceededForRun = true
-      console.warn('Gmail quota reached; disabling fallback email for current worker run')
-    }
     console.error('Error sending fallback email:', err)
     return false
   }
@@ -396,9 +377,6 @@ function shouldSendExpiredNotice(
 }
 
 async function sendWahaSessionExpiredNotice(userId: string, sessionName: string): Promise<boolean> {
-  if (gmailQuotaExceededForRun) {
-    return false
-  }
   const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
   if (error || !data?.user?.email) {
     console.error('Unable to load user email for WAHA expiry notice:', error)
@@ -442,10 +420,6 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
 
     return true
   } catch (err) {
-    if (isGmailDailyLimitError(err)) {
-      gmailQuotaExceededForRun = true
-      console.warn('Gmail quota reached; disabling expiry notice emails for current worker run')
-    }
     console.error('Failed to send WAHA session expired notice email:', err)
     return false
   }
@@ -454,8 +428,6 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
 // Use GET so you can call this via an HTTP GET (e.g. from Supabase cron if you switch to net.http_get).
 // The logic is identical; only the HTTP verb changes.
 export async function GET(request: Request) {
-  // Reset per run so quota behavior is deterministic per invocation.
-  gmailQuotaExceededForRun = false
 
   const authHeader = request.headers.get('authorization') || ''
   const expected = process.env.CRON_SECRET 
@@ -768,15 +740,8 @@ export async function GET(request: Request) {
         const session = sessionByUser.get(row.user_id)
         const sessionName = session?.session_name
         if (!sessionName) {
-          console.warn(
-            'No WAHA session configured for user; unlocking row and keeping pending:',
-            row.user_id,
-            row.id
-          )
-          await supabase
-            .from('scheduled_messages')
-            .update({ locked_at: null })
-            .eq('id', row.id)
+          console.warn('No WAHA session configured for user, skipping message row:', row.user_id, row.id)
+          failed++
           continue
         }
 
