@@ -83,6 +83,8 @@ export default function AdminSettingsPage() {
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [userError, setUserError] = useState<string | null>(null)
   const [userSaving, setUserSaving] = useState(false)
+  const [syncingSessions, setSyncingSessions] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
   const [userModalOpen, setUserModalOpen] = useState(false)
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
@@ -145,6 +147,15 @@ export default function AdminSettingsPage() {
       return true
     })
   }, [users, filterRole, filterServerId, filterSessionStatus, searchQuery])
+
+  const isFilterActive = useMemo(() => {
+    return (
+      filterRole !== 'all' ||
+      filterServerId !== 'all' ||
+      filterSessionStatus !== 'all' ||
+      searchQuery.trim().length > 0
+    )
+  }, [filterRole, filterServerId, filterSessionStatus, searchQuery])
 
   const resetUserFilters = () => {
     setFilterServerId('all')
@@ -390,6 +401,31 @@ export default function AdminSettingsPage() {
     await loadUsers()
   }
 
+  const handleSyncLatestSessions = async () => {
+    setSyncingSessions(true)
+    setSyncMessage(null)
+    setUserError(null)
+    try {
+      const res = await fetch('/api/admin/users/sync-sessions', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setUserError(typeof data.error === 'string' ? data.error : 'Failed to sync sessions')
+        return
+      }
+      const summary = data?.summary
+      if (summary) {
+        setSyncMessage(
+          `Synced ${summary.updated ?? 0} mappings (${summary.unchanged ?? 0} unchanged).`
+        )
+      } else {
+        setSyncMessage('Session sync completed.')
+      }
+      await loadUsers()
+    } finally {
+      setSyncingSessions(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -488,6 +524,14 @@ export default function AdminSettingsPage() {
             >
               Add user
             </button>
+            <button
+              type="button"
+              onClick={() => void handleSyncLatestSessions()}
+              disabled={syncingSessions}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {syncingSessions ? 'Syncing...' : 'Fetch latest sessions'}
+            </button>
           </div>
 
           <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-5">
@@ -543,8 +587,31 @@ export default function AdminSettingsPage() {
             </button>
           </div>
 
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            {isFilterActive ? (
+              <>
+                <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                  Filter active
+                </span>
+                <span className="text-slate-700">
+                  Showing <span className="font-semibold">{filteredUsers.length}</span> of{' '}
+                  <span className="font-semibold">{users.length}</span> users
+                </span>
+              </>
+            ) : (
+              <span className="text-slate-700">
+                Showing all users: <span className="font-semibold">{users.length}</span>
+              </span>
+            )}
+          </div>
+
           {userError && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{userError}</div>
+          )}
+          {syncMessage && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {syncMessage}
+            </div>
           )}
 
           {loadingUsers ? (
