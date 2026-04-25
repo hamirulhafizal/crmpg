@@ -433,82 +433,26 @@ export default function AdminSettingsPage() {
         <p className="mt-1 text-sm text-slate-600">Manage infrastructure and user management in one place.</p>
       </div>
 
-      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
-        <button
-          type="button"
-          onClick={() => setTab('servers')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-            tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-          }`}
-        >
-          WAHA Servers
-        </button>
+      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1" style={{ margin: '0px' }}>
+
         <button
           type="button"
           onClick={() => setTab('users')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-            tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-          }`}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+            }`}
         >
           User Management
         </button>
+
+        <button
+          type="button"
+          onClick={() => setTab('servers')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+            }`}
+        >
+          WAHA Servers
+        </button>
       </div>
-
-      {tab === 'servers' && (
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">WAHA servers</h2>
-              <p className="text-sm text-slate-600">CRUD WAHA API base URLs and keys.</p>
-            </div>
-            <button
-              type="button"
-              onClick={openCreateServer}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              Add server
-            </button>
-          </div>
-
-          {serverError && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{serverError}</div>
-          )}
-
-          {loadingServers ? (
-            <p className="text-sm text-slate-500">Loading...</p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Base URL</th>
-                    <th className="px-4 py-3">API key</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Default</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {servers.map((s) => (
-                    <tr key={s.id}>
-                      <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
-                      <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-700">{s.api_base_url}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.api_key || '—'}</td>
-                      <td className="px-4 py-3 text-slate-700">{s.status === 'online' ? 'Online' : 'Offline'}</td>
-                      <td className="px-4 py-3 text-slate-700">{s.is_default ? 'Yes' : '—'}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button onClick={() => openEditServer(s)} className="mr-2 text-blue-600 hover:text-blue-800">Edit</button>
-                        <button onClick={() => void handleServerDelete(s.id, s.name)} className="text-red-600 hover:text-red-800">Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
 
       {tab === 'users' && (
         <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
@@ -653,8 +597,8 @@ export default function AdminSettingsPage() {
                       <td className="px-4 py-3 text-xs text-slate-700">
                         {u.sessions && u.sessions.length > 0
                           ? Array.from(new Set(u.sessions.map((s) => (s.session_name || '').trim()).filter(Boolean)))
-                              .slice(0, 3)
-                              .join(', ')
+                            .slice(0, 3)
+                            .join(', ')
                           : 'No session'}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-700">
@@ -691,6 +635,63 @@ export default function AdminSettingsPage() {
           )}
         </section>
       )}
+
+      {tab === 'servers' && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">WAHA servers</h2>
+              <p className="text-sm text-slate-600">CRUD WAHA API base URLs and keys.</p>
+            </div>
+            <button
+              type="button"
+              onClick={openCreateServer}
+              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Add server
+            </button>
+          </div>
+
+          {serverError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{serverError}</div>
+          )}
+
+          {loadingServers ? (
+            <p className="text-sm text-slate-500">Loading...</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Base URL</th>
+                    <th className="px-4 py-3">API key</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Default</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {servers.map((s) => (
+                    <tr key={s.id}>
+                      <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
+                      <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-700">{s.api_base_url}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.api_key || '—'}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.status === 'online' ? 'Online' : 'Offline'}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.is_default ? 'Yes' : '—'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button onClick={() => openEditServer(s)} className="mr-2 text-blue-600 hover:text-blue-800">Edit</button>
+                        <button onClick={() => void handleServerDelete(s.id, s.name)} className="text-red-600 hover:text-red-800">Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
 
       {serverModalOpen && (
         <div className="fixed inset-0 z-50 top-[-2rem] flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && closeServerModal()}>
@@ -760,7 +761,7 @@ export default function AdminSettingsPage() {
               )}
 
               <div className="mt-2 flex justify-end gap-2 md:col-span-2">
-                {editingUserId && (
+                {/* {editingUserId && (
                   <button
                     type="button"
                     onClick={() => void handleDeleteUser(editingUserId, userEmail || null)}
@@ -768,7 +769,7 @@ export default function AdminSettingsPage() {
                   >
                     Delete user
                   </button>
-                )}
+                )} */}
                 <button type="button" onClick={closeUserModal} className="rounded-xl px-4 py-2.5 text-sm text-slate-900">Cancel</button>
                 <button type="submit" disabled={userSaving} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">{userSaving ? 'Saving...' : 'Save user'}</button>
               </div>
