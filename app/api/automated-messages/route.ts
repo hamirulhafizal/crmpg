@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         scheduled_at: scheduledAtDate.toISOString(),
         is_enable: isEnabled,
         status: 'pending',
+        locked_at: null,
       })
       .select()
       .single()

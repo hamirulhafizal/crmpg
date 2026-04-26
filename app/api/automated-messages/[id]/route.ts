@@ -67,6 +67,8 @@ export async function PUT(
       }
       update.scheduled_at = scheduledAt.toISOString()
     }
+    // Always clear any stale processing lock when the user saves edits.
+    update.locked_at = null
 
     const { data, error } = await supabase
       .from('scheduled_messages')
