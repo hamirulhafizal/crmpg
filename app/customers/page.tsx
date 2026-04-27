@@ -59,6 +59,13 @@ interface Customer {
   is_monthly_buyer?: boolean | null
 }
 
+interface CustomerLabel {
+  id?: string | number
+  name?: string
+  color?: number
+  colorHex?: string
+}
+
 /** JSON columns sometimes arrive as string; normalize so Verified / account UI stay correct. */
 const normalizeCustomerOriginalData = (originalData: unknown): Record<string, unknown> | null => {
   if (originalData == null) return null
@@ -154,6 +161,13 @@ export default function CustomersPage() {
   const [isCreating, setIsCreating] = useState(false)
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null)
+  const [customerLabels, setCustomerLabels] = useState<CustomerLabel[]>([])
+  const [labelsLoading, setLabelsLoading] = useState(false)
+  const [labelsError, setLabelsError] = useState<string | null>(null)
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [profileImageLoading, setProfileImageLoading] = useState(false)
+  const [profileImageError, setProfileImageError] = useState<string | null>(null)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
@@ -496,9 +510,51 @@ export default function CustomersPage() {
     }
   }
 
+  const fetchCustomerLabels = async (customerId: string) => {
+    setLabelsLoading(true)
+    setLabelsError(null)
+    setCustomerLabels([])
+    try {
+      const response = await fetch(`/api/customers/${customerId}/labels`, {
+        cache: 'no-store',
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch customer labels')
+      }
+      setCustomerLabels(Array.isArray(result.labels) ? result.labels : [])
+    } catch (err: any) {
+      setLabelsError(err.message || 'Failed to fetch customer labels')
+    } finally {
+      setLabelsLoading(false)
+    }
+  }
+
+  const fetchCustomerProfileImage = async (customerId: string) => {
+    setProfileImageLoading(true)
+    setProfileImageError(null)
+    setProfileImageUrl(null)
+    try {
+      const response = await fetch(`/api/customers/${customerId}/profile-picture`, {
+        cache: 'no-store',
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch customer profile image')
+      }
+      setProfileImageUrl(typeof result.profilePictureURL === 'string' ? result.profilePictureURL : null)
+    } catch (err: any) {
+      setProfileImageError(err.message || 'Failed to fetch customer profile image')
+    } finally {
+      setProfileImageLoading(false)
+    }
+  }
+
   const handleEdit = (customer: Customer) => {
     setIsEditing(customer.id)
     setEditingCustomer({ ...customer })
+    void fetchCustomerLabels(customer.id)
+    void fetchCustomerProfileImage(customer.id)
   }
 
   const handleSaveEdit = async () => {
@@ -663,6 +719,28 @@ export default function CustomersPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen((prev) => !prev)}
+            className="md:hidden w-full mb-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium flex items-center justify-between"
+            aria-expanded={mobileFiltersOpen}
+            aria-controls="customers-filters-actions-panel"
+          >
+            <span>Filters & actions</span>
+            <svg
+              className={`h-5 w-5 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div
+            id="customers-filters-actions-panel"
+            className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block`}
+          >
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             {/* Search */}
             <div className="md:col-span-2 flex gap-2">
@@ -922,6 +1000,7 @@ export default function CustomersPage() {
               {importResult.message}
             </p>
           )}
+          </div>
         </div>
 
         {/* Error Message */}
@@ -933,16 +1012,180 @@ export default function CustomersPage() {
 
         {/* Create/Edit Modal */}
         {(isCreating || isEditing) && editingCustomer && (
-              // {/* // on mobile and below screen size add padding 0 */}
+          // {/* // on mobile and below screen size add padding 0 */}
 
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}>
-            <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              
+          <div
+            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
+            onClick={() => {
+              setIsCreating(false)
+              setIsEditing(null)
+              setEditingCustomer(null)
+              setCustomerLabels([])
+              setLabelsError(null)
+              setProfileImageUrl(null)
+              setProfileImageError(null)
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+
               {/* // on mobile and below screen size add padding-bottom 2rem */}
               <div className={`p-6 ${window.innerWidth < 768 ? 'pb-24' : 'pb-6'}`}>
-                <h2 className="text-xl font-semibold text-slate-900 mb-4">
-                  {isCreating ? 'Create Customer' : 'Edit Customer'}
-                </h2>
+                <div className="mb-4 flex items-center gap-3 justify-between">
+
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {isCreating ? 'Create Customer' : 'Edit Customer'}
+                  </h2>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreating(false)
+                      setIsEditing(null)
+                      setEditingCustomer(null)
+                      setCustomerLabels([])
+                      setLabelsError(null)
+                      setProfileImageUrl(null)
+                      setProfileImageError(null)
+                    }}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                    aria-label="Close modal"
+                    title="Close"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+
+                </div>
+
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
+                    {isCreating ? (
+                      <div className="h-full w-full flex items-center justify-center text-slate-400">
+                        <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M5.121 17.804A9 9 0 1118.879 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                      </div>
+                    ) : profileImageLoading ? (
+                      <div className="h-full w-full flex items-center justify-center text-slate-400">
+                        <svg
+                          className="animate-spin h-5 w-5"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      </div>
+                    ) : profileImageUrl ? (
+                      <img
+                        src={profileImageUrl}
+                        alt="Customer WhatsApp profile"
+                        className="h-full w-full object-cover"
+                        onError={() => {
+                          setProfileImageUrl(null)
+                          setProfileImageError('Profile image is unavailable')
+                        }}
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center text-slate-400">
+                        <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M5.121 17.804A9 9 0 1118.879 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">WhatsApp profile image</p>
+                    <p className="text-xs text-slate-500">
+                      {isCreating
+                        ? 'Available after customer is created.'
+                        : profileImageError
+                          ? profileImageError
+                          : profileImageUrl
+                            ? 'Loaded from WAHA contact profile.'
+                            : 'No profile image found.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Account Status</label>
+                  <div
+                    className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
+                    aria-live="polite"
+                  >
+                    {getAccountStatusLabel(editingCustomer)}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
+                  </p>
+                </div>
+
+
+                <div className="mb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block text-sm font-medium text-slate-700">WhatsApp labels</label>
+                    {!isCreating && isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => void fetchCustomerLabels(isEditing)}
+                        disabled={labelsLoading}
+                        className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                      >
+                        {labelsLoading ? 'Refreshing...' : 'Refresh labels'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 min-h-[42px]">
+                    {isCreating ? (
+                      <span className="text-xs text-slate-500">
+                        Labels are available after the customer is created.
+                      </span>
+                    ) : labelsLoading ? (
+                      <span className="text-xs text-slate-500">Loading labels...</span>
+                    ) : labelsError ? (
+                      <span className="text-xs text-red-600">{labelsError}</span>
+                    ) : customerLabels.length === 0 ? (
+                      <span className="text-xs text-slate-500">No labels found on WhatsApp.</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {customerLabels.map((label, idx) => {
+                          const labelId = String(label.id ?? `${label.name || 'label'}-${idx}`)
+                          const hasHex =
+                            typeof label.colorHex === 'string' &&
+                            /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/.test(label.colorHex)
+                          const bgColor = hasHex ? `${label.colorHex}22` : '#e2e8f0'
+                          const borderColor = hasHex ? label.colorHex : '#cbd5e1'
+                          return (
+                            <span
+                              key={labelId}
+                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium text-slate-800"
+                              style={{ backgroundColor: bgColor, borderColor }}
+                              title={`Label ID: ${label.id ?? '-'}`}
+                            >
+                              {label.name || `Label ${label.id ?? ''}`}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1205,18 +1448,7 @@ export default function CustomersPage() {
                     />
                   </div>
 
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Account Status</label>
-                    <div
-                      className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
-                      aria-live="polite"
-                    >
-                      {getAccountStatusLabel(editingCustomer)}
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
-                    </p>
-                  </div>
+
                 </div>
 
                 <div className="flex justify-end gap-3 mt-6">
@@ -1225,6 +1457,10 @@ export default function CustomersPage() {
                       setIsCreating(false)
                       setIsEditing(null)
                       setEditingCustomer(null)
+                      setCustomerLabels([])
+                      setLabelsError(null)
+                      setProfileImageUrl(null)
+                      setProfileImageError(null)
                     }}
                     className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium"
                   >
@@ -1459,59 +1695,58 @@ export default function CustomersPage() {
                   customers.map((customer) => {
                     const accountKey = getAccountStatusKey(customer)
                     return (
-                    <tr
-                      key={customer.id}
-                      onClick={() => handleEdit(customer)}
-                      className="cursor-pointer hover:bg-slate-50 transition-colors"
-                    >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(customer.id)}
-                          onChange={(e) => handleSelectOne(customer.id, e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded cursor-pointer"
-                        />
-                      </td>
+                      <tr
+                        key={customer.id}
+                        onClick={() => handleEdit(customer)}
+                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                      >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(customer.id)}
+                            onChange={(e) => handleSelectOne(customer.id, e.target.checked)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded cursor-pointer"
+                          />
+                        </td>
 
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.sender_name || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800 font-medium">{customer.save_name || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.pg_code || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.sender_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800 font-medium">{customer.save_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.pg_code || '-'}</td>
 
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{customer.name || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.email || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.phone || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.gender || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.ethnicity || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">{customer.age || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {customer.dob
-                          ? (() => {
+                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{customer.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.email || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.gender || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.ethnicity || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">{customer.age || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {customer.dob
+                            ? (() => {
                               const d = new Date(customer.dob)
                               const dd = String(d.getUTCDate()).padStart(2, '0')
                               const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
                               const yyyy = d.getUTCFullYear()
                               return `${dd}/${mm}/${yyyy}`
                             })()
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {customer.is_married === true ? 'Yes' : customer.is_married === false ? 'No' : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {customer.is_friend === true ? 'Yes' : customer.is_friend === false ? 'No' : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {parseProfileVerified(customer.original_data) === true
-                          ? 'Yes'
-                          : parseProfileVerified(customer.original_data) === false
-                            ? 'No'
                             : '-'}
-                      </td>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {customer.is_married === true ? 'Yes' : customer.is_married === false ? 'No' : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {customer.is_friend === true ? 'Yes' : customer.is_friend === false ? 'No' : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {parseProfileVerified(customer.original_data) === true
+                            ? 'Yes'
+                            : parseProfileVerified(customer.original_data) === false
+                              ? 'No'
+                              : '-'}
+                        </td>
 
-                      <td className="px-4 py-3 text-sm">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            accountKey === 'inactive'
+                        <td className="px-4 py-3 text-sm">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${accountKey === 'inactive'
                               ? 'bg-red-50 text-red-700 border border-red-100'
                               : accountKey === 'free'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-100'
@@ -1522,80 +1757,80 @@ export default function CustomersPage() {
                                     : accountKey === 'freeze'
                                       ? 'bg-orange-50 text-orange-800 border border-orange-100'
                                       : 'bg-slate-50 text-slate-700 border border-slate-200'
-                          }`}
-                        >
-                          {accountKey === 'inactive'
-                            ? 'Inactive'
-                            : accountKey === 'free'
-                              ? 'Free account'
-                              : accountKey === 'active'
-                                ? 'Active'
-                                : accountKey === 'temporary'
-                                  ? 'Temporary'
-                                  : accountKey === 'freeze'
-                                    ? 'Freeze'
-                                    : '-'}
-                        </span>
-                      </td>
+                              }`}
+                          >
+                            {accountKey === 'inactive'
+                              ? 'Inactive'
+                              : accountKey === 'free'
+                                ? 'Free account'
+                                : accountKey === 'active'
+                                  ? 'Active'
+                                  : accountKey === 'temporary'
+                                    ? 'Temporary'
+                                    : accountKey === 'freeze'
+                                      ? 'Freeze'
+                                      : '-'}
+                          </span>
+                        </td>
 
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {customer.original_data?.['Date Register']
-                          ? formatOriginalDate(customer.original_data?.['Date Register'])
-                          : customer.created_at
-                            ? (() => {
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {customer.original_data?.['Date Register']
+                            ? formatOriginalDate(customer.original_data?.['Date Register'])
+                            : customer.created_at
+                              ? (() => {
                                 const d = new Date(customer.created_at)
                                 const dd = String(d.getUTCDate()).padStart(2, '0')
                                 const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
                                 const yyyy = d.getUTCFullYear()
                                 return `${dd}/${mm}/${yyyy}`
                               })()
+                              : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {formatLastPurchaseDisplayForUi(customer)}
+                        </td>
+
+                        <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
+                          {customer.created_at
+                            ? new Date(customer.created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
                             : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-800">
-                        {formatLastPurchaseDisplayForUi(customer)}
-                      </td>
+                        </td>
 
-                      <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                        {customer.created_at
-                          ? new Date(customer.created_at).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
-                          : '-'}
-                      </td>
-
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleEdit(customer)
-                            }}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                            title="Edit"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(customer.id)
-                            }}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleEdit(customer)
+                              }}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Edit"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(customer.id)
+                              }}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     )
                   })
                 )}
