@@ -12,6 +12,28 @@ interface WahaSession {
   engine?: { engine?: string }
 }
 
+function normalizeSessionNameToPhone(sessionName: string): string {
+  return (sessionName || '').replace(/\D/g, '')
+}
+
+function buildDefaultEmailFallbackTemplate(phoneFromSession: string): string {
+  const phone = phoneFromSession || '601156747399'
+  return [
+    'Assalamualikum dan Salam',
+    '',
+    'Ini {SenderName} ya ?',
+    'saya Hamirul Dealer Public Gold',
+    '',
+    '{SenderName} sudah tukar no whatsapp ya ?',
+    '',
+    'Sila click link di bawah untuk hubungi saya',
+    '',
+    `wasap.my/${phone}/INFO_EMAS`,
+    `wasap.my/${phone}/INFO_EMAS`,
+    `wasap.my/${phone}/INFO_EMAS`,
+  ].join('\n')
+}
+
 export default function WahaIntegrationPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
@@ -458,14 +480,23 @@ export default function WahaIntegrationPage() {
                     setEmailFallbackMessage(null)
                     setShowEmailAppPassword(false)
                     setEmailFallbackDialogOpen(true)
+                    const defaultPhone =
+                      normalizeSessionNameToPhone(selectedSession) ||
+                      normalizeSessionNameToPhone(sessions[0]?.name || '') ||
+                      '601156747399'
+                    const defaultTemplate = buildDefaultEmailFallbackTemplate(defaultPhone)
                     try {
                       const res = await fetch('/api/waha/email-fallback')
-                      if (!res.ok) return
+                      if (!res.ok) {
+                        setEmailFallbackTemplate(defaultTemplate)
+                        return
+                      }
                       const data = await res.json()
                       setEmailAppPassword((data.appPassword || '').toString())
-                      setEmailFallbackTemplate((data.gmailMessage || '').toString())
+                      const loadedTemplate = (data.gmailMessage || '').toString()
+                      setEmailFallbackTemplate(loadedTemplate.trim() ? loadedTemplate : defaultTemplate)
                     } catch {
-                      // ignore load errors; user can still type a new password and message
+                      setEmailFallbackTemplate(defaultTemplate)
                     }
                   }}
                   className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors"
@@ -892,7 +923,7 @@ export default function WahaIntegrationPage() {
                     </span>
                   </div>
                   <textarea
-                    rows={3}
+                    rows={5}
                     placeholder="If left empty, the WhatsApp message text will be reused for email."
                     value={emailFallbackTemplate}
                     onChange={(e) => setEmailFallbackTemplate(e.target.value)}
