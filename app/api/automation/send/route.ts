@@ -13,6 +13,11 @@ import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
+const MAX_USERS_IN_PARALLEL = 3
+
+/** Random wait between *different* customers to avoid WhatsApp bursts (1–3 minutes). */
+const CUSTOMER_SEND_GAP_MIN_MS = 60 * 1000
+const CUSTOMER_SEND_GAP_MAX_MS = 3 * 60 * 1000
 
 // set for 1 day
 const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
@@ -24,6 +29,38 @@ function sleep(ms: number) {
 async function randomDelayBetween(minMs: number, maxMs: number) {
   const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
   await sleep(delay)
+}
+
+async function runWithConcurrency<TItem, TResult>(
+  items: TItem[],
+  maxConcurrent: number,
+  worker: (item: TItem, index: number) => Promise<TResult>
+): Promise<TResult[]> {
+  if (items.length === 0) return []
+
+  const limit = Math.max(1, Math.min(maxConcurrent, items.length))
+  const results = new Array<TResult>(items.length)
+  let nextIndex = 0
+
+  const runners = Array.from({ length: limit }, async () => {
+    while (true) {
+      const current = nextIndex++
+      if (current >= items.length) break
+      results[current] = await worker(items[current], current)
+    }
+  })
+
+  await Promise.all(runners)
+  return results
+}
+
+function createRunLogger(runId: string) {
+  const prefix = `[send1][${runId}]`
+  return {
+    info: (...args: unknown[]) => console.log(prefix, ...args),
+    warn: (...args: unknown[]) => console.warn(prefix, ...args),
+    error: (...args: unknown[]) => console.error(prefix, ...args),
+  }
 }
 
 // Service-role Supabase client so this worker can bypass RLS safely.
@@ -428,6 +465,8 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
 // Use GET so you can call this via an HTTP GET (e.g. from Supabase cron if you switch to net.http_get).
 // The logic is identical; only the HTTP verb changes.
 export async function GET(request: Request) {
+  const runId = `r${Math.random().toString(36).slice(2, 8)}`
+  const log = createRunLogger(runId)
 
   const authHeader = request.headers.get('authorization') || ''
   const expected = process.env.CRON_SECRET 
@@ -436,7 +475,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log('triggering send---->')
+  console.log('triggering send 1---->')
+  log.info('worker started at:', new Date().toISOString())
 
   try {
     const supabase = supabaseAdmin
@@ -473,6 +513,7 @@ export async function GET(request: Request) {
       fetchQuery = fetchQuery.or('is_enable.eq.true,is_enable.is.null')
     }
     let { data: due, error: fetchError } = await fetchQuery
+    log.info('fetched due rows count:', due?.length || 0)
 
     if (fetchError && isMissingIsEnableColumn(fetchError || undefined)) {
       supportsIsEnable = false
@@ -522,6 +563,7 @@ export async function GET(request: Request) {
       lockQuery = lockQuery.or('is_enable.eq.true,is_enable.is.null')
     }
     let { data: lockedRows, error: lockError } = await lockQuery
+    log.info('locked rows count:', lockedRows?.length || 0)
 
     if (lockError && isMissingIsEnableColumn(lockError || undefined)) {
       supportsIsEnable = false
@@ -549,6 +591,7 @@ export async function GET(request: Request) {
     // 3. Resolve WAHA sessions per user so we know which session to send from.
     const lockedIdSet = new Set((lockedRows || []).map((r) => r.id))
     const dueToProcess = (due as ScheduledMessageRow[]).filter((r) => lockedIdSet.has(r.id))
+    log.info('due rows after lock filter:', dueToProcess.length)
 
     if (dueToProcess.length === 0) {
       return NextResponse.json({
@@ -591,6 +634,7 @@ export async function GET(request: Request) {
         sessionByUser.set(s.user_id, s)
       }
     }
+    log.info('session mappings loaded:', sessionByUser.size)
 
     const usersWithUnavailableSession = new Set<string>()
     const usersToNotifyExpiredSession: Array<{ userId: string; sessionName: string }> = []
@@ -706,6 +750,8 @@ export async function GET(request: Request) {
     }
 
     const processableRows = dueToProcess.filter((row) => !usersWithUnavailableSession.has(row.user_id))
+    log.info('processable rows:', processableRows.length)
+    log.info('skipped rows due to unavailable session:', dueToProcess.length - processableRows.length)
 
     if (processableRows.length === 0) {
       return NextResponse.json({
@@ -717,9 +763,6 @@ export async function GET(request: Request) {
       })
     }
 
-    let sent = 0
-    let failed = 0
-
     // Compute "today" in Malaysia time (UTC+8) so birthdays follow local date,
     // not pure UTC (which would appear as "yesterday" for late-night runs).
     const nowForTz = new Date()
@@ -728,315 +771,355 @@ export async function GET(request: Request) {
     const todayMonth = localTzNow.getUTCMonth()
     const todayDate = localTzNow.getUTCDate()
 
+    const rowsByUser = new Map<string, ScheduledMessageRow[]>()
     for (const row of processableRows as ScheduledMessageRow[]) {
-      try {
-        const title = normalizedScheduledTitle(row.title)
-        const hasPhone = !!row.phone && row.phone.trim() !== ''
-        const isDailyRecurringAutomation =
-          title === 'birthday' ||
-          // title === 'inactive follow-up' ||
-          title === 'free account follow-up'
-
-        const session = sessionByUser.get(row.user_id)
-        const sessionName = session?.session_name
-        if (!sessionName) {
-          console.warn('No WAHA session configured for user, skipping message row:', row.user_id, row.id)
-          failed++
-          continue
-        }
-
-        switch (title) {
-          // Birthday automation: title contains "birthday" and phone is empty
-          case 'birthday': {
-            const { data: customers, error: customersError } = await supabase.rpc(
-              'get_customers_by_birthday',
-              {
-                p_user_id: row.user_id,
-                p_month: todayMonth + 1,
-                p_day: todayDate,
-              }
-            )
-
-            if (customersError) {
-              console.error('Error fetching customers for birthday automation:', customersError)
-              failed++
-              break
-            }
-
-            const todaysCustomers = (customers || []) as Customer[]
-            if (todaysCustomers.length > 0) {
-
-              console.log(`${row.user_id} - ${todaysCustomers.length} cs`)
-              // console.log('todaysCustomers---->', todaysCustomers)
-
-              for (const customer of todaysCustomers) {
-                try {
-                  // Add random delay (3–6 seconds) between customers
-                  await randomDelayBetween(3000, 6000)
-
-                  const message = renderCustomerTemplate(row.message, customer)
-
-                  const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
-                  const tryEmail = () => sendEmailFallback(row.user_id, customer, message)
-                  const tryWa = () => sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
-
-                  let birthdayDelivered = false
-                  if (contactCheck.ok && contactCheck.numberExists) {
-                    try {
-                      await tryWa()
-                      birthdayDelivered = true
-                    } catch (sendErr) {
-                      console.error(
-                        'Error sending birthday WhatsApp message, attempting email fallback:',
-                        sendErr
-                      )
-                      birthdayDelivered = await tryEmail()
-                    }
-                  } else if (contactCheck.ok && !contactCheck.numberExists) {
-                    console.log('WhatsApp number not on WhatsApp; trying email first:', customer.id)
-                    birthdayDelivered = await tryEmail()
-                    if (!birthdayDelivered) {
-                      try {
-                        await tryWa()
-                        birthdayDelivered = true
-                      } catch {
-                        birthdayDelivered = false
-                      }
-                    }
-                  } else {
-                    
-
-
-                    console.log('contactCheck---->', contactCheck)
-
-                    console.log(
-                      'WhatsApp contact check unavailable; trying email first:',
-                      customer.id,
-                      !contactCheck.ok ? contactCheck.reason : ''
-                    )
-                    birthdayDelivered = await tryEmail()
-                    if (!birthdayDelivered) {
-                      try {
-                        await tryWa()
-                        birthdayDelivered = true
-                      } catch (waErr) {
-                        console.error('Birthday: email skipped/failed and WhatsApp failed:', waErr)
-                        birthdayDelivered = false
-                      }
-                    }
-                  }
-
-                  if (birthdayDelivered) sent++
-                  else failed++
-                } catch (err) {
-                  console.error('Error preparing birthday message:', err)
-                  failed++
-                }
-              }
-            }
-            break
-          }
-
-          //case 'inactive follow-up':
-          case 'free account follow-up': {
-            const kind = 'free'
-
-            const { data: sentRows, error: sentErr } = await supabaseAdmin
-              .from('followup_campaign_sends')
-              .select('customer_id')
-              .eq('user_id', row.user_id)
-              .eq('kind', kind)
-
-            if (sentErr) {
-              console.error('Error loading follow-up send log:', sentErr)
-              failed++
-              break
-            }
-
-            const alreadySent = new Set(
-              (sentRows || []).map((r: { customer_id: string }) => r.customer_id)
-            )
-
-            const { data: allCustomers, error: custError } = await supabaseAdmin
-              .from('customers')
-              .select('*')
-              .eq('user_id', row.user_id)
-              .not('phone', 'is', null)
-
-            if (custError) {
-              console.error('Error fetching customers for follow-up automation:', custError)
-              failed++
-              break
-            }
-
-            const candidates = (allCustomers || []).filter((c: Customer) => {
-              if (alreadySent.has(c.id)) return false
-              const status = getAccountStatusKey(c)
-              // if (kind === 'inactive') {
-              //   if (status !== 'inactive') return false
-              //   const parts = getLastPurchaseUtcMonthDate(c)
-              //   if (!parts) return false
-              //   return parts.month === todayMonth && parts.day === todayDate
-              // }
-              if (status !== 'free') return false
-              const regParts = getRegistrationUtcMonthDate(c.original_data, c.created_at)
-              if (!regParts) return false
-              return regParts.month === todayMonth && regParts.day === todayDate
-            })
-
-            const warmupEnabled = row.message.startsWith(WARMUP_MESSAGE_MARKER)
-            const followupTemplate = warmupEnabled
-              ? row.message.slice(WARMUP_MESSAGE_MARKER.length)
-              : row.message
-            const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
-
-            for (const customer of candidates) {
-              try {
-                const message = renderCustomerTemplate(followupTemplate, customer)
-
-                const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
-
-                const sendFollowUpWhatsApp = async () => {
-                  if (warmupEnabled) {
-                    const isMalay = (customer.ethnicity || '').toLowerCase() === 'malay'
-                    const timeGreeting =
-                      localHour < 12
-                        ? 'Selamat Pagi'
-                        : localHour < 15
-                          ? 'Selamat Tengahari'
-                          : localHour < 18
-                            ? 'Selamat Petang'
-                            : 'Selamat Malam'
-
-                    const warmerTemplate = isMalay
-                      ? 'Salam, {SenderName}'
-                      : `${timeGreeting}, {SenderName}`
-
-                    const warmerText = renderCustomerTemplate(warmerTemplate, customer)
-                    await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, warmerText)
-                    await randomDelayBetween(30000, 60000)
-                  }
-
-                  await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
-                }
-
-                let delivered = false
-                if (contactCheck.ok && contactCheck.numberExists) {
-                  try {
-                    await sendFollowUpWhatsApp()
-                    delivered = true
-                  } catch (sendErr) {
-                    console.error(
-                      'Error sending follow-up WhatsApp message, attempting email fallback:',
-                      sendErr
-                    )
-                    delivered = await sendEmailFallback(row.user_id, customer, message)
-                  }
-                } else if (contactCheck.ok && !contactCheck.numberExists) {
-                  console.log('Follow-up: number not on WhatsApp; email first:', customer.id)
-                  delivered = await sendEmailFallback(row.user_id, customer, message)
-                  if (!delivered) {
-                    try {
-                      await sendFollowUpWhatsApp()
-                      delivered = true
-                    } catch {
-                      delivered = false
-                    }
-                  }
-                } else {
-                  console.log(
-                    'Follow-up: contact check unavailable; email first:',
-                    customer.id,
-                    !contactCheck.ok ? contactCheck.reason : ''
-                  )
-                  delivered = await sendEmailFallback(row.user_id, customer, message)
-                  if (!delivered) {
-                    try {
-                      await sendFollowUpWhatsApp()
-                      delivered = true
-                    } catch {
-                      delivered = false
-                    }
-                  }
-                }
-
-                if (delivered) {
-                  const { error: insErr } = await supabaseAdmin.from('followup_campaign_sends').insert({
-                    user_id: row.user_id,
-                    customer_id: customer.id,
-                    kind,
-                    scheduled_message_id: row.id,
-                  })
-                  if (insErr) {
-                    console.error('Error recording follow-up send:', insErr)
-                    failed++
-                  } else {
-                    sent++
-                  }
-                } else {
-                  failed++
-                }
-
-                // Interval between customers to avoid bursts / rate limits.
-                await randomDelayBetween(30000, 60000)
-              } catch (err) {
-                console.error('Error preparing follow-up message:', err)
-                failed++
-              }
-            }
-            break
-          }
-
-          default: {
-            if (!hasPhone) {
-              console.warn(
-                'Scheduled message has no recognised handler (missing phone and not a broadcast automation):',
-                row.id
-              )
-              failed++
-              break
-            }
-            try {
-              await sendWhatsAppMessage(row.user_id, sessionName, row.phone, row.message)
-              sent++
-            } catch (sendErr) {
-              console.error('Error sending direct WhatsApp message:', sendErr)
-              failed++
-            }
-            break
-          }
-        }
-
-        // Update scheduling depending on type:
-        // - Broadcast automations: recurring daily job → keep status 'pending' and move scheduled_at to next day.
-        // - Others: one-off → mark as 'sent'.
-        if (isDailyRecurringAutomation) {
-          const nextRun = new Date()
-          nextRun.setUTCDate(nextRun.getUTCDate() + 1)
-
-          await supabase
-            .from('scheduled_messages')
-            .update({
-              status: 'pending',
-              locked_at: null,
-              scheduled_at: nextRun.toISOString(),
-            })
-            .eq('id', row.id)
-        } else {
-          await supabase
-            .from('scheduled_messages')
-            .update({ status: 'sent', locked_at: null })
-            .eq('id', row.id)
-        }
-      } catch (err) {
-        console.error('Error processing scheduled message row:', err)
-        failed++
-        await supabase
-          .from('scheduled_messages')
-          .update({ status: 'failed', locked_at: null })
-          .eq('id', row.id)
-      }
+      const existing = rowsByUser.get(row.user_id)
+      if (existing) existing.push(row)
+      else rowsByUser.set(row.user_id, [row])
     }
+
+    const userEntries = Array.from(rowsByUser.entries())
+    log.info('users to process in this run:', userEntries.length, 'max parallel:', MAX_USERS_IN_PARALLEL)
+    const userResults = await runWithConcurrency(
+      userEntries,
+      MAX_USERS_IN_PARALLEL,
+      async ([userId, userRows]) => {
+        log.info('user worker started:', userId, 'rows:', userRows.length)
+        let localSent = 0
+        let localFailed = 0
+
+        for (const row of userRows) {
+          try {
+            const title = normalizedScheduledTitle(row.title)
+            const hasPhone = !!row.phone && row.phone.trim() !== ''
+            const isDailyRecurringAutomation =
+              title === 'birthday' ||
+              // title === 'inactive follow-up' ||
+              title === 'free account follow-up'
+
+            const session = sessionByUser.get(userId)
+            const sessionName = session?.session_name
+            if (!sessionName) {
+              log.warn('No WAHA session configured for user, skipping message row:', row.user_id, row.id)
+              localFailed++
+              continue
+            }
+            log.info('processing row:', row.id, 'user:', userId, 'title:', title, 'session:', sessionName)
+
+            switch (title) {
+              // Birthday automation: title contains "birthday" and phone is empty
+              case 'birthday': {
+                const { data: customers, error: customersError } = await supabase.rpc(
+                  'get_customers_by_birthday',
+                  {
+                    p_user_id: row.user_id,
+                    p_month: todayMonth + 1,
+                    p_day: todayDate,
+                  }
+                )
+
+                if (customersError) {
+                  console.error('Error fetching customers for birthday automation:', customersError)
+                  localFailed++
+                  break
+                }
+
+                const todaysCustomers = (customers || []) as Customer[]
+                if (todaysCustomers.length > 0) {
+                  console.log(`${row.user_id} - ${todaysCustomers.length} cs`)
+                  log.info('[birthday] customers to send:', todaysCustomers.length, 'row:', row.id)
+
+                  for (let i = 0; i < todaysCustomers.length; i++) {
+                    const customer = todaysCustomers[i]
+                    try {
+                      if (i > 0) {
+                        await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+                      }
+
+                      const message = renderCustomerTemplate(row.message, customer)
+
+                      const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
+                      const tryEmail = () => sendEmailFallback(row.user_id, customer, message)
+                      const tryWa = () => sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
+
+                      let birthdayDelivered = false
+                      if (contactCheck.ok && contactCheck.numberExists) {
+                        try {
+                          await tryWa()
+                          birthdayDelivered = true
+                        } catch (sendErr) {
+                          console.error(
+                            'Error sending birthday WhatsApp message, attempting email fallback:',
+                            sendErr
+                          )
+                          birthdayDelivered = await tryEmail()
+                        }
+                      } else if (contactCheck.ok && !contactCheck.numberExists) {
+                        console.log('WhatsApp number not on WhatsApp; trying email first:', customer.id)
+                        birthdayDelivered = await tryEmail()
+                        if (!birthdayDelivered) {
+                          try {
+                            await tryWa()
+                            birthdayDelivered = true
+                          } catch {
+                            birthdayDelivered = false
+                          }
+                        }
+                      } else {
+                        console.log('contactCheck---->', contactCheck)
+                        console.log(
+                          'WhatsApp contact check unavailable; trying email first:',
+                          customer.id,
+                          !contactCheck.ok ? contactCheck.reason : ''
+                        )
+                        birthdayDelivered = await tryEmail()
+                        if (!birthdayDelivered) {
+                          try {
+                            await tryWa()
+                            birthdayDelivered = true
+                          } catch (waErr) {
+                            console.error('Birthday: email skipped/failed and WhatsApp failed:', waErr)
+                            birthdayDelivered = false
+                          }
+                        }
+                      }
+
+                      if (birthdayDelivered) localSent++
+                      else localFailed++
+                      log.info(
+                        '[birthday] customer result:',
+                        customer.id,
+                        'delivered:',
+                        birthdayDelivered
+                      )
+                    } catch (err) {
+                      console.error('Error preparing birthday message:', err)
+                      localFailed++
+                    }
+                  }
+                } else {
+                  log.info('[birthday] no matching customers for today. row:', row.id, 'user:', row.user_id)
+                }
+                break
+              }
+
+              //case 'inactive follow-up':
+              case 'free account follow-up': {
+                const kind = 'free'
+
+                const { data: sentRows, error: sentErr } = await supabaseAdmin
+                  .from('followup_campaign_sends')
+                  .select('customer_id')
+                  .eq('user_id', row.user_id)
+                  .eq('kind', kind)
+
+                if (sentErr) {
+                  console.error('Error loading follow-up send log:', sentErr)
+                  localFailed++
+                  break
+                }
+
+                const alreadySent = new Set(
+                  (sentRows || []).map((r: { customer_id: string }) => r.customer_id)
+                )
+
+                const { data: allCustomers, error: custError } = await supabaseAdmin
+                  .from('customers')
+                  .select('*')
+                  .eq('user_id', row.user_id)
+                  .not('phone', 'is', null)
+
+                if (custError) {
+                  console.error('Error fetching customers for follow-up automation:', custError)
+                  localFailed++
+                  break
+                }
+
+                const candidates = (allCustomers || []).filter((c: Customer) => {
+                  if (alreadySent.has(c.id)) return false
+                  const status = getAccountStatusKey(c)
+                  // if (kind === 'inactive') {
+                  //   if (status !== 'inactive') return false
+                  //   const parts = getLastPurchaseUtcMonthDate(c)
+                  //   if (!parts) return false
+                  //   return parts.month === todayMonth && parts.day === todayDate
+                  // }
+                  if (status !== 'free') return false
+                  const regParts = getRegistrationUtcMonthDate(c.original_data, c.created_at)
+                  if (!regParts) return false
+                  return regParts.month === todayMonth && regParts.day === todayDate
+                })
+                log.info('[followup] candidates to send:', candidates.length, 'row:', row.id)
+
+                const warmupEnabled = row.message.startsWith(WARMUP_MESSAGE_MARKER)
+                const followupTemplate = warmupEnabled
+                  ? row.message.slice(WARMUP_MESSAGE_MARKER.length)
+                  : row.message
+                const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
+
+                for (let i = 0; i < candidates.length; i++) {
+                  const customer = candidates[i]
+                  try {
+                    if (i > 0) {
+                      await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+                    }
+
+                    const message = renderCustomerTemplate(followupTemplate, customer)
+
+                    const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
+
+                    const sendFollowUpWhatsApp = async () => {
+                      if (warmupEnabled) {
+                        const isMalay = (customer.ethnicity || '').toLowerCase() === 'malay'
+                        const timeGreeting =
+                          localHour < 12
+                            ? 'Selamat Pagi'
+                            : localHour < 15
+                              ? 'Selamat Tengahari'
+                              : localHour < 18
+                                ? 'Selamat Petang'
+                                : 'Selamat Malam'
+
+                        const warmerTemplate = isMalay
+                          ? 'Salam, {SenderName}'
+                          : `${timeGreeting}, {SenderName}`
+
+                        const warmerText = renderCustomerTemplate(warmerTemplate, customer)
+                        await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, warmerText)
+                        await randomDelayBetween(30000, 60000)
+                      }
+
+                      await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
+                    }
+
+                    let delivered = false
+                    if (contactCheck.ok && contactCheck.numberExists) {
+                      try {
+                        await sendFollowUpWhatsApp()
+                        delivered = true
+                      } catch (sendErr) {
+                        console.error(
+                          'Error sending follow-up WhatsApp message, attempting email fallback:',
+                          sendErr
+                        )
+                        delivered = await sendEmailFallback(row.user_id, customer, message)
+                      }
+                    } else if (contactCheck.ok && !contactCheck.numberExists) {
+                      console.log('Follow-up: number not on WhatsApp; email first:', customer.id)
+                      delivered = await sendEmailFallback(row.user_id, customer, message)
+                      if (!delivered) {
+                        try {
+                          await sendFollowUpWhatsApp()
+                          delivered = true
+                        } catch {
+                          delivered = false
+                        }
+                      }
+                    } else {
+                      console.log(
+                        'Follow-up: contact check unavailable; email first:',
+                        customer.id,
+                        !contactCheck.ok ? contactCheck.reason : ''
+                      )
+                      delivered = await sendEmailFallback(row.user_id, customer, message)
+                      if (!delivered) {
+                        try {
+                          await sendFollowUpWhatsApp()
+                          delivered = true
+                        } catch {
+                          delivered = false
+                        }
+                      }
+                    }
+
+                    if (delivered) {
+                      const { error: insErr } = await supabaseAdmin.from('followup_campaign_sends').insert({
+                        user_id: row.user_id,
+                        customer_id: customer.id,
+                        kind,
+                        scheduled_message_id: row.id,
+                      })
+                      if (insErr) {
+                        console.error('Error recording follow-up send:', insErr)
+                        localFailed++
+                      } else {
+                        localSent++
+                      }
+                    } else {
+                      localFailed++
+                    }
+                    log.info('[followup] customer result:', customer.id, 'delivered:', delivered)
+                  } catch (err) {
+                    console.error('Error preparing follow-up message:', err)
+                    localFailed++
+                  }
+                }
+                break
+              }
+
+              default: {
+                if (!hasPhone) {
+                  console.warn(
+                    'Scheduled message has no recognised handler (missing phone and not a broadcast automation):',
+                    row.id
+                  )
+                  localFailed++
+                  break
+                }
+                try {
+                  await sendWhatsAppMessage(row.user_id, sessionName, row.phone, row.message)
+                  localSent++
+                  log.info('[direct] sent row:', row.id, 'user:', row.user_id)
+                } catch (sendErr) {
+                  console.error('Error sending direct WhatsApp message:', sendErr)
+                  localFailed++
+                }
+                break
+              }
+            }
+
+            // Update scheduling depending on type:
+            // - Broadcast automations: recurring daily job → keep status 'pending' and move scheduled_at to next day.
+            // - Others: one-off → mark as 'sent'.
+            if (isDailyRecurringAutomation) {
+              const nextRun = new Date()
+              nextRun.setUTCDate(nextRun.getUTCDate() + 1)
+
+              await supabase
+                .from('scheduled_messages')
+                .update({
+                  status: 'pending',
+                  locked_at: null,
+                  scheduled_at: nextRun.toISOString(),
+                })
+                .eq('id', row.id)
+              log.info('row rescheduled for next day:', row.id)
+            } else {
+              await supabase
+                .from('scheduled_messages')
+                .update({ status: 'sent', locked_at: null })
+                .eq('id', row.id)
+              log.info('row marked sent:', row.id)
+            }
+          } catch (err) {
+            console.error('Error processing scheduled message row:', err)
+            localFailed++
+            await supabase
+              .from('scheduled_messages')
+              .update({ status: 'failed', locked_at: null })
+              .eq('id', row.id)
+            log.info('row marked failed:', row.id)
+          }
+        }
+
+        log.info('user worker finished:', userId, 'sent:', localSent, 'failed:', localFailed)
+        return { sent: localSent, failed: localFailed }
+      }
+    )
+
+    const sent = userResults.reduce((acc, result) => acc + result.sent, 0)
+    const failed = userResults.reduce((acc, result) => acc + result.failed, 0)
+    log.info('run completed. processed:', processableRows.length, 'sent:', sent, 'failed:', failed)
 
     return NextResponse.json({
       success: true,
