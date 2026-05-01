@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 
 // GET /api/waha/email-fallback
-// Load Gmail app password for the current user's WAHA sessions
+// Load Gmail fallback settings from the current user's profile
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -16,11 +16,9 @@ export async function GET() {
     }
 
     const { data, error } = await supabase
-      .from('waha_user_sessions')
-      .select('gmaill_app_password, gmail_message')
-      .eq('user_id', user.id)
-      .not('gmaill_app_password', 'is', null)
-      .limit(1)
+      .from('profiles')
+      .select('gmail_app_password, gmail_message')
+      .eq('id', user.id)
       .maybeSingle()
 
     if (error) {
@@ -31,7 +29,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      appPassword: data?.gmaill_app_password || '',
+      appPassword: data?.gmail_app_password || '',
       gmailMessage: data?.gmail_message || '',
     })
   } catch (err: unknown) {
@@ -41,7 +39,7 @@ export async function GET() {
 }
 
 // POST /api/waha/email-fallback
-// Save Gmail app password for the current user's WAHA sessions
+// Save Gmail fallback settings to the current user's profile
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -63,9 +61,9 @@ export async function POST(request: Request) {
     }
 
     const { error: updateError } = await supabase
-      .from('waha_user_sessions')
-      .update({ gmaill_app_password: appPassword, gmail_message: gmailMessage })
-      .eq('user_id', user.id)
+      .from('profiles')
+      .update({ gmail_app_password: appPassword, gmail_message: gmailMessage })
+      .eq('id', user.id)
 
     if (updateError) {
       return NextResponse.json(

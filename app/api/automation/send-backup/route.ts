@@ -267,28 +267,18 @@ async function checkWhatsAppNumberExists(userId: string, session: string, phone:
   }
 }
 
-function pickGmailAppPassword(row: Record<string, unknown> | null | undefined): string | null {
-  if (!row) return null
-  const a = row.gmail_app_password
-  const b = row.gmaill_app_password
-  const raw = (typeof a === 'string' ? a : typeof b === 'string' ? b : '').trim()
-  return raw.length > 0 ? raw : null
-}
-
 async function getEmailFallbackConfig(userId: string): Promise<EmailFallbackConfig | null> {
-  const { data: sessionRow, error: sessionError } = await supabaseAdmin
-    .from('waha_user_sessions')
-    .select('*')
-    .eq('user_id', userId)
-    .limit(1)
+  const { data: profileRow, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('gmail_app_password, gmail_message')
+    .eq('id', userId)
     .maybeSingle()
 
-  if (sessionError || !sessionRow) {
+  if (profileError || !profileRow) {
     return null
   }
 
-  const row = sessionRow as Record<string, unknown>
-  const appPassword = pickGmailAppPassword(row)
+  const appPassword = (profileRow.gmail_app_password || '').trim()
   if (!appPassword) {
     return null
   }
@@ -299,7 +289,11 @@ async function getEmailFallbackConfig(userId: string): Promise<EmailFallbackConf
   }
 
   const gmailTemplate =
-    typeof row.gmail_message === 'string' ? row.gmail_message : row.gmail_message != null ? String(row.gmail_message) : null
+    typeof profileRow.gmail_message === 'string'
+      ? profileRow.gmail_message
+      : profileRow.gmail_message != null
+        ? String(profileRow.gmail_message)
+        : null
 
   return {
     fromEmail: data.user.email,

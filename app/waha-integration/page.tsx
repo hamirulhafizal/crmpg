@@ -873,8 +873,8 @@ export default function WahaIntegrationPage() {
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    This password is stored encrypted in your WAHA session record and used only for
-                    sending fallback emails.
+                    This password is stored in your profile settings and used only for sending
+                    fallback emails.
                   </p>
                 </div>
 

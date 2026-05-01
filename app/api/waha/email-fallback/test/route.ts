@@ -15,18 +15,16 @@ export async function POST() {
     }
 
     const { data, error } = await supabase
-      .from('waha_user_sessions')
-      .select('gmaill_app_password, gmail_message')
-      .eq('user_id', user.id)
-      .not('gmaill_app_password', 'is', null)
-      .limit(1)
+      .from('profiles')
+      .select('gmail_app_password, gmail_message')
+      .eq('id', user.id)
       .maybeSingle()
 
     if (error) {
       return NextResponse.json({ error: 'Failed to load email fallback settings' }, { status: 500 })
     }
 
-    if (!data?.gmaill_app_password) {
+    if (!data?.gmail_app_password) {
       return NextResponse.json(
         { error: 'Please save a Gmail app password first.' },
         { status: 400 }
@@ -40,7 +38,7 @@ export async function POST() {
       service: 'gmail',
       auth: {
         user: user.email,
-        pass: data.gmaill_app_password,
+        pass: data.gmail_app_password,
       },
     })
 
