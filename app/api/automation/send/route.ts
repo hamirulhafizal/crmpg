@@ -14,6 +14,10 @@ import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
 
+/** Random wait between *different* customers to avoid WhatsApp bursts (1–3 minutes). */
+const CUSTOMER_SEND_GAP_MIN_MS = 60 * 1000
+const CUSTOMER_SEND_GAP_MAX_MS = 3 * 60 * 1000
+
 // set for 1 day
 const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
@@ -769,10 +773,12 @@ export async function GET(request: Request) {
               console.log(`${row.user_id} - ${todaysCustomers.length} cs`)
               // console.log('todaysCustomers---->', todaysCustomers)
 
-              for (const customer of todaysCustomers) {
+              for (let i = 0; i < todaysCustomers.length; i++) {
+                const customer = todaysCustomers[i]
                 try {
-                  // Add random delay (3–6 seconds) between customers
-                  await randomDelayBetween(3000, 6000)
+                  if (i > 0) {
+                    await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+                  }
 
                   const message = renderCustomerTemplate(row.message, customer)
 
@@ -890,8 +896,13 @@ export async function GET(request: Request) {
               : row.message
             const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
 
-            for (const customer of candidates) {
+            for (let i = 0; i < candidates.length; i++) {
+              const customer = candidates[i]
               try {
+                if (i > 0) {
+                  await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+                }
+
                 const message = renderCustomerTemplate(followupTemplate, customer)
 
                 const contactCheck = await checkWhatsAppNumberExists(row.user_id, sessionName, customer.phone!)
@@ -976,9 +987,6 @@ export async function GET(request: Request) {
                 } else {
                   failed++
                 }
-
-                // Interval between customers to avoid bursts / rate limits.
-                await randomDelayBetween(30000, 60000)
               } catch (err) {
                 console.error('Error preparing follow-up message:', err)
                 failed++

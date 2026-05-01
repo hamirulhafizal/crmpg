@@ -4,6 +4,19 @@ import { wahaFetch } from '@/app/lib/waha'
 
 const BATCH_SIZE = 20
 
+/** Random wait between sends to different numbers (1–3 minutes). */
+const CUSTOMER_SEND_GAP_MIN_MS = 60 * 1000
+const CUSTOMER_SEND_GAP_MAX_MS = 3 * 60 * 1000
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function randomDelayBetween(minMs: number, maxMs: number) {
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
+  await sleep(delay)
+}
+
 interface ScheduledMessageRow {
   id: string
   user_id: string
@@ -121,6 +134,8 @@ export async function GET(request: Request) {
       byUser.set(row.user_id, group)
     }
 
+    let isFirstSendInBatch = true
+
     for (const [userId, messages] of byUser.entries()) {
       // Fetch user profile data for variables
       const { data: profile } = await supabase
@@ -139,6 +154,11 @@ export async function GET(request: Request) {
         const finalMessage = replaceTemplateVariables(messageRow.message, profileData)
 
         try {
+          if (!isFirstSendInBatch) {
+            await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+          }
+          isFirstSendInBatch = false
+
           await sendWhatsAppMessage(userId, messageRow.phone, finalMessage)
 
           await supabase
