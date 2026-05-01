@@ -440,7 +440,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log('triggering send---->')
+  console.log('triggering send 1---->')
 
   try {
     const supabase = supabaseAdmin
