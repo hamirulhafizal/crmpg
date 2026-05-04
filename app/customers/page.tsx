@@ -57,6 +57,22 @@ interface Customer {
   updated_at: string
   last_purchase_at?: string | null
   is_monthly_buyer?: boolean | null
+  segment_attributes?: Record<string, unknown> | null
+}
+
+interface TagCategoryDto {
+  id: string
+  key: string
+  name: string
+  sort_order: number
+  allows_multiple: boolean
+}
+
+interface TagDto {
+  id: string
+  category_id: string
+  slug: string
+  label: string
 }
 
 interface CustomerLabel {
@@ -169,6 +185,16 @@ export default function CustomersPage() {
   const [profileImageError, setProfileImageError] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
+  const [tagCatalog, setTagCatalog] = useState<{
+    categories: TagCategoryDto[]
+    tags: TagDto[]
+  } | null>(null)
+  const [tagCatalogLoading, setTagCatalogLoading] = useState(false)
+  const [crmSelectedTagIds, setCrmSelectedTagIds] = useState<string[]>([])
+  const [crmTagsLoading, setCrmTagsLoading] = useState(false)
+  const [tagFilter, setTagFilter] = useState('')
+  const [customerModalTab, setCustomerModalTab] = useState<'details' | 'tags'>('details')
+
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
 
@@ -246,10 +272,33 @@ export default function CustomersPage() {
   }, [user])
 
   useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    ;(async () => {
+      setTagCatalogLoading(true)
+      try {
+        const response = await fetch('/api/tags', { cache: 'no-store', credentials: 'same-origin' })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Failed to load tag catalog')
+        if (!cancelled && Array.isArray(result.categories) && Array.isArray(result.tags)) {
+          setTagCatalog({ categories: result.categories, tags: result.tags })
+        }
+      } catch {
+        if (!cancelled) setTagCatalog(null)
+      } finally {
+        if (!cancelled) setTagCatalogLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
+
+  useEffect(() => {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerMonthFilter, lastPurchaseMonthFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -265,6 +314,7 @@ export default function CustomersPage() {
     setAccountStatusFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
+    setTagFilter('')
     setPage(1)
   }
 
@@ -402,6 +452,7 @@ export default function CustomersPage() {
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
+      if (tagFilter) params.append('tagId', tagFilter)
 
       const response = await fetch(`/api/customers?${params}`, {
         cache: 'no-store',
@@ -510,6 +561,49 @@ export default function CustomersPage() {
     }
   }
 
+  const fetchCrmTagAssignments = async (customerId: string) => {
+    setCrmTagsLoading(true)
+    try {
+      const response = await fetch(`/api/customers/${customerId}/crm-tags`, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load CRM tags')
+      }
+      const ids = (result.assignments || []).map((a: { tag_id: string }) => a.tag_id)
+      setCrmSelectedTagIds(ids)
+    } catch {
+      setCrmSelectedTagIds([])
+    } finally {
+      setCrmTagsLoading(false)
+    }
+  }
+
+  const toggleCrmTag = (tagId: string, category: TagCategoryDto) => {
+    if (!tagCatalog) return
+    setCrmSelectedTagIds((prev) => {
+      const selected = new Set(prev)
+      const tagsInCategory = tagCatalog.tags.filter((t) => t.category_id === category.id)
+      const idsInCat = new Set(tagsInCategory.map((t) => t.id))
+
+      if (!category.allows_multiple) {
+        if (selected.has(tagId)) {
+          selected.delete(tagId)
+        } else {
+          for (const id of idsInCat) selected.delete(id)
+          selected.add(tagId)
+        }
+        return Array.from(selected)
+      }
+
+      if (selected.has(tagId)) selected.delete(tagId)
+      else selected.add(tagId)
+      return Array.from(selected)
+    })
+  }
+
   const fetchCustomerLabels = async (customerId: string) => {
     setLabelsLoading(true)
     setLabelsError(null)
@@ -551,9 +645,17 @@ export default function CustomersPage() {
   }
 
   const handleEdit = (customer: Customer) => {
+    setCustomerModalTab('details')
     setIsEditing(customer.id)
-    setEditingCustomer({ ...customer })
+    setEditingCustomer({
+      ...customer,
+      segment_attributes:
+        customer.segment_attributes && typeof customer.segment_attributes === 'object'
+          ? { ...customer.segment_attributes }
+          : {},
+    })
     void fetchCustomerLabels(customer.id)
+    void fetchCrmTagAssignments(customer.id)
     void fetchCustomerProfileImage(customer.id)
   }
 
@@ -575,8 +677,24 @@ export default function CustomersPage() {
         throw new Error(result.error || 'Failed to update customer')
       }
 
+      if (isEditing) {
+        const crmRes = await fetch(`/api/customers/${isEditing}/crm-tags`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ tag_ids: crmSelectedTagIds }),
+        })
+        const crmJson = await crmRes.json()
+        if (!crmRes.ok) {
+          throw new Error(crmJson.error || 'Failed to save CRM tags')
+        }
+      }
+
       setIsEditing(null)
       setEditingCustomer(null)
+      setCrmSelectedTagIds([])
+      setCustomerModalTab('details')
       fetchCustomers()
     } catch (err: any) {
       setError(err.message || 'Failed to update customer')
@@ -606,6 +724,7 @@ export default function CustomersPage() {
 
       setIsCreating(false)
       setEditingCustomer(null)
+      setCustomerModalTab('details')
       fetchCustomers()
     } catch (err: any) {
       setError(err.message || 'Failed to create customer')
@@ -869,6 +988,28 @@ export default function CustomersPage() {
               <option value="12">Dec</option>
             </select>
 
+            <select
+              value={tagFilter}
+              onChange={(e) => {
+                setTagFilter(e.target.value)
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2"
+              disabled={!tagCatalog || tagCatalog.tags.length === 0}
+            >
+              <option value="">CRM tag (all)</option>
+              {tagCatalog?.tags.map((t) => {
+                const cat = tagCatalog.categories.find((c) => c.id === t.category_id)
+                const prefix = cat?.name ? `${cat.name}: ` : ''
+                return (
+                  <option key={t.id} value={t.id}>
+                    {prefix}
+                    {t.label}
+                  </option>
+                )
+              })}
+            </select>
+
             {/* View mode: paginated vs all */}
             <label className="flex items-center gap-2 px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
               <input
@@ -897,8 +1038,10 @@ export default function CustomersPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => {
+                setCustomerModalTab('details')
                 setEditingCustomer({})
                 setIsCreating(true)
+                setCrmSelectedTagIds([])
               }}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
@@ -1024,6 +1167,8 @@ export default function CustomersPage() {
               setLabelsError(null)
               setProfileImageUrl(null)
               setProfileImageError(null)
+              setCrmSelectedTagIds([])
+              setCustomerModalTab('details')
             }}
           >
             <div
@@ -1049,6 +1194,8 @@ export default function CustomersPage() {
                       setLabelsError(null)
                       setProfileImageUrl(null)
                       setProfileImageError(null)
+                      setCrmSelectedTagIds([])
+                      setCustomerModalTab('details')
                     }}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
                     aria-label="Close modal"
@@ -1061,6 +1208,41 @@ export default function CustomersPage() {
 
                 </div>
 
+                <div
+                  role="tablist"
+                  aria-label="Customer sections"
+                  className="mb-4 flex rounded-xl border border-slate-200 bg-slate-100/90 p-1"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={customerModalTab === 'details'}
+                    onClick={() => setCustomerModalTab('details')}
+                    className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                      customerModalTab === 'details'
+                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Details
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={customerModalTab === 'tags'}
+                    onClick={() => setCustomerModalTab('tags')}
+                    className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                      customerModalTab === 'tags'
+                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Tags
+                  </button>
+                </div>
+
+                {customerModalTab === 'details' && (
+                  <div role="tabpanel" aria-label="Details">
                 <div className="mb-4 flex items-center gap-3">
                   <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
                     {isCreating ? (
@@ -1134,57 +1316,6 @@ export default function CustomersPage() {
                   <p className="mt-1 text-xs text-slate-500">
                     Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
                   </p>
-                </div>
-
-
-                <div className="mb-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="block text-sm font-medium text-slate-700">WhatsApp labels</label>
-                    {!isCreating && isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => void fetchCustomerLabels(isEditing)}
-                        disabled={labelsLoading}
-                        className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                      >
-                        {labelsLoading ? 'Refreshing...' : 'Refresh labels'}
-                      </button>
-                    )}
-                  </div>
-                  <div className="mt-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 min-h-[42px]">
-                    {isCreating ? (
-                      <span className="text-xs text-slate-500">
-                        Labels are available after the customer is created.
-                      </span>
-                    ) : labelsLoading ? (
-                      <span className="text-xs text-slate-500">Loading labels...</span>
-                    ) : labelsError ? (
-                      <span className="text-xs text-red-600">{labelsError}</span>
-                    ) : customerLabels.length === 0 ? (
-                      <span className="text-xs text-slate-500">No labels found on WhatsApp.</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {customerLabels.map((label, idx) => {
-                          const labelId = String(label.id ?? `${label.name || 'label'}-${idx}`)
-                          const hasHex =
-                            typeof label.colorHex === 'string' &&
-                            /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/.test(label.colorHex)
-                          const bgColor = hasHex ? `${label.colorHex}22` : '#e2e8f0'
-                          const borderColor = hasHex ? label.colorHex : '#cbd5e1'
-                          return (
-                            <span
-                              key={labelId}
-                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium text-slate-800"
-                              style={{ backgroundColor: bgColor, borderColor }}
-                              title={`Label ID: ${label.id ?? '-'}`}
-                            >
-                              {label.name || `Label ${label.id ?? ''}`}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1450,6 +1581,125 @@ export default function CustomersPage() {
 
 
                 </div>
+                  </div>
+                )}
+
+                {customerModalTab === 'tags' && (
+                  <div
+                    role="tabpanel"
+                    aria-label="Tags"
+                    className="min-h-[200px] space-y-4"
+                  >
+                    <div className="mb-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="block text-sm font-medium text-slate-700">WhatsApp labels</label>
+                        {!isCreating && isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => void fetchCustomerLabels(isEditing)}
+                            disabled={labelsLoading}
+                            className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                          >
+                            {labelsLoading ? 'Refreshing...' : 'Refresh labels'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 min-h-[42px]">
+                        {isCreating ? (
+                          <span className="text-xs text-slate-500">
+                            Labels are available after the customer is created.
+                          </span>
+                        ) : labelsLoading ? (
+                          <span className="text-xs text-slate-500">Loading labels...</span>
+                        ) : labelsError ? (
+                          <span className="text-xs text-red-600 whitespace-pre-wrap break-words">{labelsError}</span>
+                        ) : customerLabels.length === 0 ? (
+                          <span className="text-xs text-slate-500">No labels found on WhatsApp.</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {customerLabels.map((label, idx) => {
+                              const labelId = String(label.id ?? `${label.name || 'label'}-${idx}`)
+                              const hasHex =
+                                typeof label.colorHex === 'string' &&
+                                /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/.test(label.colorHex)
+                              const bgColor = hasHex ? `${label.colorHex}22` : '#e2e8f0'
+                              const borderColor = hasHex ? label.colorHex : '#cbd5e1'
+                              return (
+                                <span
+                                  key={labelId}
+                                  className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium text-slate-800"
+                                  style={{ backgroundColor: bgColor, borderColor }}
+                                  title={`Label ID: ${label.id ?? '-'}`}
+                                >
+                                  {label.name || `Label ${label.id ?? ''}`}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {isCreating ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
+                        <p className="text-sm font-medium text-slate-800">CRM tags</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Save the new customer first, then open them again to assign CRM tags from the catalog.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">CRM tags</label>
+                        <p className="mb-2 text-xs text-slate-500">
+                          Segmentation labels from admin catalog. Single-choice categories replace the previous pick in
+                          that group.
+                        </p>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
+                          {tagCatalogLoading || crmTagsLoading ? (
+                            <span className="text-xs text-slate-500">Loading tags…</span>
+                          ) : !tagCatalog || tagCatalog.categories.length === 0 ? (
+                            <span className="text-xs text-slate-500">
+                              No tag catalog yet. Ask an admin to add categories and tags in Admin → Settings.
+                            </span>
+                          ) : (
+                            <div className="max-h-[min(55vh,420px)] space-y-4 overflow-y-auto pr-1">
+                              {tagCatalog.categories.map((cat) => {
+                                const tagsInCat = tagCatalog.tags.filter((t) => t.category_id === cat.id)
+                                if (tagsInCat.length === 0) return null
+                                return (
+                                  <div key={cat.id}>
+                                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                      {cat.name}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {tagsInCat.map((t) => {
+                                        const selected = crmSelectedTagIds.includes(t.id)
+                                        return (
+                                          <button
+                                            key={t.id}
+                                            type="button"
+                                            onClick={() => toggleCrmTag(t.id, cat)}
+                                            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                              selected
+                                                ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/30'
+                                                : 'bg-white text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100'
+                                            }`}
+                                          >
+                                            {t.label}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button
@@ -1461,6 +1711,8 @@ export default function CustomersPage() {
                       setLabelsError(null)
                       setProfileImageUrl(null)
                       setProfileImageError(null)
+                      setCrmSelectedTagIds([])
+                      setCustomerModalTab('details')
                     }}
                     className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium"
                   >

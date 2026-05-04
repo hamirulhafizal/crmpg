@@ -41,6 +41,7 @@ export async function GET(request: Request) {
     const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
+    const tagId = (searchParams.get('tagId') || '').trim()
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const isComputedDateSort =
@@ -52,13 +53,21 @@ export async function GET(request: Request) {
       !!birthday ||
       !!accountStatus ||
       !!registerMonth ||
-      !!lastPurchaseMonth
+      !!lastPurchaseMonth ||
+      !!tagId
+
+    const selectColumns =
+      tagId.length > 0 ? '*, customer_tags!inner(tag_id)' : '*'
 
     // Build query
     let query = supabase
       .from('customers')
-      .select('*', { count: 'exact' })
+      .select(selectColumns, { count: 'exact' })
       .eq('user_id', user.id)
+
+    if (tagId.length > 0) {
+      query = query.eq('customer_tags.tag_id', tagId)
+    }
 
     // Apply search filter
     if (search) {
@@ -104,8 +113,12 @@ export async function GET(request: Request) {
 
         let batchQuery = supabase
           .from('customers')
-          .select('*')
+          .select(selectColumns)
           .eq('user_id', user.id)
+
+        if (tagId.length > 0) {
+          batchQuery = batchQuery.eq('customer_tags.tag_id', tagId)
+        }
 
         if (search) {
           batchQuery = batchQuery.or(
@@ -436,6 +449,12 @@ export async function POST(request: Request) {
         is_married: customer.is_married === true || customer.is_married === 'true',
         is_friend: customer.is_friend === true || customer.is_friend === 'true',
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
+        segment_attributes:
+          customer.segment_attributes &&
+          typeof customer.segment_attributes === 'object' &&
+          !Array.isArray(customer.segment_attributes)
+            ? customer.segment_attributes
+            : {},
       }
     })
 

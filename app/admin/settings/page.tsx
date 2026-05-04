@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { TagAdminSidebar } from '@/app/admin/settings/tag-admin-sidebar'
+
 type WahaServerRow = {
   id: string
   name: string
@@ -438,7 +440,8 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-8">
+      <div className="min-w-0 flex-1 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Web app settings</h1>
         <p className="mt-1 text-sm text-slate-600">Manage infrastructure and user management in one place.</p>
@@ -806,6 +809,11 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       )}
+      </div>
+
+      <aside className="w-full lg:w-[380px] lg:shrink-0">
+        <TagAdminSidebar />
+      </aside>
     </div>
   )
 }

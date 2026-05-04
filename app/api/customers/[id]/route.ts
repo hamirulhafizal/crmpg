@@ -95,6 +95,13 @@ export async function PUT(
     if (body.is_friend !== undefined) updateData.is_friend = body.is_friend
     if (body.last_purchase_at !== undefined) updateData.last_purchase_at = body.last_purchase_at
     if (body.is_monthly_buyer !== undefined) updateData.is_monthly_buyer = body.is_monthly_buyer
+    if (body.segment_attributes !== undefined) {
+      if (body.segment_attributes !== null && typeof body.segment_attributes !== 'object') {
+        return NextResponse.json({ error: 'segment_attributes must be an object or null' }, { status: 400 })
+      }
+      updateData.segment_attributes =
+        body.segment_attributes === null ? {} : body.segment_attributes
+    }
     // Backwards compatibility: if legacy `is_profile_verified` is sent,
     // store it under `original_data["Profile Verified"]` instead.
     if (body.is_profile_verified !== undefined) {
