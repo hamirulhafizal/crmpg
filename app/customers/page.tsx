@@ -82,6 +82,13 @@ interface CustomerLabel {
   colorHex?: string
 }
 
+interface ChatHistoryMessage {
+  id: string
+  text: string
+  timestamp: number | null
+  fromMe: boolean
+}
+
 /** JSON columns sometimes arrive as string; normalize so Verified / account UI stay correct. */
 const normalizeCustomerOriginalData = (originalData: unknown): Record<string, unknown> | null => {
   if (originalData == null) return null
@@ -194,6 +201,14 @@ export default function CustomersPage() {
   const [crmTagsLoading, setCrmTagsLoading] = useState(false)
   const [tagFilter, setTagFilter] = useState('')
   const [customerModalTab, setCustomerModalTab] = useState<'details' | 'tags'>('details')
+  const [analyzeAiLoading, setAnalyzeAiLoading] = useState(false)
+  const [analyzeAiError, setAnalyzeAiError] = useState<string | null>(null)
+  const [analyzeAiNotice, setAnalyzeAiNotice] = useState<string | null>(null)
+  const [chatHistory, setChatHistory] = useState<ChatHistoryMessage[]>([])
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
+  const [chatHistoryError, setChatHistoryError] = useState<string | null>(null)
+  const [chatHistoryDialogOpen, setChatHistoryDialogOpen] = useState(false)
+  const [chatHistoryDialogLoading, setChatHistoryDialogLoading] = useState(false)
 
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
@@ -581,6 +596,51 @@ export default function CustomersPage() {
     }
   }
 
+  const handleAnalyzeAi = async () => {
+    if (!isEditing) return
+    setAnalyzeAiLoading(true)
+    setAnalyzeAiError(null)
+    setAnalyzeAiNotice(null)
+    try {
+      const res = await fetch(`/api/customers/${isEditing}/analyze-tags`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      })
+      const raw = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const body = raw as { error?: string; hint?: string; debug?: unknown }
+        console.error('[Analyze AI] failed', {
+          httpStatus: res.status,
+          error: body.error,
+          hint: body.hint,
+          debug: body.debug,
+        })
+        const hint = typeof body.hint === 'string' ? ` ${body.hint}` : ''
+        throw new Error((typeof body.error === 'string' ? body.error : 'Analyze failed') + hint)
+      }
+      const data = raw as {
+        rationale_ms?: string
+        rationale_en?: string
+        applied_tag_ids?: string[]
+      }
+      await fetchCrmTagAssignments(isEditing)
+      const ms = typeof data.rationale_ms === 'string' ? data.rationale_ms.trim() : ''
+      const en = typeof data.rationale_en === 'string' ? data.rationale_en.trim() : ''
+      const n = Number(data.applied_tag_ids?.length)
+      const summary =
+        ms || en
+          ? [ms, en].filter(Boolean).join(' — ')
+          : Number.isFinite(n)
+            ? `Applied ${n} tag(s) from chat analysis.`
+            : 'Analysis complete.'
+      setAnalyzeAiNotice(summary)
+    } catch (e: unknown) {
+      setAnalyzeAiError(e instanceof Error ? e.message : 'Analyze failed')
+    } finally {
+      setAnalyzeAiLoading(false)
+    }
+  }
+
   const toggleCrmTag = (tagId: string, category: TagCategoryDto) => {
     if (!tagCatalog) return
     setCrmSelectedTagIds((prev) => {
@@ -644,7 +704,45 @@ export default function CustomersPage() {
     }
   }
 
+  const fetchCustomerChatHistory = async (customerId: string, limit = 80, forDialog = false) => {
+    if (forDialog) setChatHistoryDialogLoading(true)
+    else setChatHistoryLoading(true)
+    setChatHistoryError(null)
+    try {
+      const response = await fetch(`/api/customers/${customerId}/chat-history?limit=${limit}`, {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const hint = typeof result.hint === 'string' ? ` ${result.hint}` : ''
+        console.error('[Customer Chat History] failed', {
+          httpStatus: response.status,
+          error: result.error,
+          hint: result.hint,
+          debug: result.debug,
+        })
+        throw new Error((typeof result.error === 'string' ? result.error : 'Failed to fetch chat history') + hint)
+      }
+      setChatHistory(Array.isArray(result.messages) ? result.messages : [])
+    } catch (err: any) {
+      setChatHistory([])
+      setChatHistoryError(err.message || 'Failed to fetch chat history')
+    } finally {
+      if (forDialog) setChatHistoryDialogLoading(false)
+      else setChatHistoryLoading(false)
+    }
+  }
+
+  const handleOpenFullChatHistory = async () => {
+    if (!isEditing) return
+    setChatHistoryDialogOpen(true)
+    await fetchCustomerChatHistory(isEditing, 500, true)
+  }
+
   const handleEdit = (customer: Customer) => {
+    setAnalyzeAiError(null)
+    setAnalyzeAiNotice(null)
     setCustomerModalTab('details')
     setIsEditing(customer.id)
     setEditingCustomer({
@@ -654,9 +752,12 @@ export default function CustomersPage() {
           ? { ...customer.segment_attributes }
           : {},
     })
+    setChatHistory([])
+    setChatHistoryError(null)
     void fetchCustomerLabels(customer.id)
     void fetchCrmTagAssignments(customer.id)
     void fetchCustomerProfileImage(customer.id)
+    void fetchCustomerChatHistory(customer.id)
   }
 
   const handleSaveEdit = async () => {
@@ -1038,6 +1139,8 @@ export default function CustomersPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => {
+                setAnalyzeAiError(null)
+                setAnalyzeAiNotice(null)
                 setCustomerModalTab('details')
                 setEditingCustomer({})
                 setIsCreating(true)
@@ -1160,6 +1263,7 @@ export default function CustomersPage() {
           <div
             className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
             onClick={() => {
+              setChatHistoryDialogOpen(false)
               setIsCreating(false)
               setIsEditing(null)
               setEditingCustomer(null)
@@ -1168,6 +1272,10 @@ export default function CustomersPage() {
               setProfileImageUrl(null)
               setProfileImageError(null)
               setCrmSelectedTagIds([])
+              setAnalyzeAiError(null)
+              setAnalyzeAiNotice(null)
+              setChatHistory([])
+              setChatHistoryError(null)
               setCustomerModalTab('details')
             }}
           >
@@ -1187,6 +1295,7 @@ export default function CustomersPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
                       setEditingCustomer(null)
@@ -1195,6 +1304,10 @@ export default function CustomersPage() {
                       setProfileImageUrl(null)
                       setProfileImageError(null)
                       setCrmSelectedTagIds([])
+                      setAnalyzeAiError(null)
+                      setAnalyzeAiNotice(null)
+                      setChatHistory([])
+                      setChatHistoryError(null)
                       setCustomerModalTab('details')
                     }}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
@@ -1640,6 +1753,75 @@ export default function CustomersPage() {
                       </div>
                     </div>
 
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">Chat history</p>
+                          <p className="text-xs text-slate-500">Latest WhatsApp conversation with this customer.</p>
+                        </div>
+                        {!isCreating && isEditing && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenFullChatHistory()}
+                              disabled={chatHistoryDialogLoading}
+                              className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60 transition-colors"
+                            >
+                              View all messages
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void fetchCustomerChatHistory(isEditing)}
+                              disabled={chatHistoryLoading}
+                              className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                            >
+                              {chatHistoryLoading ? 'Refreshing...' : 'Refresh chat'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {isCreating ? (
+                        <span className="text-xs text-slate-500">
+                          Save the new customer first, then open them again to view chat history.
+                        </span>
+                      ) : chatHistoryLoading ? (
+                        <span className="text-xs text-slate-500">Loading chat history...</span>
+                      ) : chatHistoryError ? (
+                        <span className="text-xs text-red-600 whitespace-pre-wrap break-words">{chatHistoryError}</span>
+                      ) : chatHistory.length === 0 ? (
+                        <span className="text-xs text-slate-500">No readable chat messages found.</span>
+                      ) : (
+                        <div className="max-h-[260px] space-y-2 overflow-y-auto pr-1">
+                          {chatHistory.map((m) => (
+                            <div
+                              key={m.id}
+                              className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <div
+                                className={`max-w-[92%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
+                                  m.fromMe
+                                    ? 'bg-blue-600 text-white rounded-br-md'
+                                    : 'bg-white text-slate-800 border border-slate-200 rounded-bl-md'
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                                {typeof m.timestamp === 'number' && Number.isFinite(m.timestamp) && (
+                                  <p
+                                    className={`mt-1 text-[10px] ${
+                                      m.fromMe ? 'text-blue-100' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {new Date(m.timestamp).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     {isCreating ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
                         <p className="text-sm font-medium text-slate-800">CRM tags</p>
@@ -1649,11 +1831,65 @@ export default function CustomersPage() {
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">CRM tags</label>
-                        <p className="mb-2 text-xs text-slate-500">
-                          Segmentation labels from admin catalog. Single-choice categories replace the previous pick in
-                          that group.
-                        </p>
+                        <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <label className="block text-sm font-medium text-slate-700">CRM tags</label>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              Segmentation labels from admin catalog. Single-choice categories replace the previous pick
+                              in that group.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleAnalyzeAi()}
+                            disabled={
+                              analyzeAiLoading ||
+                              tagCatalogLoading ||
+                              crmTagsLoading ||
+                              !tagCatalog ||
+                              tagCatalog.categories.length === 0
+                            }
+                            className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {analyzeAiLoading ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <svg
+                                  className="h-3.5 w-3.5 animate-spin"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                  />
+                                </svg>
+                                Analyzing…
+                              </span>
+                            ) : (
+                              'Analyze AI'
+                            )}
+                          </button>
+                        </div>
+                        {analyzeAiError && (
+                          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                            {analyzeAiError}
+                          </div>
+                        )}
+                        {analyzeAiNotice && !analyzeAiError && (
+                          <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                            {analyzeAiNotice}
+                          </div>
+                        )}
                         <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
                           {tagCatalogLoading || crmTagsLoading ? (
                             <span className="text-xs text-slate-500">Loading tags…</span>
@@ -1704,6 +1940,7 @@ export default function CustomersPage() {
                 <div className="flex justify-end gap-3 mt-6">
                   <button
                     onClick={() => {
+                      setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
                       setEditingCustomer(null)
@@ -1712,6 +1949,10 @@ export default function CustomersPage() {
                       setProfileImageUrl(null)
                       setProfileImageError(null)
                       setCrmSelectedTagIds([])
+                      setAnalyzeAiError(null)
+                      setAnalyzeAiNotice(null)
+                      setChatHistory([])
+                      setChatHistoryError(null)
                       setCustomerModalTab('details')
                     }}
                     className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium"
@@ -1725,6 +1966,78 @@ export default function CustomersPage() {
                     {isCreating ? 'Create' : 'Save'}
                   </button>
                 </div>
+
+                {chatHistoryDialogOpen && !isCreating && (
+                  <div
+                    className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+                    onClick={() => setChatHistoryDialogOpen(false)}
+                  >
+                    <div
+                      className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-900">Full chat history</h3>
+                          <p className="text-xs text-slate-500">Entire conversation between user and customer.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => void fetchCustomerChatHistory(isEditing, 200, true)}
+                              disabled={chatHistoryDialogLoading}
+                              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              {chatHistoryDialogLoading ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setChatHistoryDialogOpen(false)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="Close full chat history"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="max-h-[70vh] overflow-y-auto p-4">
+                        {chatHistoryDialogLoading ? (
+                          <p className="text-xs text-slate-500">Loading full chat history...</p>
+                        ) : chatHistoryError ? (
+                          <p className="text-xs text-red-600 whitespace-pre-wrap break-words">{chatHistoryError}</p>
+                        ) : chatHistory.length === 0 ? (
+                          <p className="text-xs text-slate-500">No readable chat messages found.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {chatHistory.map((m) => (
+                              <div key={`${m.id}-full`} className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}>
+                                <div
+                                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
+                                    m.fromMe
+                                      ? 'bg-blue-600 text-white rounded-br-md'
+                                      : 'bg-slate-50 text-slate-800 border border-slate-200 rounded-bl-md'
+                                  }`}
+                                >
+                                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                                  {typeof m.timestamp === 'number' && Number.isFinite(m.timestamp) && (
+                                    <p className={`mt-1 text-[10px] ${m.fromMe ? 'text-blue-100' : 'text-slate-400'}`}>
+                                      {new Date(m.timestamp).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

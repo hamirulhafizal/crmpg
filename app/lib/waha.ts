@@ -18,13 +18,65 @@ type WahaResolveOptions = {
   userId?: string | null
 }
 
+export type WahaAttempt = { path: string; status: number; message: string }
+
 export class WahaApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** Request path (e.g. `/api/session/chats/...`) for debugging */
+  path: string
+  /** Prior tries when messages fetch walks multiple candidates */
+  attempts?: WahaAttempt[]
+  /** PN→LID from WAHA `/lids/pn/...` when message fetch fails (for debug) */
+  resolvedLid?: string | null
+  /** Chat id found in WAHA chats/overview (for debug) */
+  knownChatId?: string | null
+  constructor(message: string, status: number, path: string, attempts?: WahaAttempt[]) {
     super(message)
     this.name = 'WahaApiError'
     this.status = status
+    this.path = path
+    if (attempts?.length) this.attempts = attempts
   }
+}
+
+function friendlyHttpStatusMessage(status: number): string {
+  switch (status) {
+    case 524:
+      return 'WAHA timed out (HTTP 524). The WhatsApp host did not respond in time—often overload, cold start, or a very large chat history. Retry later or check the WAHA machine and reverse proxy timeouts.'
+    case 504:
+      return 'Gateway timeout (HTTP 504) waiting for WAHA.'
+    case 503:
+      return 'WAHA unavailable (HTTP 503).'
+    case 502:
+      return 'Bad gateway (HTTP 502) to WAHA.'
+    case 408:
+      return 'WAHA request aborted (timeout).'
+    default:
+      return `WAHA HTTP ${status}`
+  }
+}
+
+/** Avoid dumping Cloudflare/HTML error pages into logs and API JSON */
+export function parseWahaErrorBody(text: string, status: number): string {
+  const trimmed = text.trim()
+  if (!trimmed) return friendlyHttpStatusMessage(status)
+  try {
+    const json = JSON.parse(trimmed) as Record<string, unknown>
+    const exc = json.exception as Record<string, unknown> | undefined
+    if (exc && typeof exc.message === 'string' && exc.message.trim()) {
+      return String(exc.message).trim()
+    }
+    const msg = json.message ?? json.error ?? json.detail
+    if (typeof msg === 'string' && msg.trim()) return String(msg).trim()
+  } catch {
+    // not JSON
+  }
+  if (/^<!DOCTYPE/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
+    return friendlyHttpStatusMessage(status)
+  }
+  const oneLine = trimmed.replace(/\s+/g, ' ')
+  if (oneLine.length <= 200) return oneLine
+  return `${oneLine.slice(0, 197)}…`
 }
 
 const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || 'https://api.publicgolds.com').replace(/\/$/, '')
@@ -127,24 +179,39 @@ export async function wahaFetch<T = unknown>(
     throw new Error('WAHA_API_KEY is not configured')
   }
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Api-Key': apiKey,
-      ...options.headers,
-    },
-  })
+  const timeoutMs = Math.min(
+    Math.max(Number(process.env.WAHA_FETCH_TIMEOUT_MS || 90000) || 90000, 5000),
+    300000
+  )
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      ...options,
+      signal: options.signal ?? ac.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey,
+        ...options.headers,
+      },
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new WahaApiError(
+        `WAHA request timed out after ${timeoutMs}ms (${path})`,
+        408,
+        path
+      )
+    }
+    throw e
+  } finally {
+    clearTimeout(t)
+  }
   const text = await res.text()
   if (!res.ok) {
-    let message = `WAHA API error ${res.status}`
-    try {
-      const json = JSON.parse(text)
-      message = json.message || json.error || json.detail || message
-    } catch {
-      if (text) message = text.slice(0, 200)
-    }
-    throw new WahaApiError(message, res.status)
+    const message = parseWahaErrorBody(text, res.status)
+    throw new WahaApiError(message, res.status, path)
   }
   if (!text) return undefined as T
   try {
