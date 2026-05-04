@@ -3,13 +3,15 @@
  * Resolution order:
  * 1) profiles.waha_server_id -> waha_servers
  * 2) waha_servers.is_default = true
- * 3) WAHA_API_BASE_URL / WAHA_API_KEY env fallback
+ * 3) WAHA_API_BASE_URL / WAHA_API_KEY env fallback (no dashboard_pass from env)
  */
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
-type WahaConfig = {
+export type WahaConfig = {
   baseUrl: string
   apiKey: string
+  /** Optional WAHA dashboard password from `waha_servers.dashboard_pass` */
+  dashboardPass: string | null
 }
 
 type WahaResolveOptions = {
@@ -33,14 +35,14 @@ function normalizeBaseUrl(value: string): string {
 }
 
 function fromEnv(): WahaConfig {
-  return { baseUrl: ENV_BASE_URL, apiKey: ENV_API_KEY }
+  return { baseUrl: ENV_BASE_URL, apiKey: ENV_API_KEY, dashboardPass: null }
 }
 
 async function getWahaServerById(serverId: string): Promise<WahaConfig | null> {
   const admin = createServiceRoleClient()
   const { data, error } = await admin
     .from('waha_servers')
-    .select('api_base_url, api_key')
+    .select('api_base_url, api_key, dashboard_pass')
     .eq('id', serverId)
     .maybeSingle()
 
@@ -48,6 +50,10 @@ async function getWahaServerById(serverId: string): Promise<WahaConfig | null> {
   return {
     baseUrl: normalizeBaseUrl(data.api_base_url || ''),
     apiKey: (data.api_key || '').trim(),
+    dashboardPass:
+      typeof data.dashboard_pass === 'string' && data.dashboard_pass.trim()
+        ? data.dashboard_pass.trim()
+        : null,
   }
 }
 
@@ -55,7 +61,7 @@ async function getDefaultWahaServer(): Promise<WahaConfig | null> {
   const admin = createServiceRoleClient()
   const { data, error } = await admin
     .from('waha_servers')
-    .select('api_base_url, api_key')
+    .select('api_base_url, api_key, dashboard_pass')
     .eq('is_default', true)
     .maybeSingle()
 
@@ -63,6 +69,10 @@ async function getDefaultWahaServer(): Promise<WahaConfig | null> {
   return {
     baseUrl: normalizeBaseUrl(data.api_base_url || ''),
     apiKey: (data.api_key || '').trim(),
+    dashboardPass:
+      typeof data.dashboard_pass === 'string' && data.dashboard_pass.trim()
+        ? data.dashboard_pass.trim()
+        : null,
   }
 }
 

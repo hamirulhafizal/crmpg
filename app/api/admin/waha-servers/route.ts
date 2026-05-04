@@ -57,7 +57,7 @@ export async function GET() {
     const admin = createServiceRoleClient()
     const { data, error } = await admin
       .from('waha_servers')
-      .select('id, name, api_base_url, api_key, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
       .order('name', { ascending: true })
 
     if (error) {
@@ -71,6 +71,7 @@ export async function GET() {
         name: row.name,
         api_base_url: row.api_base_url,
         api_key: row.api_key,
+        dashboard_pass: row.dashboard_pass ?? null,
         status: await checkServerStatus(row.api_base_url, row.api_key),
         is_default: row.is_default,
         created_at: row.created_at,
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
     name?: string
     api_base_url?: string
     api_key?: string
+    dashboard_pass?: string | null
     is_default?: boolean
   }
   try {
@@ -104,6 +106,12 @@ export async function POST(request: Request) {
   const name = typeof body.name === 'string' ? body.name.trim() : ''
   const api_base_url = typeof body.api_base_url === 'string' ? normalizeBaseUrl(body.api_base_url) : ''
   const api_key = typeof body.api_key === 'string' ? body.api_key.trim() : ''
+  const dashboard_pass =
+    body.dashboard_pass === null
+      ? null
+      : typeof body.dashboard_pass === 'string'
+        ? body.dashboard_pass.trim() || null
+        : null
   const is_default = Boolean(body.is_default)
 
   if (!name || !api_base_url || !api_key) {
@@ -126,9 +134,10 @@ export async function POST(request: Request) {
         name,
         api_base_url,
         api_key,
+        dashboard_pass,
         is_default,
       })
-      .select('id, name, api_base_url, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
       .single()
 
     if (error) {
@@ -136,12 +145,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({
-      server: {
-        ...data,
-        api_key,
-      },
-    })
+    return NextResponse.json({ server: data })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })

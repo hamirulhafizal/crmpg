@@ -7,6 +7,7 @@ type WahaServerRow = {
   name: string
   api_base_url: string
   api_key: string
+  dashboard_pass?: string | null
   status?: 'online' | 'offline'
   is_default: boolean
   created_at: string
@@ -76,6 +77,7 @@ export default function AdminSettingsPage() {
   const [serverName, setServerName] = useState('')
   const [serverApiBaseUrl, setServerApiBaseUrl] = useState('')
   const [serverApiKey, setServerApiKey] = useState('')
+  const [serverDashboardPass, setServerDashboardPass] = useState('')
   const [serverIsDefault, setServerIsDefault] = useState(false)
   const [serverApiKeyCopied, setServerApiKeyCopied] = useState(false)
 
@@ -214,6 +216,7 @@ export default function AdminSettingsPage() {
     setServerName('')
     setServerApiBaseUrl('')
     setServerApiKey('')
+    setServerDashboardPass('')
     setServerIsDefault(false)
     setServerError(null)
     setServerApiKeyCopied(false)
@@ -225,6 +228,7 @@ export default function AdminSettingsPage() {
     setServerName(s.name)
     setServerApiBaseUrl(s.api_base_url)
     setServerApiKey(s.api_key || '')
+    setServerDashboardPass(s.dashboard_pass || '')
     setServerIsDefault(s.is_default)
     setServerError(null)
     setServerApiKeyCopied(false)
@@ -253,11 +257,18 @@ export default function AdminSettingsPage() {
     setServerSaving(true)
     setServerError(null)
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: serverName.trim(),
         api_base_url: serverApiBaseUrl.trim(),
-        api_key: serverApiKey.trim(),
         is_default: serverIsDefault,
+        dashboard_pass: serverDashboardPass.trim() || null,
+      }
+      if (serverApiKey.trim()) {
+        payload.api_key = serverApiKey.trim()
+      }
+      if (!editingServerId && !serverApiKey.trim()) {
+        setServerError('API key is required for a new server')
+        return
       }
       const res = await fetch(
         editingServerId ? `/api/admin/waha-servers/${editingServerId}` : '/api/admin/waha-servers',
@@ -666,6 +677,7 @@ export default function AdminSettingsPage() {
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Base URL</th>
                     <th className="px-4 py-3">API key</th>
+                    <th className="px-4 py-3">Dashboard pass</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Default</th>
                     <th className="px-4 py-3 text-right">Actions</th>
@@ -677,6 +689,9 @@ export default function AdminSettingsPage() {
                       <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
                       <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-700">{s.api_base_url}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.api_key || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        {s.dashboard_pass && String(s.dashboard_pass).trim() ? '••••••••' : '—'}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">{s.status === 'online' ? 'Online' : 'Offline'}</td>
                       <td className="px-4 py-3 text-slate-700">{s.is_default ? 'Yes' : '—'}</td>
                       <td className="px-4 py-3 text-right">
@@ -703,6 +718,20 @@ export default function AdminSettingsPage() {
               <div className="flex gap-2">
                 <input value={serverApiKey} onChange={(e) => setServerApiKey(e.target.value)} required={!editingServerId} placeholder={editingServerId ? 'Leave blank to keep current key' : 'API key'} className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm" />
                 <button type="button" onClick={() => void handleCopyServerApiKey()} disabled={!serverApiKey.trim()} className="rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900">{serverApiKeyCopied ? 'Copied' : 'Copy'}</button>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">WAHA dashboard password (optional)</label>
+                <input
+                  type="text"
+                  value={serverDashboardPass}
+                  onChange={(e) => setServerDashboardPass(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder={editingServerId ? 'Leave blank to clear' : 'Optional'}
+                  className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Stored on this server row for your reference (e.g. WAHA web UI). Clear the field and save to remove.
+                </p>
               </div>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={serverIsDefault} onChange={(e) => setServerIsDefault(e.target.checked)} />

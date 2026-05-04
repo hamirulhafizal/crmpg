@@ -21,6 +21,7 @@ export async function PATCH(request: Request, props: RouteParams) {
     name?: string
     api_base_url?: string
     api_key?: string | null
+    dashboard_pass?: string | null
     is_default?: boolean
   }
   try {
@@ -45,6 +46,14 @@ export async function PATCH(request: Request, props: RouteParams) {
     const key = body.api_key.trim()
     if (key) updates.api_key = key
   }
+  if ('dashboard_pass' in body) {
+    if (body.dashboard_pass === null) {
+      updates.dashboard_pass = null
+    } else if (typeof body.dashboard_pass === 'string') {
+      const pass = body.dashboard_pass.trim()
+      updates.dashboard_pass = pass || null
+    }
+  }
   if (typeof body.is_default === 'boolean') {
     updates.is_default = body.is_default
   }
@@ -64,7 +73,7 @@ export async function PATCH(request: Request, props: RouteParams) {
       .from('waha_servers')
       .update(updates)
       .eq('id', id)
-      .select('id, name, api_base_url, api_key, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
       .maybeSingle()
 
     if (error) {
