@@ -115,7 +115,7 @@ export default function GoogleAdsParticipantPage() {
         })
       : false)
 
-  const hasActivePakej = subscription ? effective === 'active' : false
+  const hasActivePackage = subscription ? effective === 'active' : false
 
   const renewalAllowedForSubscription = subscription
     ? canRequestRenewal({
@@ -128,11 +128,11 @@ export default function GoogleAdsParticipantPage() {
   /** No paid active window: show pay CTA (including enrolled users without a subscription row yet). */
   const showPaymentCTA = Boolean(
     packages.length > 0 &&
-      !hasActivePakej &&
+      !hasActivePackage &&
       (missingSubscription || renewalAllowedForSubscription)
   )
 
-  /** Default pakej: first package when no subscription; else match enrolled package_id when possible. */
+  /** Default package: first package when no subscription; else match enrolled package_id when possible. */
   useEffect(() => {
     if (packages.length === 0 || renewPkgId) return
     if (!subscription) {
@@ -251,9 +251,9 @@ export default function GoogleAdsParticipantPage() {
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-2xl font-semibold text-slate-900">Your pakej</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">Your package</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Monthly or yearly billing — change pakej only when you renew (not mid-cycle).
+            Monthly or yearly billing — change package only when you renew (not mid-cycle).
           </p>
 
           {subscription && (
@@ -274,7 +274,7 @@ export default function GoogleAdsParticipantPage() {
               </div>
               {currentPkg && (
                 <p className="text-slate-800">
-                  <span className="font-medium">Current pakej:</span> {currentPkg.name} ·{' '}
+                  <span className="font-medium">Current pac:</span> {currentPkg.name} ·{' '}
                   {fmtMoney(Number(currentPkg.price_amount), currentPkg.currency)} /{' '}
                   {currentPkg.billing_period === 'monthly' ? 'month' : 'year'}
                 </p>
@@ -302,7 +302,7 @@ export default function GoogleAdsParticipantPage() {
                 You are enrolled, but a subscription has not been created.{' '}
                 {packages.length > 0 ? (
                   <>
-                    Use <span className="font-medium text-slate-800">Select pakej & pay</span> below — payment will
+                    Use <span className="font-medium text-slate-800">Select pac & pay</span> below — payment will
                     create your subscription automatically.
                   </>
                 ) : (
@@ -315,7 +315,7 @@ export default function GoogleAdsParticipantPage() {
                   onClick={scrollToPaymentSection}
                   className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-slate-800 active:scale-[0.99] sm:w-auto"
                 >
-                  {bayarcashCheckoutEnabled ? 'Select pakej & pay now' : 'Select pakej & request payment'}
+                  {bayarcashCheckoutEnabled ? 'Select pac & pay now' : 'Select pac & request payment'}
                 </button>
               )} */}
             </div>
@@ -396,21 +396,21 @@ export default function GoogleAdsParticipantPage() {
           >
             <h2 className="text-lg font-semibold text-slate-900">
               {missingSubscription
-                ? 'Select pakej & pay'
-                : subscription?.status === 'pending_payment' && !hasActivePakej
+                ? 'Select pac & pay'
+                : subscription?.status === 'pending_payment' && !hasActivepac
                   ? 'Activate with payment'
                   : 'Renew or pay'}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
               {missingSubscription
                 ? bayarcashCheckoutEnabled
-                  ? 'Pick your billing pakej and pay with Bayarcash. Your subscription is created when you start checkout.'
-                  : 'Pick your pakej and submit a payment request. An administrator will confirm and activate your period.'
+                  ? 'Pick your billing pac and pay with Bayarcash. Your subscription is created when you start checkout.'
+                  : 'Pick your pac and submit a payment request. An administrator will confirm and activate your period.'
                 : bayarcashCheckoutEnabled
-                  ? subscription?.status === 'pending_payment' && !hasActivePakej
-                    ? 'Confirm the pakej (pre-filled from your enrollment), then pay with Bayarcash to activate. Receipts appear above after payment.'
-                    : 'Choose your pakej, then pay securely with Bayarcash. Receipt details appear above after payment.'
-                  : 'Choose the pakej for your next term. An administrator will confirm when payment is received.'}
+                  ? subscription?.status === 'pending_payment' && !hasActivepac
+                    ? 'Confirm the pac (pre-filled from your enrollment), then pay with Bayarcash to activate. Receipts appear above after payment.'
+                    : 'Choose your pac, then pay securely with Bayarcash. Receipt details appear above after payment.'
+                  : 'Choose the pac for your next term. An administrator will confirm when payment is received.'}
             </p>
             <form
               onSubmit={bayarcashCheckoutEnabled ? submitCheckout : submitRenew}
@@ -418,7 +418,7 @@ export default function GoogleAdsParticipantPage() {
             >
               <div>
                 <label htmlFor="renew-pkg" className="block text-sm font-medium text-slate-700">
-                  Pakej
+                  pac
                 </label>
                 <select
                   id="renew-pkg"
@@ -460,7 +460,7 @@ export default function GoogleAdsParticipantPage() {
 
         {!allowRenew && subscription && subscription.status === 'active' && effective === 'active' && (
           <p className="mt-6 text-center text-sm text-slate-500">
-            Pakej changes are available in the last 7 days before expiry, or after your period ends.
+            pac changes are available in the last 7 days before expiry, or after your period ends.
           </p>
         )}
       </main>

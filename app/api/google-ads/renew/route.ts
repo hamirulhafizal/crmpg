@@ -7,7 +7,7 @@ import { getOrCreatePendingGoogleAdsSubscription } from '@/app/lib/google-ads/bo
 type Body = { package_id?: string }
 
 /**
- * Participant requests renewal: chooses pakej for the next term (only when renewal is allowed).
+ * Participant requests renewal: chooses package for the next term (only when renewal is allowed).
  * Sets pending_payment — confirm via admin confirm-payment or future Bayarcash webhook.
  */
 export async function POST(request: Request) {

@@ -85,7 +85,7 @@ async function authEmailsAndPhones(
 
 /**
  * Active Google Ads dealers: enrolled, subscription `active`, and current time inside paid period
- * (monthly or yearly pakej — enforced via period_start / period_end).
+ * (monthly or yearly package — enforced via period_start / period_end).
  */
 export async function loadActiveGoogleAdsDealers(
   admin: SupabaseClient

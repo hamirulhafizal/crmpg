@@ -41,6 +41,41 @@ type ParticipantRow = {
   google_ads_subscriptions?: SubscriptionEmbed[] | null
 }
 
+type CampaignInsights = {
+  month: { key: string }
+  totals: {
+    participants: number
+    activeMembers: number
+    pendingPaymentMembers: number
+    expiredMembers: number
+    expiringIn7Days: number
+  }
+  collection: {
+    currency: string
+    totalCollected: number
+    paymentCount: number
+    uniquePayingParticipants: number
+    averagePerPayment: number
+    byBillingPeriod: {
+      monthly: { amount: number; count: number }
+      yearly: { amount: number; count: number }
+    }
+    byPackage: Array<{
+      package_id: string
+      name: string
+      billing_period: 'monthly' | 'yearly'
+      amount: number
+      count: number
+    }>
+  }
+  activeByPackage: Array<{
+    package_id: string
+    name: string
+    billing_period: 'monthly' | 'yearly'
+    members: number
+  }>
+}
+
 function normalizeSubscription(raw: ParticipantRow): SubscriptionEmbed | null {
   if (raw.subscription) return raw.subscription
   const arr = raw.google_ads_subscriptions
@@ -85,6 +120,13 @@ function toDatetimeLocalValue(iso: string | null | undefined): string {
 
 export default function AdminGoogleAdsPage() {
   const [tab, setTab] = useState<'participants' | 'packages'>('participants')
+  const [participantView, setParticipantView] = useState<'cards' | 'table'>('table')
+  const [participantSearch, setParticipantSearch] = useState('')
+  const [participantPackageFilter, setParticipantPackageFilter] = useState<'all' | string>('all')
+  const [participantStatusFilter, setParticipantStatusFilter] = useState<
+    'all' | 'active_package' | 'pending_payment' | 'expired' | 'cancelled' | 'awaiting_package'
+  >('all')
+  const FILTER_STORAGE_KEY = 'admin_google_ads_participant_filters_v1'
 
   const [packages, setPackages] = useState<PackageRow[]>([])
   const [loadingPackages, setLoadingPackages] = useState(true)
@@ -93,6 +135,9 @@ export default function AdminGoogleAdsPage() {
   const [participants, setParticipants] = useState<ParticipantRow[]>([])
   const [loadingParticipants, setLoadingParticipants] = useState(true)
   const [participantError, setParticipantError] = useState<string | null>(null)
+  const [insights, setInsights] = useState<CampaignInsights | null>(null)
+  const [loadingInsights, setLoadingInsights] = useState(true)
+  const [insightsError, setInsightsError] = useState<string | null>(null)
 
   const [users, setUsers] = useState<Array<{ id: string; email: string | null; full_name: string | null }>>([])
 
@@ -127,6 +172,10 @@ export default function AdminGoogleAdsPage() {
   const [editPendingRenewalId, setEditPendingRenewalId] = useState('')
   const [editExternalPaymentId, setEditExternalPaymentId] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+  const [plannerBudgetMonthly, setPlannerBudgetMonthly] = useState('3000')
+  const [plannerParticipants, setPlannerParticipants] = useState('10')
+  const [plannerServiceChargeMonthly, setPlannerServiceChargeMonthly] = useState('350')
+  const [plannerExpanded, setPlannerExpanded] = useState(false)
 
   const loadPackages = useCallback(async () => {
     setLoadingPackages(true)
@@ -174,11 +223,33 @@ export default function AdminGoogleAdsPage() {
     }
   }, [])
 
+  const loadInsights = useCallback(async () => {
+    setLoadingInsights(true)
+    setInsightsError(null)
+    try {
+      const res = await fetch('/api/admin/google-ads/stats')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load campaign insights')
+      setInsights(data as CampaignInsights)
+    } catch (e) {
+      setInsightsError(e instanceof Error ? e.message : 'Failed to load campaign insights')
+    } finally {
+      setLoadingInsights(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadPackages()
     loadParticipants()
     loadUsers()
-  }, [loadPackages, loadParticipants, loadUsers])
+    loadInsights()
+  }, [loadPackages, loadParticipants, loadUsers, loadInsights])
+
+  useEffect(() => {
+    if (!loadingParticipants) {
+      loadInsights()
+    }
+  }, [loadingParticipants, loadInsights])
 
   const activePackages = useMemo(() => packages.filter((p) => p.is_active), [packages])
 
@@ -200,6 +271,112 @@ export default function AdminGoogleAdsPage() {
     }
     return { total: participants.length, pendingPayment, active: paidActive }
   }, [participants])
+
+  const filteredParticipants = useMemo(() => {
+    const q = participantSearch.trim().toLowerCase()
+    return participants.filter((row) => {
+      const sub = normalizeSubscription(row)
+      const pkg = sub?.package
+      const pkgOne = Array.isArray(pkg) ? pkg[0] : pkg
+      const status = (sub?.status || '').toLowerCase()
+
+      if (participantPackageFilter !== 'all' && sub?.package_id !== participantPackageFilter) return false
+
+      if (participantStatusFilter !== 'all') {
+        if (participantStatusFilter === 'active_package') {
+          if (
+            !sub ||
+            effectivePackageStatus({
+              status: sub.status,
+              current_period_start: sub.current_period_start,
+              current_period_end: sub.current_period_end,
+            }) !== 'active'
+          ) {
+            return false
+          }
+        } else if (participantStatusFilter === 'awaiting_package') {
+          if (sub) return false
+        } else if (status !== participantStatusFilter) {
+          return false
+        }
+      }
+
+      if (!q) return true
+      return (
+        (row.email && row.email.toLowerCase().includes(q)) ||
+        (row.public_username && row.public_username.toLowerCase().includes(q)) ||
+        (pkgOne?.name && pkgOne.name.toLowerCase().includes(q)) ||
+        row.user_id.toLowerCase().includes(q)
+      )
+    })
+  }, [participants, participantSearch, participantPackageFilter, participantStatusFilter])
+
+  const budgetPlanner = useMemo(() => {
+    const budget = Math.max(0, Number(plannerBudgetMonthly) || 0)
+    const participantsTarget = Math.max(0, Number(plannerParticipants) || 0)
+    const serviceCharge = Math.max(0, Number(plannerServiceChargeMonthly) || 0)
+    const monthlyTarget = budget + serviceCharge
+    const perParticipantMonthly = participantsTarget > 0 ? monthlyTarget / participantsTarget : 0
+    const perParticipantYearly = perParticipantMonthly * 12
+
+    const currentMonthly = packages.find((p) => p.billing_period === 'monthly' && p.is_active)
+    const currentYearly = packages.find((p) => p.billing_period === 'yearly' && p.is_active)
+
+    const activeMembers = participantStats.active
+    const projectedAtCurrentMonthly =
+      activeMembers > 0 && currentMonthly ? Number(currentMonthly.price_amount) * activeMembers : 0
+    const gapVsTarget = monthlyTarget - projectedAtCurrentMonthly
+
+    return {
+      budget,
+      participantsTarget,
+      serviceCharge,
+      monthlyTarget,
+      perParticipantMonthly,
+      perParticipantYearly,
+      currentMonthly,
+      currentYearly,
+      activeMembers,
+      projectedAtCurrentMonthly,
+      gapVsTarget,
+    }
+  }, [plannerBudgetMonthly, plannerParticipants, plannerServiceChargeMonthly, packages, participantStats.active])
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FILTER_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as {
+        search?: string
+        package?: string
+        status?: 'all' | 'active_package' | 'pending_payment' | 'expired' | 'cancelled' | 'awaiting_package'
+        view?: 'cards' | 'table'
+      }
+      if (typeof parsed.search === 'string') setParticipantSearch(parsed.search)
+      if (typeof parsed.package === 'string') setParticipantPackageFilter(parsed.package)
+      if (parsed.status) setParticipantStatusFilter(parsed.status)
+      if (parsed.view === 'cards' || parsed.view === 'table') setParticipantView(parsed.view)
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        FILTER_STORAGE_KEY,
+        JSON.stringify({
+          search: participantSearch,
+          package: participantPackageFilter,
+          status: participantStatusFilter,
+          view: participantView,
+        })
+      )
+    } catch {
+      /* ignore */
+    }
+  }, [participantSearch, participantPackageFilter, participantStatusFilter, participantView])
 
   const USER_LIST_PREVIEW = 100
 
@@ -475,10 +652,117 @@ export default function AdminGoogleAdsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Google Ads campaign</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Manage pakej (monthly/yearly, price only) and enrolled users. Payment confirmation prepares for Bayarcash.
+            Manage package (monthly/yearly, price only) and enrolled users. Payment confirmation prepares for Bayarcash.
           </p>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-blue-200 bg-white shadow-sm">
+        <button
+          type="button"
+          onClick={() => setPlannerExpanded((v) => !v)}
+          className="flex w-full flex-col gap-3 p-5 text-left sm:flex-row sm:items-center sm:justify-between"
+          aria-expanded={plannerExpanded}
+        >
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Budget Planner Overview</h2>
+            <p className="text-xs text-slate-600">Auto-calculate package pricing target from ad budget + market charge.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pr-2 text-xs">
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 ring-1 ring-blue-200">
+              Target {fmtMoney(budgetPlanner.monthlyTarget, 'MYR')}
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-emerald-200">
+              /pax {fmtMoney(budgetPlanner.perParticipantMonthly, 'MYR')}
+            </span>
+            <span
+              className={`rounded-full px-2.5 py-1 ring-1 ${
+                budgetPlanner.gapVsTarget > 0
+                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                  : 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+              }`}
+            >
+              Gap {fmtMoney(Math.abs(budgetPlanner.gapVsTarget), 'MYR')}
+            </span>
+          </div>
+          <span className="ml-auto text-slate-500">
+            <svg className={`h-5 w-5 transition-transform ${plannerExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </span>
+        </button>
+
+        {plannerExpanded && (
+          <div className="border-t border-blue-100 px-5 pb-5">
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700">Monthly Google Ads budget (RM)</label>
+                <input
+                  value={plannerBudgetMonthly}
+                  onChange={(e) => setPlannerBudgetMonthly(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700">Target participants</label>
+                <input
+                  value={plannerParticipants}
+                  onChange={(e) => setPlannerParticipants(e.target.value)}
+                  inputMode="numeric"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700">Market service charge / month (RM)</label>
+                <input
+                  value={plannerServiceChargeMonthly}
+                  onChange={(e) => setPlannerServiceChargeMonthly(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Monthly collection target</p>
+                <p className="mt-1 text-lg font-semibold text-blue-700">{fmtMoney(budgetPlanner.monthlyTarget, 'MYR')}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Required monthly price / participant</p>
+                <p className="mt-1 text-lg font-semibold text-emerald-700">{fmtMoney(budgetPlanner.perParticipantMonthly, 'MYR')}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Required yearly price / participant</p>
+                <p className="mt-1 text-lg font-semibold text-violet-700">{fmtMoney(budgetPlanner.perParticipantYearly, 'MYR')}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">Projected now ({budgetPlanner.activeMembers} active)</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">{fmtMoney(budgetPlanner.projectedAtCurrentMonthly, 'MYR')}</p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full bg-white px-2.5 py-1 text-slate-700 ring-1 ring-slate-200">
+                Current monthly package: {budgetPlanner.currentMonthly ? fmtMoney(Number(budgetPlanner.currentMonthly.price_amount), budgetPlanner.currentMonthly.currency) : 'Not set'}
+              </span>
+              <span className="rounded-full bg-white px-2.5 py-1 text-slate-700 ring-1 ring-slate-200">
+                Current yearly package: {budgetPlanner.currentYearly ? fmtMoney(Number(budgetPlanner.currentYearly.price_amount), budgetPlanner.currentYearly.currency) : 'Not set'}
+              </span>
+              <span
+                className={`rounded-full px-2.5 py-1 ring-1 ${
+                  budgetPlanner.gapVsTarget > 0
+                    ? 'bg-amber-50 text-amber-800 ring-amber-200'
+                    : 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                }`}
+              >
+                Gap vs target: {fmtMoney(Math.abs(budgetPlanner.gapVsTarget), 'MYR')} {budgetPlanner.gapVsTarget > 0 ? 'under target' : 'over target'}
+              </span>
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
         <button
@@ -487,7 +771,7 @@ export default function AdminGoogleAdsPage() {
           className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${tab === 'packages' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-50'
             }`}
         >
-          Pakej
+          package
         </button>
         <button
           type="button"
@@ -562,29 +846,224 @@ export default function AdminGoogleAdsPage() {
                 <h2 className="text-lg font-semibold text-slate-900">Participants</h2>
                 {!loadingParticipants && participants.length > 0 && (
                   <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-slate-200/80">
-                    {participantStats.total}
+                    {filteredParticipants.length}
                   </span>
                 )}
               </div>
               {!loadingParticipants && participants.length > 0 && (
                 <p className="text-xs text-slate-500">
-                  <span className="tabular-nums text-emerald-700">{participantStats.active} active pakej</span>
+                  <span className="tabular-nums text-emerald-700">{participantStats.active} active package</span>
                   <span className="mx-1.5 text-slate-300">·</span>
                   <span className="tabular-nums text-amber-800">{participantStats.pendingPayment} pending payment</span>
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={openParticipantModal}
-              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-slate-900/10 transition hover:bg-slate-800 active:scale-[0.98]"
-            >
-              Add participant
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={openParticipantModal}
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-slate-900/10 transition hover:bg-slate-800 active:scale-[0.98]"
+              >
+                Add participant
+              </button>
+            </div>
           </div>
+
+          {insightsError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{insightsError}</div>
+          )}
+
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+            {loadingInsights || !insights ? (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="h-3 w-20 rounded bg-slate-200" />
+                    <div className="mt-2 h-5 w-16 rounded bg-slate-200" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Collected ({insights.month.key})</p>
+                    <p className="mt-1 text-lg font-semibold text-emerald-700">{fmtMoney(insights.collection.totalCollected, insights.collection.currency)}</p>
+                  </div>
+                  <div className="rounded-xl border border-blue-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Active Members</p>
+                    <p className="mt-1 text-lg font-semibold text-blue-700 tabular-nums">{insights.totals.activeMembers}</p>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Pending Payment</p>
+                    <p className="mt-1 text-lg font-semibold text-amber-700 tabular-nums">{insights.totals.pendingPaymentMembers}</p>
+                  </div>
+                  <div className="rounded-xl border border-violet-200 bg-white p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Paying Members (Month)</p>
+                    <p className="mt-1 text-lg font-semibold text-violet-700 tabular-nums">{insights.collection.uniquePayingParticipants}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-slate-700">Collection by package Category</p>
+                    <div className="mt-2 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Monthly</span>
+                        <span className="font-medium text-slate-900">
+                          {fmtMoney(insights.collection.byBillingPeriod.monthly.amount, insights.collection.currency)} · {insights.collection.byBillingPeriod.monthly.count} payments
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Yearly</span>
+                        <span className="font-medium text-slate-900">
+                          {fmtMoney(insights.collection.byBillingPeriod.yearly.amount, insights.collection.currency)} · {insights.collection.byBillingPeriod.yearly.count} payments
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-slate-700">Operational Insights</p>
+                    <div className="mt-2 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Expiring in 7 days</span>
+                        <span className="font-medium text-slate-900 tabular-nums">{insights.totals.expiringIn7Days}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Expired members</span>
+                        <span className="font-medium text-slate-900 tabular-nums">{insights.totals.expiredMembers}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Avg payment value</span>
+                        <span className="font-medium text-slate-900">
+                          {fmtMoney(insights.collection.averagePerPayment, insights.collection.currency)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {insights.collection.byPackage.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-slate-700">Top package (Current Month Collection)</p>
+                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {insights.collection.byPackage.slice(0, 6).map((row) => (
+                        <div key={row.package_id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2 text-xs">
+                          <span className="truncate pr-2 text-slate-700">
+                            {row.name} · {row.billing_period === 'monthly' ? 'Monthly' : 'Yearly'}
+                          </span>
+                          <span className="shrink-0 font-medium text-slate-900">
+                            {fmtMoney(row.amount, insights.collection.currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {participantError && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{participantError}</div>
           )}
+
+          {/* Filter bar for participants */}
+          <div className="my-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'active_package', label: 'Active' },
+                { id: 'pending_payment', label: 'Pending' },
+                { id: 'awaiting_package', label: 'Awaiting package' },
+                { id: 'expired', label: 'Expired' },
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  onClick={() =>
+                    setParticipantStatusFilter(
+                      chip.id as 'all' | 'active_package' | 'pending_payment' | 'expired' | 'cancelled' | 'awaiting_package'
+                    )
+                  }
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                    participantStatusFilter === chip.id
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setParticipantSearch('')
+                  setParticipantPackageFilter('all')
+                  setParticipantStatusFilter('all')
+                }}
+                className="ml-auto rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Clear all filters
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1.4fr_1fr_1fr_auto]">
+              <input
+                type="text"
+                value={participantSearch}
+                onChange={(e) => setParticipantSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              />
+              <select
+                value={participantPackageFilter}
+                onChange={(e) => setParticipantPackageFilter(e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="all">All package</option>
+                {packages.map((pk) => (
+                  <option key={pk.id} value={pk.id}>
+                    {pk.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={participantStatusFilter}
+                onChange={(e) =>
+                  setParticipantStatusFilter(
+                    e.target.value as 'all' | 'active_package' | 'pending_payment' | 'expired' | 'cancelled' | 'awaiting_package'
+                  )
+                }
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="all">All status</option>
+                <option value="active_package">Active package</option>
+                <option value="pending_payment">Pending payment</option>
+                <option value="expired">Expired</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="awaiting_package">Awaiting package</option>
+              </select>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setParticipantView('cards')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${participantView === 'cards' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setParticipantView('table')}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${participantView === 'table' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  Table
+                </button>
+              </div>
+            </div>
+          </div>
+
+
           {loadingParticipants ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -611,7 +1090,7 @@ export default function AdminGoogleAdsPage() {
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-14 text-center">
               <p className="text-sm font-medium text-slate-700">No participants yet</p>
               <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                Add users to allow them to join the campaign; they choose a pakej and pay on their Google Ads page.
+                Add users to allow them to join the campaign; they choose a package and pay on their Google Ads page.
               </p>
               <button
                 type="button"
@@ -621,9 +1100,27 @@ export default function AdminGoogleAdsPage() {
                 Add participant
               </button>
             </div>
-          ) : (
+          ) : filteredParticipants.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 px-6 py-14 text-center">
+              <p className="text-sm font-medium text-slate-700">No matching participants</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                Try a different keyword or reset filters to view all participants.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setParticipantSearch('')
+                  setParticipantPackageFilter('all')
+                  setParticipantStatusFilter('all')
+                }}
+                className="mt-5 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-slate-800"
+              >
+                Reset filters
+              </button>
+            </div>
+          ) : participantView === 'cards' ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {participants.map((p) => {
+              {filteredParticipants.map((p) => {
                 const sub = normalizeSubscription(p)
                 const pkg = sub?.package
                 const pkgOne = Array.isArray(pkg) ? pkg[0] : pkg
@@ -652,13 +1149,13 @@ export default function AdminGoogleAdsPage() {
                         )
                       ) : (
                         <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200/90">
-                          Awaiting pakej
+                          Awaiting package
                         </span>
                       )}
                     </div>
 
                     <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-                      <dt className="text-slate-500">Pakej</dt>
+                      <dt className="text-slate-500">package</dt>
                       <dd className="min-w-0 font-medium text-slate-900">
                         {pkgOne?.name ?? '—'}
                         {pkgOne && (
@@ -672,22 +1169,22 @@ export default function AdminGoogleAdsPage() {
                       <dd className="tabular-nums text-slate-800">
                         {sub?.current_period_end
                           ? new Date(sub.current_period_end).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
                           : '—'}
                       </dd>
                     </dl>
 
                     {!sub && (
                       <p className="mt-2 text-xs text-slate-500">
-                        They choose a pakej and pay on their Google Ads page.
+                        They choose a package and pay on their Google Ads page.
                       </p>
                     )}
 
                     {sub?.pending_renewal_package_id && (
                       <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs leading-snug text-amber-950">
-                        Renewal pakej chosen — confirm payment to apply the next term.
+                        Renewal package chosen — confirm payment to apply the next term.
                       </div>
                     )}
 
@@ -706,14 +1203,14 @@ export default function AdminGoogleAdsPage() {
                       >
                         Edit
                       </button>
-                      <button
+                      {/* <button
                         type="button"
                         disabled={confirmingId === p.id}
                         onClick={() => confirmPayment(p.id)}
                         className="inline-flex min-h-[40px] items-center justify-center rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                       >
                         {confirmingId === p.id ? 'Confirming…' : 'Confirm payment'}
-                      </button>
+                      </button> */}
                       {p.hasPaidReceipt ? (
                         <a
                           href={`/api/admin/google-ads/participants/${p.id}/receipt`}
@@ -744,6 +1241,116 @@ export default function AdminGoogleAdsPage() {
                   </article>
                 )
               })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="px-4 py-3">Participant</th>
+                    <th className="px-4 py-3">package</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Period ends</th>
+                    <th className="px-4 py-3">Notes</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {filteredParticipants.map((p) => {
+                    const sub = normalizeSubscription(p)
+                    const pkg = sub?.package
+                    const pkgOne = Array.isArray(pkg) ? pkg[0] : pkg
+                    const status = sub?.status
+                    return (
+                      <tr key={p.id} className="align-top">
+                        <td className="px-4 py-3">
+                          <p className="max-w-[240px] truncate font-medium text-slate-900" title={p.email || undefined}>
+                            {p.email || 'No email'}
+                          </p>
+                          <p className="max-w-[240px] truncate font-mono text-[11px] text-slate-400" title={p.user_id}>
+                            {p.user_id}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-slate-900">{pkgOne?.name ?? '—'}</p>
+                          {pkgOne && (
+                            <p className="text-xs text-slate-500">
+                              {fmtMoney(Number(pkgOne.price_amount), pkgOne.currency)} · {pkgOne.billing_period === 'monthly' ? 'Monthly' : 'Yearly'}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {sub ? (
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${subscriptionStatusBadgeClass(status)}`}
+                            >
+                              {humanizeSubscriptionStatus(status)}
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-slate-200/90">
+                              Awaiting package
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-800">
+                          {sub?.current_period_end
+                            ? new Date(sub.current_period_end).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short',
+                            })
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{p.notes || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEditParticipant(p)}
+                              className="inline-flex min-h-[34px] items-center justify-center rounded-lg border border-violet-200 bg-violet-50/80 px-2.5 py-1.5 text-xs font-medium text-violet-900 transition hover:bg-violet-100"
+                            >
+                              Edit
+                            </button>
+                            {/* <button
+                              type="button"
+                              disabled={confirmingId === p.id}
+                              onClick={() => confirmPayment(p.id)}
+                              className="inline-flex min-h-[34px] items-center justify-center rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              {confirmingId === p.id ? 'Confirming…' : 'Confirm payment'}
+                            </button> */}
+                            {p.hasPaidReceipt ? (
+                              <a
+                                href={`/api/admin/google-ads/participants/${p.id}/receipt`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex min-h-[34px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 shadow-sm ring-1 ring-slate-900/5 transition hover:bg-slate-50"
+                              >
+                                Receipt
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                title="Available after at least one paid payment"
+                                className="inline-flex min-h-[34px] cursor-not-allowed items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-xs font-medium text-slate-400"
+                              >
+                                Receipt
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeParticipant(p.id)}
+                              className="inline-flex min-h-[34px] items-center justify-center rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </section>
@@ -865,11 +1472,11 @@ export default function AdminGoogleAdsPage() {
                 </div>
               </div>
               <div>
-                <label htmlFor="edit-participant-pakej" className="block text-sm font-medium text-slate-700">
-                  Pakej
+                <label htmlFor="edit-participant-package" className="block text-sm font-medium text-slate-700">
+                  package
                 </label>
                 <select
-                  id="edit-participant-pakej"
+                  id="edit-participant-package"
                   value={editPackageId}
                   onChange={(e) => setEditPackageId(e.target.value)}
                   required
@@ -931,7 +1538,7 @@ export default function AdminGoogleAdsPage() {
               </div>
               <div>
                 <label htmlFor="edit-pending-renewal" className="block text-sm font-medium text-slate-700">
-                  Pending renewal pakej
+                  Pending renewal package
                 </label>
                 <select
                   id="edit-pending-renewal"
@@ -991,7 +1598,7 @@ export default function AdminGoogleAdsPage() {
             <h3 className="text-lg font-semibold text-slate-900">Add participant</h3>
             <p className="mt-1 text-sm text-slate-600">
               Pick one or more users and optional notes (shared by everyone in this batch). Click a row again to deselect.
-              Participants choose their own pakej and pay on the Google Ads page — you only grant access to the campaign.
+              Participants choose their own package and pay on the Google Ads page — you only grant access to the campaign.
             </p>
             <form onSubmit={saveParticipant} className="mt-4 space-y-4">
               <div ref={userComboRef} className="relative">

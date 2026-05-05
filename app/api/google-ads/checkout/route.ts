@@ -21,7 +21,7 @@ function newOrderNumber(): string {
 }
 
 /**
- * Create Bayarcash payment intent for Google Ads renewal (pakej + checkout in one step).
+ * Create Bayarcash payment intent for Google Ads renewal (package + checkout in one step).
  */
 export async function POST(request: Request) {
   if (!isGoogleAdsBayarcashRenewalEnabled()) {

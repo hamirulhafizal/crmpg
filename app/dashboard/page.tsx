@@ -382,9 +382,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Tools Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
+        <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 border border-slate-200/50">
           <div className="mb-6 flex items-center justify-between gap-3">
-            <h3 className="text-xl font-semibold text-slate-900">Tools</h3>
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">All Services</h3>
+              <p className="text-xs text-slate-500 mt-1">Quick access tools</p>
+            </div>
             {checkingWahaSession ? (
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
                 <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
@@ -402,210 +405,118 @@ export default function DashboardPage() {
               </span>
             )}
           </div>
-          <div className="space-y-3">
+
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
             {!checkingAdmin && isAdmin && (
               <>
                 <Link
                   href="/admin/settings"
-                  className="block px-4 py-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-slate-700 shadow-lg shadow-slate-900/15"
+                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-6 h-6 text-slate-200" fill="black" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                        />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <div>
-                        <span className="font-semibold text-slate-900">Admin · Web app settings</span>
-                        <p className="text-xs text-slate-600">Manage infrastructure and user management in one place.</p>
-                      </div>
-                    </div>
-                    <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  <div className="h-12 w-12 rounded-full bg-slate-900/90 text-white flex items-center justify-center mb-3 shadow-sm">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </div>
+                  <h4 className="text-sm font-semibold text-slate-900 leading-tight">Admin Settings</h4>
+                  <p className="text-xs text-slate-500 mt-1">Web app settings</p>
                 </Link>
+
                 <Link
                   href="/admin/google-ads"
-                  className="block px-4 py-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-slate-700 shadow-lg shadow-slate-900/15"
+                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"
-                        />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                      </svg>
-                      <div>
-                        <span className="font-semibold text-slate-900">Admin · Google Ads campaign</span>
-                        <p className="text-xs text-slate-600">Pakej pricing and participant subscriptions.</p>
-                      </div>
-                    </div>
-                    <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  <div className="h-12 w-12 rounded-full bg-slate-900/90 text-white flex items-center justify-center mb-3 shadow-sm">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
                     </svg>
                   </div>
+                  <h4 className="text-sm font-semibold text-slate-900 leading-tight">Admin Google Ads</h4>
+                  <p className="text-xs text-slate-500 mt-1">Campaign management</p>
                 </Link>
               </>
             )}
+
             {!checkingGoogleAds && googleAdsEnrolled && (
               <Link
                 href="/google-ads"
-                className="block px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-slate-800 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-amber-200"
+                className="group rounded-2xl border border-amber-200 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div>
-                      <span className="font-semibold text-slate-900">Google Ads subscription</span>
-                      <p className="text-xs text-slate-600">View status, renew when eligible.</p>
-                    </div>
-                  </div>
-                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <div className="h-12 w-12 rounded-full bg-amber-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
+                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Google Ads</h4>
+                <p className="text-xs text-slate-500 mt-1">Subscription</p>
               </Link>
             )}
-            <Link hidden
-              href="/excel-processor"
-              className="block px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-blue-200"
-            >
-              <div hidden className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <div>
-                    <span className="font-semibold text-slate-900">AI Excel Processor</span>
-                    <p className="text-xs text-slate-600">Upload Excel/CSV and process with OpenAI</p>
-                  </div>
-                </div>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
+
             <Link
               href="/customers"
-              className="block px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-green-200"
+              className="group rounded-2xl border border-emerald-200 bg-gradient-to-b from-emerald-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                  <div>
-                    <span className="font-semibold text-slate-900">Customer Management</span>
-                    <p className="text-xs text-slate-600">View, edit, and manage your customer database</p>
-                  </div>
-                </div>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <div className="h-12 w-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
+              <h4 className="text-sm font-semibold text-slate-900 leading-tight">Customers</h4>
+              <p className="text-xs text-slate-500 mt-1">Customer management</p>
             </Link>
+
             <Link
               href="/waha-integration"
-              className="block px-4 py-3 bg-gradient-to-r from-green-50 to-teal-50 hover:from-green-100 hover:to-teal-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-green-200"
+              className="group rounded-2xl border border-teal-200 bg-gradient-to-b from-teal-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <div>
-                    <span className="font-semibold text-slate-900">WhatsApp Integration (WAHA)</span>
-                    <p className="text-xs text-slate-600">Create session, check status, send messages via WAHA API</p>
-                  </div>
-                </div>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <div className="h-12 w-12 rounded-full bg-teal-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
+              <h4 className="text-sm font-semibold text-slate-900 leading-tight">WAHA</h4>
+              <p className="text-xs text-slate-500 mt-1">WhatsApp integration</p>
             </Link>
 
             {checkingWahaSession && (
               <div
                 aria-hidden="true"
-                className="px-4 py-3 rounded-xl border border-violet-100 bg-violet-50/60"
+                className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-6 w-6 rounded-md bg-violet-200/70 animate-pulse" />
-                    <div className="space-y-1.5">
-                      <div className="h-3 w-40 rounded bg-violet-200/70 animate-pulse" />
-                      <div className="h-2.5 w-60 rounded bg-violet-100/90 animate-pulse" />
-                    </div>
-                  </div>
-                  <div className="h-5 w-5 rounded bg-violet-200/70 animate-pulse" />
-                </div>
+                <div className="h-12 w-12 rounded-full bg-violet-200/70 animate-pulse mb-3" />
+                <div className="h-3 w-24 rounded bg-violet-200/70 animate-pulse" />
+                <div className="mt-2 h-2.5 w-20 rounded bg-violet-100/90 animate-pulse" />
               </div>
             )}
 
             {!checkingWahaSession && hasActiveWahaSession && (
               <Link
                 href="/automated-messages"
-                className="block px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-violet-200"
+                className="group rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <svg className="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <div>
-                      <span className="font-semibold text-slate-900">Automated Messages</span>
-                      <p className="text-xs text-slate-600">Create and edit birthday &amp; other automated message templates</p>
-                    </div>
-                  </div>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <div className="h-12 w-12 rounded-full bg-violet-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                 </div>
+                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Automated Messages</h4>
+                <p className="text-xs text-slate-500 mt-1">WAHA templates</p>
               </Link>
             )}
 
             <Link
               href="/extension-download"
-              className="block px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-amber-200"
+              className="group rounded-2xl border border-orange-200 bg-gradient-to-b from-orange-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
-                  </svg>
-                  <div>
-                    <span className="font-semibold text-slate-900">Chrome Extension</span>
-                    <p className="text-xs text-slate-600">Download extension zip and watch the user guide</p>
-                  </div>
-                </div>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <div className="h-12 w-12 rounded-full bg-orange-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
                 </svg>
               </div>
-            </Link>
-            <Link
-              hidden
-              href="/pwa-test/push"
-              className="hidden md:block px-4 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium rounded-xl transition-all duration-200 active:scale-[0.98]"
-            >
-              <div hidden className="md:flex items-center justify-between">
-                <span>Test Declarative Web Push</span>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
+              <h4 className="text-sm font-semibold text-slate-900 leading-tight">Chrome Extension</h4>
+              <p className="text-xs text-slate-500 mt-1">Download tools</p>
             </Link>
           </div>
         </div>

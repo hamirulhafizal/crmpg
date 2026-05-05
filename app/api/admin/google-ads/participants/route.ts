@@ -94,7 +94,7 @@ type PostBody = {
 }
 
 /**
- * Enroll a user in the campaign only (participant row). They choose pakej + pay on `/google-ads`.
+ * Enroll a user in the campaign only (participant row). They choose package + pay on `/google-ads`.
  */
 export async function POST(request: Request) {
   const auth = await requireAdminApi()
