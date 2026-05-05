@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { TagAdminSidebar } from '@/app/admin/settings/tag-admin-sidebar'
+import { TagAdminSidebar, type CategoryRow } from '@/app/admin/settings/tag-admin-sidebar'
 
 type WahaServerRow = {
   id: string
@@ -66,8 +66,22 @@ function statusBadgeClass(status: string): string {
   return 'bg-amber-50 text-amber-700 ring-amber-200'
 }
 
+type PaymentGatewayStatus = {
+  provider: 'bayarcash'
+  apiBase: string | null
+  sandbox: boolean
+  paymentChannel: string | null
+  googleAdsRenewalIntegration: boolean
+  credentialsConfigured: {
+    personalAccessToken: boolean
+    apiSecret: boolean
+    portalKey: boolean
+  }
+  fullyConfigured: boolean
+}
+
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<'servers' | 'users'>('servers')
+  const [tab, setTab] = useState<'servers' | 'users' | 'tags' | 'payment'>('servers')
 
   const [servers, setServers] = useState<WahaServerRow[]>([])
   const [loadingServers, setLoadingServers] = useState(true)
@@ -104,6 +118,67 @@ export default function AdminSettingsPage() {
   const [filterServerId, setFilterServerId] = useState<string>('all')
   const [filterSessionStatus, setFilterSessionStatus] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+
+  const [tagCategories, setTagCategories] = useState<CategoryRow[]>([])
+  const [tagCatalogLoading, setTagCatalogLoading] = useState(false)
+  const [tagCatalogError, setTagCatalogError] = useState<string | null>(null)
+  /** After first successful load while Tags tab was visited; avoids refetch on every tab switch. */
+  const [tagCatalogCacheReady, setTagCatalogCacheReady] = useState(false)
+
+  const [paymentGateway, setPaymentGateway] = useState<PaymentGatewayStatus | null>(null)
+  const [paymentGatewayLoading, setPaymentGatewayLoading] = useState(false)
+  const [paymentGatewayError, setPaymentGatewayError] = useState<string | null>(null)
+  const [paymentGatewayCacheReady, setPaymentGatewayCacheReady] = useState(false)
+
+  const loadTagCatalog = useCallback(async () => {
+    setTagCatalogLoading(true)
+    setTagCatalogError(null)
+    try {
+      const res = await fetch('/api/admin/tag-catalog', { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTagCatalogError(typeof data.error === 'string' ? data.error : 'Failed to load tags')
+        setTagCategories([])
+        return
+      }
+      setTagCategories(Array.isArray(data.categories) ? data.categories : [])
+    } catch {
+      setTagCatalogError('Failed to load tags')
+      setTagCategories([])
+    } finally {
+      setTagCatalogLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab !== 'tags' || tagCatalogCacheReady) return
+    void loadTagCatalog().finally(() => setTagCatalogCacheReady(true))
+  }, [tab, tagCatalogCacheReady, loadTagCatalog])
+
+  const loadPaymentGateway = useCallback(async () => {
+    setPaymentGatewayLoading(true)
+    setPaymentGatewayError(null)
+    try {
+      const res = await fetch('/api/admin/payment-gateway', { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setPaymentGatewayError(typeof data.error === 'string' ? data.error : 'Failed to load payment gateway status')
+        setPaymentGateway(null)
+        return
+      }
+      setPaymentGateway(data as PaymentGatewayStatus)
+    } catch {
+      setPaymentGatewayError('Failed to load payment gateway status')
+      setPaymentGateway(null)
+    } finally {
+      setPaymentGatewayLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab !== 'payment' || paymentGatewayCacheReady) return
+    void loadPaymentGateway().finally(() => setPaymentGatewayCacheReady(true))
+  }, [tab, paymentGatewayCacheReady, loadPaymentGateway])
 
   const currentUserSessions = useMemo(() => {
     if (!editingUserId) return [] as UserSessionRow[]
@@ -440,20 +515,19 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-8">
-      <div className="min-w-0 flex-1 space-y-8">
+    <div className="min-w-0 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Web app settings</h1>
-        <p className="mt-1 text-sm text-slate-600">Manage infrastructure and user management in one place.</p>
+        <p className="mt-1 text-sm text-slate-600">
+          Manage users, WAHA, tags, and payment gateway (Bayarcash) from one place.
+        </p>
       </div>
 
-      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1" style={{ margin: '0px' }}>
-
+      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1">
         <button
           type="button"
           onClick={() => setTab('users')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-            }`}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
         >
           User Management
         </button>
@@ -461,10 +535,25 @@ export default function AdminSettingsPage() {
         <button
           type="button"
           onClick={() => setTab('servers')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-            }`}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
         >
           WAHA Servers
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab('tags')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'tags' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        >
+          Tags
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab('payment')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'payment' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        >
+          Payment gateway
         </button>
       </div>
 
@@ -710,6 +799,125 @@ export default function AdminSettingsPage() {
         </section>
       )}
 
+      {tab === 'tags' && (
+        <TagAdminSidebar
+          variant="panel"
+          categories={tagCategories}
+          catalogLoading={tagCatalogLoading}
+          catalogError={tagCatalogError}
+          onReload={loadTagCatalog}
+        />
+      )}
+
+      {tab === 'payment' && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Payment gateway</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Bayarcash configuration is read from server environment variables. Secret keys are never exposed in the
+                browser.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadPaymentGateway()}
+              disabled={paymentGatewayLoading}
+              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {paymentGatewayLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {paymentGatewayError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{paymentGatewayError}</div>
+          )}
+
+          {paymentGatewayLoading && !paymentGateway ? (
+            <p className="text-sm text-slate-500">Loading configuration…</p>
+          ) : paymentGateway ? (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                    paymentGateway.fullyConfigured
+                      ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                      : 'bg-amber-50 text-amber-900 ring-amber-200'
+                  }`}
+                >
+                  {paymentGateway.fullyConfigured ? 'Ready to charge' : 'Incomplete configuration'}
+                </span>
+                <span
+                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                    paymentGateway.sandbox
+                      ? 'bg-violet-50 text-violet-800 ring-violet-200'
+                      : 'bg-slate-100 text-slate-800 ring-slate-200'
+                  }`}
+                >
+                  {paymentGateway.sandbox ? 'Sandbox' : 'Production'}
+                </span>
+              </div>
+
+              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">API base URL</dt>
+                  <dd className="mt-1 break-all font-mono text-sm text-slate-900">{paymentGateway.apiBase || '—'}</dd>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment channel</dt>
+                  <dd className="mt-1 font-mono text-sm text-slate-900">{paymentGateway.paymentChannel ?? '—'}</dd>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4 sm:col-span-2">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Google Ads renewal</dt>
+                  <dd className="mt-1 text-sm text-slate-800">
+                    {paymentGateway.googleAdsRenewalIntegration
+                      ? 'CRM_BAYARCASH_RENEWAL enabled — renewals can use Bayarcash when checkout is wired.'
+                      : 'CRM_BAYARCASH_RENEWAL is off.'}
+                  </dd>
+                </div>
+              </dl>
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">Credentials (present in env)</h3>
+                <ul className="space-y-2">
+                  {(
+                    [
+                      ['BAYARCASH_PAT', paymentGateway.credentialsConfigured.personalAccessToken, 'Personal access token'],
+                      ['BAYARCASH_SECRET', paymentGateway.credentialsConfigured.apiSecret, 'API secret'],
+                      ['BAYARCASH_PORTAL_KEY', paymentGateway.credentialsConfigured.portalKey, 'Portal key'],
+                    ] as const
+                  ).map(([envKey, ok, label]) => (
+                    <li
+                      key={envKey}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3 ring-1 ring-slate-900/5"
+                    >
+                      <div>
+                        <span className="font-mono text-xs text-slate-500">{envKey}</span>
+                        <span className="ml-2 text-sm text-slate-800">{label}</span>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          ok ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {ok ? 'Set' : 'Missing'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                Update values in <code className="rounded bg-white px-1 py-0.5 font-mono text-[11px]">.env</code> or your
+                host&apos;s environment, then redeploy or restart the dev server. Never commit live tokens to git; rotate
+                them if they were exposed.
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No data.</p>
+          )}
+        </section>
+      )}
 
       {serverModalOpen && (
         <div className="fixed inset-0 z-50 top-[-2rem] flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && closeServerModal()}>
@@ -809,11 +1017,6 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       )}
-      </div>
-
-      <aside className="w-full lg:w-[380px] lg:shrink-0">
-        <TagAdminSidebar />
-      </aside>
     </div>
   )
 }

@@ -45,6 +45,7 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/excel-processor') ||
       request.nextUrl.pathname.startsWith('/customers') ||
       request.nextUrl.pathname.startsWith('/waha-integration') ||
+      request.nextUrl.pathname.startsWith('/google-ads') ||
       request.nextUrl.pathname.startsWith('/admin'))
   ) {
     const url = request.nextUrl.clone()

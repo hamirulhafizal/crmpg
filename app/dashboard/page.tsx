@@ -22,6 +22,8 @@ export default function DashboardPage() {
   const [showSetupPasswords, setShowSetupPasswords] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [checkingAdmin, setCheckingAdmin] = useState(true)
+  const [googleAdsEnrolled, setGoogleAdsEnrolled] = useState(false)
+  const [checkingGoogleAds, setCheckingGoogleAds] = useState(true)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,6 +49,31 @@ export default function DashboardPage() {
       cancelled = true
     }
   }, [user, supabase])
+
+  useEffect(() => {
+    if (!user) {
+      setGoogleAdsEnrolled(false)
+      setCheckingGoogleAds(false)
+      return
+    }
+    let cancelled = false
+    setCheckingGoogleAds(true)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/google-ads/me')
+        const j = await res.json()
+        if (cancelled) return
+        setGoogleAdsEnrolled(!!j.enrolled)
+      } catch {
+        if (!cancelled) setGoogleAdsEnrolled(false)
+      } finally {
+        if (!cancelled) setCheckingGoogleAds(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -377,27 +404,75 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-3">
             {!checkingAdmin && isAdmin && (
+              <>
+                <Link
+                  href="/admin/settings"
+                  className="block px-4 py-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-slate-700 shadow-lg shadow-slate-900/15"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-6 h-6 text-slate-200" fill="black" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <div>
+                        <span className="font-semibold text-slate-900">Admin · Web app settings</span>
+                        <p className="text-xs text-slate-600">Manage infrastructure and user management in one place.</p>
+                      </div>
+                    </div>
+                    <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </Link>
+                <Link
+                  href="/admin/google-ads"
+                  className="block px-4 py-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-slate-700 shadow-lg shadow-slate-900/15"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"
+                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                      </svg>
+                      <div>
+                        <span className="font-semibold text-slate-900">Admin · Google Ads campaign</span>
+                        <p className="text-xs text-slate-600">Pakej pricing and participant subscriptions.</p>
+                      </div>
+                    </div>
+                    <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </Link>
+              </>
+            )}
+            {!checkingGoogleAds && googleAdsEnrolled && (
               <Link
-                href="/admin/settings"
-                className="block px-4 py-3 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-slate-700 shadow-lg shadow-slate-900/15"
+                href="/google-ads"
+                className="block px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-slate-800 font-medium rounded-xl transition-all duration-200 active:scale-[0.98] border border-amber-200"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <svg className="w-6 h-6 text-slate-200" fill="black" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                      />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <span className="font-semibold text-slate-900">Admin · Web app settings</span>
-                      <p className="text-xs text-slate-600">Manage infrastructure and user management in one place.</p>
+                      <span className="font-semibold text-slate-900">Google Ads subscription</span>
+                      <p className="text-xs text-slate-600">View status, renew when eligible.</p>
                     </div>
                   </div>
-                  <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </div>

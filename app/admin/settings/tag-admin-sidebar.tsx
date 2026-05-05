@@ -13,7 +13,7 @@ type TagRow = {
   updated_at?: string
 }
 
-type CategoryRow = {
+export type CategoryRow = {
   id: string
   key: string
   name: string
@@ -23,10 +23,37 @@ type CategoryRow = {
   tags: TagRow[]
 }
 
-export function TagAdminSidebar() {
-  const [categories, setCategories] = useState<CategoryRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+type TagAdminSidebarProps = {
+  /** `sidebar` = narrow column next to settings; `panel` = full-width tab content */
+  variant?: 'sidebar' | 'panel'
+  /**
+   * Controlled catalog (e.g. parent caches across tab switches).
+   * When set with `onReload`, internal fetch-on-mount is skipped; use Refresh / after mutations to reload.
+   */
+  categories?: CategoryRow[]
+  catalogLoading?: boolean
+  catalogError?: string | null
+  onReload?: () => Promise<void>
+}
+
+export function TagAdminSidebar({
+  variant = 'sidebar',
+  categories: categoriesProp,
+  catalogLoading: catalogLoadingProp,
+  catalogError: catalogErrorProp,
+  onReload,
+}: TagAdminSidebarProps) {
+  const isPanel = variant === 'panel'
+  const isControlled =
+    categoriesProp !== undefined && typeof onReload === 'function'
+
+  const [categoriesInternal, setCategoriesInternal] = useState<CategoryRow[]>([])
+  const categories = isControlled ? categoriesProp! : categoriesInternal
+  const [loadingInternal, setLoadingInternal] = useState(!isControlled)
+  const loading = isControlled ? Boolean(catalogLoadingProp) : loadingInternal
+
+  const [errorInternal, setErrorInternal] = useState<string | null>(null)
+  const error = isControlled ? catalogErrorProp ?? errorInternal : errorInternal
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const [saving, setSaving] = useState(false)
@@ -49,36 +76,46 @@ export function TagAdminSidebar() {
   const [editTagLabel, setEditTagLabel] = useState('')
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+    if (isControlled) {
+      setErrorInternal(null)
+      await onReload!()
+      return
+    }
+    setLoadingInternal(true)
+    setErrorInternal(null)
     try {
       const res = await fetch('/api/admin/tag-catalog', { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Failed to load tags')
-        setCategories([])
+        setErrorInternal(typeof data.error === 'string' ? data.error : 'Failed to load tags')
+        setCategoriesInternal([])
         return
       }
       const list = Array.isArray(data.categories) ? data.categories : []
-      setCategories(list)
-      setExpanded((prev) => {
-        const next = { ...prev }
-        for (const c of list) {
-          if (next[c.id] === undefined) next[c.id] = true
-        }
-        return next
-      })
+      setCategoriesInternal(list)
     } catch {
-      setError('Failed to load tags')
-      setCategories([])
+      setErrorInternal('Failed to load tags')
+      setCategoriesInternal([])
     } finally {
-      setLoading(false)
+      setLoadingInternal(false)
     }
-  }, [])
+  }, [isControlled, onReload])
 
   useEffect(() => {
+    if (isControlled) return
     void load()
-  }, [load])
+  }, [isControlled, load])
+
+  useEffect(() => {
+    if (!categories.length) return
+    setExpanded((prev) => {
+      const next = { ...prev }
+      for (const c of categories) {
+        if (next[c.id] === undefined) next[c.id] = true
+      }
+      return next
+    })
+  }, [categories])
 
   const toggleCat = (id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -87,7 +124,7 @@ export function TagAdminSidebar() {
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    setError(null)
+    setErrorInternal(null)
     try {
       const res = await fetch('/api/admin/tag-categories', {
         method: 'POST',
@@ -100,7 +137,7 @@ export function TagAdminSidebar() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Save failed')
+        setErrorInternal(typeof data.error === 'string' ? data.error : 'Save failed')
         return
       }
       setNewCatOpen(false)
@@ -121,11 +158,11 @@ export function TagAdminSidebar() {
     ) {
       return
     }
-    setError(null)
+    setErrorInternal(null)
     const res = await fetch(`/api/admin/tag-categories/${c.id}`, { method: 'DELETE' })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setError(typeof data.error === 'string' ? data.error : 'Delete failed')
+      setErrorInternal(typeof data.error === 'string' ? data.error : 'Delete failed')
       return
     }
     await load()
@@ -141,7 +178,7 @@ export function TagAdminSidebar() {
     e.preventDefault()
     if (!editCatId) return
     setSaving(true)
-    setError(null)
+    setErrorInternal(null)
     try {
       const res = await fetch(`/api/admin/tag-categories/${editCatId}`, {
         method: 'PATCH',
@@ -153,7 +190,7 @@ export function TagAdminSidebar() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Save failed')
+        setErrorInternal(typeof data.error === 'string' ? data.error : 'Save failed')
         return
       }
       setEditCatId(null)
@@ -166,7 +203,7 @@ export function TagAdminSidebar() {
   const handleCreateTag = async (e: React.FormEvent, categoryId: string) => {
     e.preventDefault()
     setSaving(true)
-    setError(null)
+    setErrorInternal(null)
     try {
       const res = await fetch('/api/admin/tags', {
         method: 'POST',
@@ -179,7 +216,7 @@ export function TagAdminSidebar() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Save failed')
+        setErrorInternal(typeof data.error === 'string' ? data.error : 'Save failed')
         return
       }
       setAddTagCatId(null)
@@ -193,11 +230,11 @@ export function TagAdminSidebar() {
 
   const handleDeleteTag = async (t: TagRow, label: string) => {
     if (!window.confirm(`Delete tag “${label}”? Customer assignments will be removed.`)) return
-    setError(null)
+    setErrorInternal(null)
     const res = await fetch(`/api/admin/tags/${t.id}`, { method: 'DELETE' })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      setError(typeof data.error === 'string' ? data.error : 'Delete failed')
+      setErrorInternal(typeof data.error === 'string' ? data.error : 'Delete failed')
       return
     }
     await load()
@@ -213,7 +250,7 @@ export function TagAdminSidebar() {
     e.preventDefault()
     if (!editTagId) return
     setSaving(true)
-    setError(null)
+    setErrorInternal(null)
     try {
       const res = await fetch(`/api/admin/tags/${editTagId}`, {
         method: 'PATCH',
@@ -225,7 +262,7 @@ export function TagAdminSidebar() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof data.error === 'string' ? data.error : 'Save failed')
+        setErrorInternal(typeof data.error === 'string' ? data.error : 'Save failed')
         return
       }
       setEditTagId(null)
@@ -236,11 +273,15 @@ export function TagAdminSidebar() {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xl shadow-slate-900/5 lg:sticky lg:top-8">
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-slate-900">Tags</h2>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+    <div
+      className={`rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-900/5 ${
+        isPanel ? 'p-6' : 'p-5 lg:sticky lg:top-8'
+      }`}
+    >
+      <div className={`mb-4 flex items-start justify-between gap-2 ${isPanel ? 'flex-wrap sm:flex-nowrap' : ''}`}>
+        <div className="min-w-0">
+          <h2 className={`font-semibold tracking-tight text-slate-900 ${isPanel ? 'text-lg' : 'text-base'}`}>Tags</h2>
+          <p className={`leading-relaxed text-slate-600 ${isPanel ? 'mt-1 text-sm' : 'mt-0.5 text-xs'}`}>
             Global tag catalog. Agents assign these on customers; automations can use the same labels.
           </p>
         </div>
@@ -265,7 +306,7 @@ export function TagAdminSidebar() {
           type="button"
           onClick={() => {
             setNewCatOpen((v) => !v)
-            setError(null)
+            setErrorInternal(null)
           }}
           className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
         >
@@ -311,7 +352,9 @@ export function TagAdminSidebar() {
       {loading && categories.length === 0 ? (
         <p className="text-sm text-slate-500">Loading catalog…</p>
       ) : (
-        <ul className="max-h-[min(70vh,720px)] space-y-2 overflow-y-auto pr-1">
+        <ul
+          className={`space-y-2 overflow-y-auto pr-1 ${isPanel ? 'max-h-[min(78vh,920px)]' : 'max-h-[min(70vh,720px)]'}`}
+        >
           {categories.map((c) => (
             <li key={c.id} className="rounded-xl border border-slate-100 bg-slate-50/50">
               <button
@@ -359,7 +402,7 @@ export function TagAdminSidebar() {
                         setAddTagCatId(addTagCatId === c.id ? null : c.id)
                         setNewTagSlug('')
                         setNewTagLabel('')
-                        setError(null)
+                        setErrorInternal(null)
                       }}
                       className="rounded-lg bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700"
                     >
