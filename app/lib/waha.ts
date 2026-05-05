@@ -220,3 +220,63 @@ export async function wahaFetch<T = unknown>(
     return undefined as T
   }
 }
+
+/** Optional overrides for public GAP lead form (session/API key), separate from user-scoped WAHA. */
+export function getGapLeadFormWahaConfig(): WahaConfig | null {
+  const baseUrl = normalizeBaseUrl(process.env.WAHA_GAP_LEAD_BASE_URL || ENV_BASE_URL)
+  const apiKey = (process.env.WAHA_GAP_LEAD_API_KEY || ENV_API_KEY).trim()
+  if (!apiKey) return null
+  return { baseUrl, apiKey, dashboardPass: null }
+}
+
+/** Same HTTP behaviour as {@link wahaFetch} but uses an explicit config (no DB/env chain). */
+export async function wahaFetchWithConfig<T = unknown>(
+  cfg: WahaConfig,
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  if (!cfg.apiKey) {
+    throw new Error('WAHA api key is missing')
+  }
+  const url = `${cfg.baseUrl}${path.startsWith('/') ? path : `/${path}`}`
+  const timeoutMs = Math.min(
+    Math.max(Number(process.env.WAHA_FETCH_TIMEOUT_MS || 90000) || 90000, 5000),
+    300000
+  )
+  const ac = new AbortController()
+  const t = setTimeout(() => ac.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(url, {
+      ...options,
+      signal: options.signal ?? ac.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': cfg.apiKey,
+        ...options.headers,
+      },
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new WahaApiError(
+        `WAHA request timed out after ${timeoutMs}ms (${path})`,
+        408,
+        path
+      )
+    }
+    throw e
+  } finally {
+    clearTimeout(t)
+  }
+  const text = await res.text()
+  if (!res.ok) {
+    const message = parseWahaErrorBody(text, res.status)
+    throw new WahaApiError(message, res.status, path)
+  }
+  if (!text) return undefined as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return undefined as T
+  }
+}

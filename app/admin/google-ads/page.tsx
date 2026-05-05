@@ -32,6 +32,9 @@ type ParticipantRow = {
   user_id: string
   email: string | null
   notes: string | null
+  lead_email?: boolean
+  pg_code?: string | null
+  public_username?: string | null
   created_at: string
   hasPaidReceipt?: boolean
   subscription?: SubscriptionEmbed | null
@@ -115,6 +118,8 @@ export default function AdminGoogleAdsPage() {
   const [editParticipantOpen, setEditParticipantOpen] = useState(false)
   const [editParticipantRow, setEditParticipantRow] = useState<ParticipantRow | null>(null)
   const [editNotes, setEditNotes] = useState('')
+  const [editPgCode, setEditPgCode] = useState('')
+  const [editPublicUsername, setEditPublicUsername] = useState('')
   const [editPackageId, setEditPackageId] = useState('')
   const [editStatus, setEditStatus] = useState<'active' | 'expired' | 'cancelled' | 'pending_payment'>('active')
   const [editPeriodStart, setEditPeriodStart] = useState('')
@@ -409,6 +414,8 @@ export default function AdminGoogleAdsPage() {
   function openEditParticipant(p: ParticipantRow) {
     setEditParticipantRow(p)
     setEditNotes(p.notes || '')
+    setEditPgCode(p.pg_code || '')
+    setEditPublicUsername(p.public_username || '')
     const sub = normalizeSubscription(p)
     setEditPackageId(sub?.package_id || '')
     const st = sub?.status
@@ -439,6 +446,8 @@ export default function AdminGoogleAdsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notes: editNotes.trim() || null,
+          pg_code: editPgCode.trim() || null,
+          public_username: editPublicUsername.trim() || null,
           subscription: {
             package_id: editPackageId,
             status: editStatus,
@@ -826,6 +835,34 @@ export default function AdminGoogleAdsPage() {
                   className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   placeholder="Internal notes…"
                 />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="edit-pg-code" className="block text-sm font-medium text-slate-700">
+                    PG code (public listing)
+                  </label>
+                  <input
+                    id="edit-pg-code"
+                    type="text"
+                    value={editPgCode}
+                    onChange={(e) => setEditPgCode(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    placeholder="Shown on landing agent grid"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="edit-public-username" className="block text-sm font-medium text-slate-700">
+                    Public username (Username PGO)
+                  </label>
+                  <input
+                    id="edit-public-username"
+                    type="text"
+                    value={editPublicUsername}
+                    onChange={(e) => setEditPublicUsername(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                    placeholder="Card title & Public Gold slug"
+                  />
+                </div>
               </div>
               <div>
                 <label htmlFor="edit-participant-pakej" className="block text-sm font-medium text-slate-700">

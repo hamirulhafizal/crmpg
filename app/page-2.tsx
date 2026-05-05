@@ -20,6 +20,7 @@ interface FormData {
   phone: string;
   customerAgreement: boolean;
   dealerEmail?: string;
+  dealerPhone?: string;
 }
 
 export default function NewPage() {
@@ -129,7 +130,8 @@ export default function NewPage() {
       // Add dealer email to the payload
       const payload = {
         ...formData,
-        dealerEmail: dealerInfo.email || '', // always send current dealer email
+        dealerEmail: dealerInfo.email || '',
+        dealerPhone: dealerInfo.no_tel && dealerInfo.no_tel !== '0123456789' ? dealerInfo.no_tel : '',
       };
 
       const response = await fetch('/api/submit-form', {

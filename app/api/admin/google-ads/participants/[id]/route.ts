@@ -16,6 +16,8 @@ type SubscriptionPatch = {
 
 type PatchBody = {
   notes?: string | null
+  pg_code?: string | null
+  public_username?: string | null
   subscription?: SubscriptionPatch
 }
 
@@ -42,6 +44,20 @@ export async function PATCH(request: Request, props: RouteParams) {
         .update({ notes: typeof body.notes === 'string' ? body.notes.trim() || null : null })
         .eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    if (body.pg_code !== undefined || body.public_username !== undefined) {
+      const row: { pg_code?: string | null; public_username?: string | null } = {}
+      if (body.pg_code !== undefined) {
+        row.pg_code = typeof body.pg_code === 'string' ? body.pg_code.trim() || null : null
+      }
+      if (body.public_username !== undefined) {
+        row.public_username = typeof body.public_username === 'string' ? body.public_username.trim() || null : null
+      }
+      if (Object.keys(row).length > 0) {
+        const { error } = await admin.from('google_ads_participants').update(row).eq('id', id)
+        if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+      }
     }
 
     if (body.subscription && typeof body.subscription === 'object') {
@@ -89,6 +105,9 @@ export async function PATCH(request: Request, props: RouteParams) {
         id,
         user_id,
         notes,
+        lead_email,
+        pg_code,
+        public_username,
         created_at,
         updated_at,
         google_ads_subscriptions (
@@ -119,6 +138,9 @@ export async function PATCH(request: Request, props: RouteParams) {
         id: participant.id,
         user_id: participant.user_id,
         notes: participant.notes,
+        lead_email: (participant as { lead_email?: boolean }).lead_email,
+        pg_code: (participant as { pg_code?: string | null }).pg_code,
+        public_username: (participant as { public_username?: string | null }).public_username,
         created_at: participant.created_at,
         updated_at: participant.updated_at,
         subscription: subscription ?? null,

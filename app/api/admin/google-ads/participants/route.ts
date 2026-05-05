@@ -15,6 +15,9 @@ export async function GET() {
         id,
         user_id,
         notes,
+        lead_email,
+        pg_code,
+        public_username,
         created_at,
         updated_at,
         google_ads_subscriptions (
@@ -86,6 +89,8 @@ export async function GET() {
 type PostBody = {
   user_id?: string
   notes?: string | null
+  pg_code?: string | null
+  public_username?: string | null
 }
 
 /**
@@ -108,13 +113,22 @@ export async function POST(request: Request) {
   try {
     const admin = createServiceRoleClient()
 
+    const insertRow: {
+      user_id: string
+      notes: string | null
+      pg_code?: string | null
+      public_username?: string | null
+    } = {
+      user_id: userId,
+      notes: typeof body.notes === 'string' ? body.notes.trim() || null : body.notes ?? null,
+    }
+    if (typeof body.pg_code === 'string') insertRow.pg_code = body.pg_code.trim() || null
+    if (typeof body.public_username === 'string') insertRow.public_username = body.public_username.trim() || null
+
     const { data: participant, error: pError } = await admin
       .from('google_ads_participants')
-      .insert({
-        user_id: userId,
-        notes: typeof body.notes === 'string' ? body.notes.trim() || null : body.notes ?? null,
-      })
-      .select('id, user_id, notes, created_at, updated_at')
+      .insert(insertRow)
+      .select('id, user_id, notes, lead_email, pg_code, public_username, created_at, updated_at')
       .single()
 
     if (pError || !participant) {

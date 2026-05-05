@@ -45,6 +45,7 @@ interface DealerInfo {
 interface Agent {
   username: string;
   pgcode: string;
+  username_pgo?: string;
   image_url: string;
   email: string;
   lead_email: boolean;
@@ -58,6 +59,7 @@ interface FormData {
   phone: string;
   customerAgreement: boolean;
   dealerEmail?: string;
+  dealerPhone?: string;
 }
 
 export default function NewPage() {
@@ -132,9 +134,11 @@ export default function NewPage() {
     if (searchTerm.trim() === '') {
       setFilteredAgents(allAgents);
     } else {
+      const q = searchTerm.toLowerCase()
       const filtered = allAgents.filter(agent =>
-        agent.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        agent.pgcode.toLowerCase().includes(searchTerm.toLowerCase())
+        agent.username.toLowerCase().includes(q) ||
+        agent.pgcode.toLowerCase().includes(q) ||
+        (agent.username_pgo && agent.username_pgo.toLowerCase().includes(q))
       );
       setFilteredAgents(filtered);
     }
@@ -591,7 +595,8 @@ export default function NewPage() {
       // Add dealer email to the payload
       const payload = {
         ...formData,
-        dealerEmail: dealerInfo.email || '', // always send current dealer email
+        dealerEmail: dealerInfo.email || '',
+        dealerPhone: dealerInfo.no_tel && dealerInfo.no_tel !== '0123456789' ? dealerInfo.no_tel : '',
       };
 
       console.log(`Submitting form to dealer: ${dealerInfo.username} (${dealerInfo.email})`);
@@ -1520,9 +1525,9 @@ export default function NewPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 mb-8">
-                    {filteredAgents.sort(() => Math.random() - 0.5).map((agent, index) => (
+                    {filteredAgents.map((agent, index) => (
                       <div
-                        key={index}
+                        key={agent.email || agent.pgcode || String(index)}
                         className="bg-gradient-to-br from-white to-amber-50 rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 border border-amber-100 hover:border-amber-200"
                         style={{
                           animationDelay: `${index * 100}ms`,
@@ -1533,7 +1538,7 @@ export default function NewPage() {
                           {agent.image_url && agent.image_url !== 'https://via.placeholder.com/150' ? (
                             <img
                               src={agent.image_url}
-                              alt={agent.username}
+                              alt={agent.username_pgo || agent.username}
                               className="w-full h-full object-cover rounded-full"
                               loading="lazy"
                               onError={(e) => {
@@ -1550,18 +1555,27 @@ export default function NewPage() {
                             className="w-full h-full flex items-center justify-center"
                             style={{ display: agent.image_url && agent.image_url !== 'https://via.placeholder.com/150' ? 'none' : 'flex' }}
                           >
-                            {agent.username.charAt(0).toUpperCase()}
+                            {(agent.username_pgo || agent.username).charAt(0).toUpperCase()}
                           </div>
                         </div>
 
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                          {agent.username}
-                        </h3>
-
-                        <div className="flex text-center items-center justify-center mb-3">
-                          <p className="text-sm text-gray-600">
-                            {agent.pgcode}
-                          </p>
+                        <div className="text-center space-y-2 mb-3">
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-900/70">
+                              Username PGO
+                            </p>
+                            <p className="text-base font-semibold text-gray-900 leading-snug">
+                              {agent.username_pgo || agent.username || '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-900/70">
+                              PG Code
+                            </p>
+                            <p className="text-sm font-medium text-gray-800 tabular-nums">
+                              {agent.pgcode && agent.pgcode !== '—' ? agent.pgcode : '—'}
+                            </p>
+                          </div>
                         </div>
 
                       </div>
@@ -1638,6 +1652,11 @@ export default function NewPage() {
                         type="hidden"
                         id="dealerEmail"
                         value={dealerInfo.email || ''}
+                      />
+                      <input
+                        type="hidden"
+                        id="dealerPhone"
+                        value={dealerInfo.no_tel && dealerInfo.no_tel !== '0123456789' ? dealerInfo.no_tel : ''}
                       />
                       {/* Full Name */}
                       <div>
