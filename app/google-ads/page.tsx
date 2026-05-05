@@ -397,7 +397,7 @@ export default function GoogleAdsParticipantPage() {
             <h2 className="text-lg font-semibold text-slate-900">
               {missingSubscription
                 ? 'Select pac & pay'
-                : subscription?.status === 'pending_payment' && !hasActivepac
+                : subscription?.status === 'pending_payment' && !hasActivePackage
                   ? 'Activate with payment'
                   : 'Renew or pay'}
             </h2>
@@ -407,7 +407,7 @@ export default function GoogleAdsParticipantPage() {
                   ? 'Pick your billing pac and pay with Bayarcash. Your subscription is created when you start checkout.'
                   : 'Pick your pac and submit a payment request. An administrator will confirm and activate your period.'
                 : bayarcashCheckoutEnabled
-                  ? subscription?.status === 'pending_payment' && !hasActivepac
+                  ? subscription?.status === 'pending_payment' && !hasActivePackage
                     ? 'Confirm the pac (pre-filled from your enrollment), then pay with Bayarcash to activate. Receipts appear above after payment.'
                     : 'Choose your pac, then pay securely with Bayarcash. Receipt details appear above after payment.'
                   : 'Choose the pac for your next term. An administrator will confirm when payment is received.'}
