@@ -1,4 +1,6 @@
 import { ImageResponse } from 'next/og'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fetchPublicGoldBuybackSnapshot } from '@/app/lib/public-gold-prices'
 
 export const runtime = 'nodejs'
@@ -6,68 +8,117 @@ export const runtime = 'nodejs'
 export async function GET() {
   const data = await fetchPublicGoldBuybackSnapshot()
   const dt = new Date(data.fetchedAtIso)
-  const when = dt.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })
+  const dateLabel = dt
+    .toLocaleDateString('ms-MY', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+    .toUpperCase()
+  const timeLabel = dt.toLocaleTimeString('en-MY', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).toUpperCase()
+  const templatePath = join(process.cwd(), 'public', 'templatebuyback.png')
+  const templateBuffer = await readFile(templatePath)
+  const templateDataUrl = `data:image/png;base64,${templateBuffer.toString('base64')}`
 
   return new ImageResponse(
     (
       <div
         style={{
-          width: 1080,
-          height: 1080,
+          width: 819,
+          height: 1024,
           display: 'flex',
-          flexDirection: 'column',
-          background: 'linear-gradient(180deg,#0b1220,#111827)',
-          color: '#f8fafc',
-          padding: 56,
-          fontFamily: 'Inter, Arial',
+          position: 'relative',
+          fontFamily: 'Arial, sans-serif',
         }}
       >
-        <div style={{ fontSize: 34, opacity: 0.9 }}>Public Gold Buyback Update</div>
-        <div style={{ fontSize: 62, fontWeight: 700, marginTop: 14 }}>Harga Buyback Hari Ini</div>
-        <div style={{ fontSize: 26, marginTop: 8, opacity: 0.8 }}>{`Updated: ${when} (MYT)`}</div>
+        <img
+          src={templateDataUrl}
+          alt="Template"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
 
         <div
           style={{
-            marginTop: 40,
-            borderRadius: 24,
-            border: '2px solid #334155',
-            background: '#0f172a',
-            padding: 28,
+            position: 'absolute',
+            left: 129,
+            top: 532,
+            width: 562,
+            height: 196,
             display: 'flex',
             flexDirection: 'column',
-            gap: 18,
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            color: '#ffffff',
+            textShadow: '0 2px 6px rgba(0,0,0,0.7)',
           }}
         >
-          <Row label="PG Jewel 999" value={data.pgJewel999Buy} />
-          <Row label="PG Jewel 916" value={data.pgJewel916Buy} />
-          <Row label="Non-PG 999" value={data.nonPg999Buy} />
-          <Row label="Non-PG 916" value={data.nonPg916Buy} />
-        </div>
-
-        <div style={{ marginTop: 'auto', fontSize: 22, opacity: 0.7 }}>
-          Source: publicgold.com.my
+          <div style={{ fontSize: 46, fontWeight: 900, letterSpacing: 1.6, lineHeight: 1 }}>{dateLabel}</div>
+          <div
+            style={{
+              marginTop: 12,
+              width: 562,
+              height: 112,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderRadius: 56,
+              background: 'rgba(50, 9, 9, 0.55)',
+              border: '2px solid rgba(255, 255, 255, 0.18)',
+              boxShadow: 'inset 0 8px 30px rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div
+              style={{
+                width: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >
+              <div style={{ fontSize: 62, fontWeight: 900, color: '#ffde42' }}>{`RM${data.pgJewel999Buy}/g`}</div>
+              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800 }}>(999/24 karat)</div>
+            </div>
+            <div
+              style={{
+                width: 2,
+                height: 74,
+                background: 'rgba(255, 214, 79, 0.9)',
+                borderRadius: 2,
+              }}
+            />
+            <div
+              style={{
+                width: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >
+              <div style={{ fontSize: 62, fontWeight: 900, color: '#ffde42' }}>{`RM${data.pgJewel916Buy}/g`}</div>
+              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 800 }}>(916/22 karat)</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{`Update : ${timeLabel}`}</div>
         </div>
       </div>
     ),
-    { width: 1080, height: 1080 }
-  )
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '16px 4px',
-        borderBottom: '1px solid #334155',
-        fontSize: 34,
-      }}
-    >
-      <div>{label}</div>
-      <div style={{ fontWeight: 700 }}>{`RM ${value} / g`}</div>
-    </div>
+    { width: 819, height: 1024 }
   )
 }
 

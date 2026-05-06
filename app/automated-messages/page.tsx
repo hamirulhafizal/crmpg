@@ -79,7 +79,7 @@ export default function AutomatedMessagesPage() {
   const [isTesting, setIsTesting] = useState<string | null>(null)
   const [variables, setVariables] = useState<string[]>([])
   const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
-  const [activeTab, setActiveTab] = useState<'messages' | 'gold_poster'>('messages')
+  const [activeTab, setActiveTab] = useState<'personal' | 'group'>('personal')
   const [wahaSessions, setWahaSessions] = useState<Array<{ name: string; status?: string }>>([])
   const [wahaGroups, setWahaGroups] = useState<Array<{ id: string; name: string }>>([])
   const [groupSearch, setGroupSearch] = useState('')
@@ -107,7 +107,7 @@ export default function AutomatedMessagesPage() {
 
   const filteredItems = items.filter((item) => {
     const isGold = normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
-    return activeTab === 'gold_poster' ? isGold : !isGold
+    return activeTab === 'group' ? isGold : !isGold
   })
 
   const parseGoldPosterConfig = (raw: string): GoldPosterConfig | null => {
@@ -500,31 +500,31 @@ export default function AutomatedMessagesPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-slate-900">Automated WhatsApp Messages</h1>
             <button
-              onClick={activeTab === 'gold_poster' ? openCreateGoldPoster : openCreate}
+              onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              {activeTab === 'gold_poster' ? 'Schedule poster' : 'Schedule message'}
+              {activeTab === 'group' ? 'Schedule poster' : 'Schedule message'}
             </button>
           </div>
           <div className="mb-4 inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
             <button
-              onClick={() => setActiveTab('messages')}
-              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'messages' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+              onClick={() => setActiveTab('personal')}
+              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'personal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
             >
-              Messages
+              Personal
             </button>
             <button
-              onClick={() => setActiveTab('gold_poster')}
-              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'gold_poster' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+              onClick={() => setActiveTab('group')}
+              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'group' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
             >
-              Gold Poster
+              Group
             </button>
           </div>
           <p className="text-sm text-slate-600 mb-6">
-            {activeTab === 'gold_poster' ? (
+            {activeTab === 'group' ? (
               <>
                 Schedule daily Public Gold buyback poster sends to one or more WAHA groups. Image is sent first, then your text message.
               </>
@@ -552,13 +552,13 @@ export default function AutomatedMessagesPage() {
           ) : filteredItems.length === 0 ? (
             <div className="py-12 text-center text-slate-500">
               <p className="mb-4">
-                {activeTab === 'gold_poster' ? 'No scheduled gold poster yet.' : 'No scheduled messages yet.'}
+                {activeTab === 'group' ? 'No scheduled gold poster yet.' : 'No scheduled messages yet.'}
               </p>
               <button
-                onClick={activeTab === 'gold_poster' ? openCreateGoldPoster : openCreate}
+                onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                {activeTab === 'gold_poster' ? 'Schedule your first poster' : 'Schedule your first message'}
+                {activeTab === 'group' ? 'Schedule your first poster' : 'Schedule your first message'}
               </button>
             </div>
           ) : (
@@ -675,7 +675,7 @@ export default function AutomatedMessagesPage() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
                   <div className="flex flex-col gap-2">
-                    {activeTab === 'gold_poster' && isCreating && !editing ? (
+                    {activeTab === 'group' && isCreating && !editing ? (
                       <div className="w-full px-3 py-2 text-slate-900 bg-blue-50 border border-blue-200 rounded-lg">
                         Gold price poster (daily groups)
                       </div>
