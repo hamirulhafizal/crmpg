@@ -4,6 +4,30 @@ import { chromium } from 'playwright'
 
 import { sendGapLeadWhatsAppImage, sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
 
+/**
+ * Hermetic browser install (see package.json postinstall). On Vercel there is no ~/.cache;
+ * browsers must live under node_modules so the serverless bundle can find Chromium.
+ * @see https://playwright.dev/docs/browsers#hermetic-install
+ */
+if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined && process.env.VERCEL) {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = '0'
+}
+
+function chromiumLaunchOptions(): Parameters<typeof chromium.launch>[0] {
+  const base: Parameters<typeof chromium.launch>[0] = {
+    headless: true,
+  }
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    base.args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ]
+  }
+  return base
+}
+
 export type PublicGoldRegistrationInput = {
   fullName: string
   icNumber: string
@@ -243,7 +267,21 @@ export async function registerCustomerAtPublicGold(
   if (!localNumber) throw new Error('Phone number is required for Public Gold registration.')
 
 
-  const browser = await chromium.launch({ headless: true })
+  let browser: Awaited<ReturnType<typeof chromium.launch>>
+  try {
+    browser = await chromium.launch(chromiumLaunchOptions())
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/Executable doesn't exist|playwright install|browserType\.launch/i.test(msg)) {
+      return {
+        ok: false,
+        finalUrl: '',
+        statusText:
+          'Playwright Chromium missing. Ensure PLAYWRIGHT_BROWSERS_PATH=0 and `postinstall` runs on deploy (`npx playwright install chromium`).',
+      }
+    }
+    throw e
+  }
   console.log('browser launched')
 
   try {

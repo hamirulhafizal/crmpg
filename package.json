@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "node scripts/install-playwright-chromium.mjs",
     "update-avatars-from-dealers-json": "node scripts/update-profile-avatars-from-dealers-json.mjs"
   },
   "dependencies": {
