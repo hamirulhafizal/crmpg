@@ -65,6 +65,29 @@ interface FormData {
   dealerPhone?: string;
 }
 
+type RegistrationUiStatus = {
+  type: 'success' | 'error';
+  message: string;
+};
+
+type PhoneCountryOption = {
+  iso: string;
+  label: string;
+  dialCode: string;
+  maxLength: number;
+  placeholder: string;
+  stripLeadingZero: boolean;
+};
+
+const PHONE_COUNTRY_OPTIONS: PhoneCountryOption[] = [
+  { iso: 'MY', label: 'Malaysia', dialCode: '60', maxLength: 11, placeholder: '184644305', stripLeadingZero: true },
+  { iso: 'SG', label: 'Singapore', dialCode: '65', maxLength: 8, placeholder: '81234567', stripLeadingZero: false },
+  { iso: 'ID', label: 'Indonesia', dialCode: '62', maxLength: 12, placeholder: '81234567890', stripLeadingZero: true },
+  // { iso: 'TH', label: 'Thailand', dialCode: '66', maxLength: 10, placeholder: '812345678', stripLeadingZero: true },
+];
+
+const DEFAULT_PHONE_COUNTRY_ISO = 'MY';
+
 export default function NewPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -101,6 +124,43 @@ export default function NewPage() {
   const [isPopupClosing, setIsPopupClosing] = useState(false);
   const [isLocationLoading, setIsLocationLoading] = useState(false);
   const [hasShownAutoPopup, setHasShownAutoPopup] = useState(false);
+  const [registrationUiStatus, setRegistrationUiStatus] = useState<RegistrationUiStatus | null>(null);
+  const [selectedPhoneCountryIso, setSelectedPhoneCountryIso] = useState(DEFAULT_PHONE_COUNTRY_ISO);
+
+  const selectedPhoneCountry =
+    PHONE_COUNTRY_OPTIONS.find((option) => option.iso === selectedPhoneCountryIso) ??
+    PHONE_COUNTRY_OPTIONS[0];
+
+  const normalizePhoneByCountry = useCallback((rawValue: string, country: PhoneCountryOption) => {
+    let digits = rawValue.replace(/\D/g, '');
+    if (digits.startsWith(country.dialCode)) {
+      digits = digits.slice(country.dialCode.length);
+    }
+    if (country.stripLeadingZero) {
+      digits = digits.replace(/^0+/, '');
+    }
+    return digits.slice(0, country.maxLength);
+  }, []);
+
+  const handlePhoneInputChange = useCallback(
+    (rawValue: string) => {
+      const normalized = normalizePhoneByCountry(rawValue, selectedPhoneCountry);
+      handleInputChange('phone', normalized);
+    },
+    [normalizePhoneByCountry, selectedPhoneCountry]
+  );
+
+  const handlePhoneCountryChange = useCallback(
+    (iso: string) => {
+      const nextCountry =
+        PHONE_COUNTRY_OPTIONS.find((option) => option.iso === iso) ?? PHONE_COUNTRY_OPTIONS[0];
+      setSelectedPhoneCountryIso(nextCountry.iso);
+      if (formData.phone) {
+        handleInputChange('phone', normalizePhoneByCountry(formData.phone, nextCountry));
+      }
+    },
+    [formData.phone, normalizePhoneByCountry]
+  );
 
   // Carousel image arrays
   const testimoniImages = Array.from({ length: 8 }, (_, i) => `/testimoni/image copy ${i}.png`);
@@ -680,6 +740,7 @@ export default function NewPage() {
     e.preventDefault();
 
     setIsSubmitting(true);
+    setRegistrationUiStatus(null);
 
     try {
       // Add dealer email to the payload
@@ -698,6 +759,28 @@ export default function NewPage() {
       });
       const result = await response.json();
       if (result.success) {
+        const automation = result.publicGoldAutomation as
+          | {
+              attempted?: boolean;
+              success?: boolean;
+              statusText?: string;
+              error?: string;
+            }
+          | undefined;
+        const automationMessage = automation?.statusText || automation?.error || '';
+        const isAutomationFailure = Boolean(
+          automation && (automation.success === false || (automation.attempted === false && automation.error))
+        );
+
+        if (automation) {
+          setRegistrationUiStatus({
+            type: isAutomationFailure ? 'error' : 'success',
+            message: isAutomationFailure
+              ? `Pendaftaran Public Gold gagal: ${automationMessage || 'Sila semak semula data pelanggan.'}`
+              : `Pendaftaran Public Gold berjaya${automationMessage ? `: ${automationMessage}` : '.'}`,
+          });
+        }
+
         // Update the current dealer's lead_email status to true in local state
         console.log(`✅ Form submitted successfully to dealer: ${dealerInfo.username} (${dealerInfo.email})`);
 
@@ -747,23 +830,35 @@ export default function NewPage() {
           console.log('⚠️ No next dealer available for rotation');
         }
 
-        alert('Pendaftaran berjaya! Dealer akan menghubungi anda dalam masa 24 jam.');
-        closeDrawer();
-        setFormData({
-          fullName: '',
-          icNumber: '',
-          email: '',
-          phone: '',
-          location: '',
-          customerAgreement: true,
-          dealerEmail: nextDealer?.email || ''
-        });
+        if (isAutomationFailure) {
+          alert(`Lead berjaya dihantar, tetapi Public Gold belum berjaya didaftarkan:\n${automationMessage || 'Sila semak status di borang.'}`);
+        } else {
+          alert('Pendaftaran berjaya! Dealer akan menghubungi anda dalam masa 24 jam.');
+          closeDrawer();
+          setFormData({
+            fullName: '',
+            icNumber: '',
+            email: '',
+            phone: '',
+            location: '',
+            customerAgreement: true,
+            dealerEmail: nextDealer?.email || ''
+          });
+        }
       } else {
         console.error('❌ Form submission failed:', result.error);
+        setRegistrationUiStatus({
+          type: 'error',
+          message: result.error || 'Ralat berlaku semasa menghantar borang.',
+        });
         alert('Ralat berlaku semasa menghantar borang. Sila cuba lagi.');
       }
     } catch (error) {
       console.error('❌ Form submission error:', error);
+      setRegistrationUiStatus({
+        type: 'error',
+        message: 'Ralat teknikal berlaku. Sila cuba lagi.',
+      });
       alert('Ralat berlaku. Sila cuba lagi.');
     } finally {
       setIsSubmitting(false);
@@ -1806,18 +1901,44 @@ export default function NewPage() {
                         <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
                           Nombor Telefon (Whatsapp)*
                         </label>
-                        <input
-                          type="tel"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          id="phone"
-                          required
-                          value={formData.phone}
-                          onChange={(e) => handleInputChange('phone', e.target.value.replace(/\D/g, ''))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-black focus:text-black focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
-                          placeholder="Contoh: 0123456789"
-                          onInput={e => (e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''))}
-                        />
+                        <div className="relative border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-red-500 focus-within:border-red-500 transition-colors">
+                          <div className="flex items-center">
+                            <div className="min-w-[164px] border-r border-gray-200 px-3 py-2.5">
+                              <select
+                                id="phoneCountry"
+                                aria-label="Kod negara nombor telefon"
+                                value={selectedPhoneCountry.iso}
+                                onChange={(e) => handlePhoneCountryChange(e.target.value)}
+                                className="w-full bg-transparent text-sm text-gray-900 focus:outline-none"
+                              >
+                                {PHONE_COUNTRY_OPTIONS.map((option) => (
+                                  <option key={option.iso} value={option.iso}>
+                                    {option.label} +{option.dialCode}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="relative flex-1">
+                              <input
+                                type="tel"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                id="phone"
+                                required
+                                value={formData.phone}
+                                onChange={(e) => handlePhoneInputChange(e.target.value)}
+                                className="w-full rounded-r-lg py-2.5 pl-3 pr-12 text-black focus:outline-none"
+                                placeholder={selectedPhoneCountry.placeholder}
+                              />
+                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                                {Math.max(selectedPhoneCountry.maxLength - formData.phone.length, 0)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Format dihantar: +{selectedPhoneCountry.dialCode}{formData.phone || selectedPhoneCountry.placeholder}
+                        </p>
                       </div>
 
                       {/* Location */}
@@ -1874,6 +1995,18 @@ export default function NewPage() {
                       </div>
 
                       {/* Submit Button */}
+                      {registrationUiStatus && (
+                        <div
+                          className={`rounded-lg px-4 py-3 text-sm ${registrationUiStatus.type === 'success'
+                            ? 'bg-green-50 text-green-800 border border-green-200'
+                            : 'bg-red-50 text-red-800 border border-red-200'
+                            }`}
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {registrationUiStatus.message}
+                        </div>
+                      )}
                       <button
                         type="submit"
                         disabled={isSubmitting}
@@ -1981,16 +2114,44 @@ export default function NewPage() {
                       <label htmlFor="phoneMobile" className="block text-sm font-medium text-gray-700 mb-2">
                         Nombor Telefon (Whatsapp)*
                       </label>
-                      <input
-                        type="tel"
-                        id="phoneMobile"
-                        required
-                        value={formData.phone}
-                        onChange={(e) => handleInputChange('phone', e.target.value.replace(/\D/g, ''))}
-                        className="w-full px-3 py-2 border text-black border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
-                        placeholder="Contoh: 0123456789"
-                        onInput={e => (e.currentTarget.value = e.currentTarget.value.replace(/\D/g, ''))}
-                      />
+                      <div className="relative border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-red-500 focus-within:border-red-500 transition-colors">
+                        <div className="flex items-center">
+                          <div className="min-w-[152px] border-r border-gray-200 px-3 py-2.5">
+                            <select
+                              id="phoneCountryMobile"
+                              aria-label="Kod negara nombor telefon"
+                              value={selectedPhoneCountry.iso}
+                              onChange={(e) => handlePhoneCountryChange(e.target.value)}
+                              className="w-full bg-transparent text-sm text-gray-900 focus:outline-none"
+                            >
+                              {PHONE_COUNTRY_OPTIONS.map((option) => (
+                                <option key={option.iso} value={option.iso}>
+                                  {option.label} +{option.dialCode}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="relative flex-1">
+                            <input
+                              type="tel"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              id="phoneMobile"
+                              required
+                              value={formData.phone}
+                              onChange={(e) => handlePhoneInputChange(e.target.value)}
+                              className="w-full rounded-r-lg py-2.5 pl-3 pr-12 text-black focus:outline-none"
+                              placeholder={selectedPhoneCountry.placeholder}
+                            />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                              {Math.max(selectedPhoneCountry.maxLength - formData.phone.length, 0)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Format dihantar: +{selectedPhoneCountry.dialCode}{formData.phone || selectedPhoneCountry.placeholder}
+                      </p>
                     </div>
 
                     {/* Location */}
@@ -2045,6 +2206,19 @@ export default function NewPage() {
                         </label>
                       </div>
                     </div>
+
+                    {registrationUiStatus && (
+                      <div
+                        className={`rounded-lg px-4 py-3 text-sm ${registrationUiStatus.type === 'success'
+                          ? 'bg-green-50 text-green-800 border border-green-200'
+                          : 'bg-red-50 text-red-800 border border-red-200'
+                          }`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {registrationUiStatus.message}
+                      </div>
+                    )}
 
                   </form>
                   {/* Fixed footer submit button */}

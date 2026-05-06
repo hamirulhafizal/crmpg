@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 
 import { sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
+import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { loadActiveGoogleAdsDealers } from '@/app/lib/google-ads/active-dealers-for-leads'
+import { registerCustomerAtPublicGold } from '@/app/lib/public-gold-registration'
 
 function buildLeadBody(formData: Record<string, unknown>, dealerEmail: string): string {
   const fullName = String(formData.fullName ?? '')
@@ -54,6 +57,16 @@ export async function POST(req: Request) {
     let whatsappSent = false
     let whatsappSkipped: string | undefined
     let whatsappError: string | undefined
+    let publicGoldAutomation:
+      | {
+          attempted: boolean
+          success: boolean
+          introPgCode?: string
+          statusText?: string
+          finalUrl?: string
+          error?: string
+        }
+      | undefined
 
     try {
       const dealerPhone =
@@ -69,11 +82,73 @@ export async function POST(req: Request) {
       console.error('GAP lead WAHA error:', e)
     }
 
+    try {
+      const admin = createServiceRoleClient()
+      const { dealers } = await loadActiveGoogleAdsDealers(admin)
+      const matchedDealer = dealers.find((d) => d.email.toLowerCase() === toEmail.toLowerCase())
+      const introPgCode = matchedDealer?.pgcode?.trim()
+
+      if (!introPgCode || introPgCode === '—') {
+        publicGoldAutomation = {
+          attempted: false,
+          success: false,
+          error: 'Dealer PG code not found for automation.',
+        }
+      } else {
+        const fullName = String(formData.fullName ?? '').trim()
+        const icNumber = String(formData.icNumber ?? '').trim()
+        const email = String(formData.email ?? '').trim()
+        const phone = String(formData.phone ?? '').trim()
+        const location = String(formData.location ?? '').trim()
+
+        if (!fullName || !icNumber || !email || !phone) {
+          publicGoldAutomation = {
+            attempted: false,
+            success: false,
+            introPgCode,
+            error: 'Missing required lead fields for Public Gold registration.',
+          }
+        } else {
+          const dealerPhoneRaw =
+            typeof formData.dealerPhone === 'string' ? formData.dealerPhone.trim() : ''
+          const introducerPhone =
+            (matchedDealer?.no_tel && String(matchedDealer.no_tel).trim()) || dealerPhoneRaw || ''
+
+          const result = await registerCustomerAtPublicGold({
+            fullName,
+            icNumber,
+            email,
+            phone,
+            location,
+            introPgCode,
+            ...(introducerPhone ? { introducerPhone } : {}),
+          })
+
+          publicGoldAutomation = {
+            attempted: true,
+            success: result.ok,
+            introPgCode,
+            statusText: result.statusText,
+            finalUrl: result.finalUrl,
+          }
+        }
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Public Gold automation failed'
+      console.error('Public Gold automation error:', e)
+      publicGoldAutomation = {
+        attempted: true,
+        success: false,
+        error: message,
+      }
+    }
+
     return NextResponse.json({
       success: true,
       whatsappSent,
       ...(whatsappSkipped ? { whatsappSkipped } : {}),
       ...(whatsappError ? { whatsappError } : {}),
+      ...(publicGoldAutomation ? { publicGoldAutomation } : {}),
     })
   } catch (error: unknown) {
     console.error('Error sending lead:', error)

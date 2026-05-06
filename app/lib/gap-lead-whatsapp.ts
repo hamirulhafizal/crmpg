@@ -5,6 +5,9 @@
  * - WAHA_GAP_LEAD_BASE_URL — optional; falls back to WAHA_API_BASE_URL / default host.
  * - WAHA_GAP_LEAD_CC_CHAT_ID — optional second copy (e.g. 260635845763172@lid).
  */
+import { readFile } from 'fs/promises'
+import path from 'path'
+
 import { getGapLeadFormWahaConfig, wahaFetchWithConfig, type WahaConfig } from '@/app/lib/waha'
 
 /** E.164-style MSISDN (MY) for @c.us chat id. */
@@ -67,9 +70,89 @@ export async function sendGapLeadWhatsAppMessages(opts: {
   return { sentToDealer, sentCc }
 }
 
+/**
+ * Send one image (e.g. Playwright screenshot) to the dealer WhatsApp and optional CC,
+ * using the same session/API as {@link sendGapLeadWhatsAppMessages}.
+ * Uses `POST /api/sendImage` with base64 file payload.
+ */
+export async function sendGapLeadWhatsAppImage(opts: {
+  dealerPhone: string | undefined | null
+  /** Absolute path, or relative to `process.cwd()` */
+  imagePath: string
+  caption?: string
+}): Promise<{ sentToDealer: boolean; sentCc: boolean; skipReason?: string }> {
+  const session = process.env.WAHA_GAP_LEAD_SESSION?.trim()
+  const cfg = getGapLeadFormWahaConfig()
+
+  if (!cfg || !session) {
+    return {
+      sentToDealer: false,
+      sentCc: false,
+      skipReason: 'WAHA_GAP_LEAD_SESSION or WAHA_GAP_LEAD_API_KEY / WAHA_API_KEY not set',
+    }
+  }
+
+  const resolvedPath = path.isAbsolute(opts.imagePath)
+    ? opts.imagePath
+    : path.join(process.cwd(), opts.imagePath)
+  const buf = await readFile(resolvedPath)
+  const data = buf.toString('base64')
+  const ext = path.extname(resolvedPath).toLowerCase()
+  const mimetype =
+    ext === '.jpg' || ext === '.jpeg'
+      ? 'image/jpeg'
+      : ext === '.webp'
+        ? 'image/webp'
+        : 'image/png'
+  const filename = path.basename(resolvedPath) || 'screenshot.png'
+
+  let sentToDealer = false
+  let sentCc = false
+
+  if (isPlausibleDealerPhone(opts.dealerPhone)) {
+    const chatId = phoneToWhatsappChatId(opts.dealerPhone!)
+    await sendImage(cfg, session, chatId, { mimetype, filename, data }, opts.caption)
+    sentToDealer = true
+  }
+
+  const ccChatId = process.env.WAHA_GAP_LEAD_CC_CHAT_ID?.trim()
+  if (ccChatId) {
+    await sendImage(cfg, session, ccChatId, { mimetype, filename, data }, opts.caption)
+    sentCc = true
+  }
+
+  if (!sentToDealer && !sentCc) {
+    return {
+      sentToDealer: false,
+      sentCc: false,
+      skipReason: 'No dealer phone and no WAHA_GAP_LEAD_CC_CHAT_ID',
+    }
+  }
+
+  return { sentToDealer, sentCc }
+}
+
 async function sendText(cfg: WahaConfig, session: string, chatId: string, text: string) {
   await wahaFetchWithConfig(cfg, '/api/sendText', {
     method: 'POST',
     body: JSON.stringify({ session, chatId, text }),
+  })
+}
+
+async function sendImage(
+  cfg: WahaConfig,
+  session: string,
+  chatId: string,
+  file: { mimetype: string; filename: string; data: string },
+  caption?: string
+) {
+  await wahaFetchWithConfig(cfg, '/api/sendImage', {
+    method: 'POST',
+    body: JSON.stringify({
+      session,
+      chatId,
+      file,
+      ...(caption ? { caption } : {}),
+    }),
   })
 }
