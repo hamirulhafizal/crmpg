@@ -286,13 +286,16 @@ function parseGoldPosterPayload(raw: string): GoldPosterPayload | null {
 }
 
 function resolveAppBaseUrl(request: Request): string {
+  const fromReq = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  if (fromReq) {
+    const proto = request.headers.get('x-forwarded-proto') || 'https'
+    return `${proto}://${fromReq}`.replace(/\/$/, '')
+  }
   const envUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').trim()
   if (envUrl) return envUrl.replace(/\/$/, '')
   const vercel = (process.env.VERCEL_URL || '').trim()
   if (vercel) return `https://${vercel.replace(/\/$/, '')}`
-  const fromReq = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000'
-  const proto = request.headers.get('x-forwarded-proto') || 'https'
-  return `${proto}://${fromReq}`.replace(/\/$/, '')
+  return 'http://localhost:3000'
 }
 
 async function sendWhatsAppImageToChat(userId: string, session: string, chatId: string, imageUrl: string) {
