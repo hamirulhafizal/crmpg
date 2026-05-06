@@ -24,39 +24,76 @@ function useServerlessChromiumBundle(): boolean {
   return true
 }
 
-function chromiumLaunchOptions(): LaunchOptions {
-  /** Local `playwright` install only; Vercel uses `launchBrowser()` + @sparticuz/chromium. */
-  return { headless: true }
+function localPlaywrightLaunchOptions(): LaunchOptions {
+  const base: LaunchOptions = { headless: true }
+  if (process.platform === 'linux') {
+    base.args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ]
+  }
+  return base
 }
 
-/** Linux serverless Chromium via https://github.com/Sparticuz/chromium — required on Vercel. */
+/**
+ * Linux serverless: try @sparticuz/chromium first, then hermetic Playwright from postinstall.
+ * @see https://github.com/Sparticuz/chromium — Usage with Playwright
+ */
 async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promise<void> }> {
   if (!useServerlessChromiumBundle()) {
     const { chromium } = await import('playwright')
-    const browser = await chromium.launch(chromiumLaunchOptions())
+    const browser = await chromium.launch(localPlaywrightLaunchOptions())
     return { browser, cleanup: async () => {} }
   }
-
-  const { chromium: pwChromium } = await import('playwright-core')
-  const sparticuz = (await import('@sparticuz/chromium')).default
-  sparticuz.setGraphicsMode = false
 
   const { randomUUID } = await import('node:crypto')
   const { rm } = await import('node:fs/promises')
   const userDataDir = `/tmp/pw-${randomUUID()}`
 
-  const executablePath = await sparticuz.executablePath()
-  const browser = await pwChromium.launch({
-    headless: true,
-    executablePath,
-    args: [...sparticuz.args, `--user-data-dir=${userDataDir}`],
-  })
+  const sparticuzMod = await import('@sparticuz/chromium')
+  const sparticuz = sparticuzMod.default
+  sparticuz.setGraphicsMode = false
 
-  return {
-    browser,
-    cleanup: async () => {
-      await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
-    },
+  let sparticuzError: unknown
+  try {
+    const { chromium: pwChromium } = await import('playwright-core')
+    const executablePath = await sparticuz.executablePath()
+    const browser = await pwChromium.launch({
+      headless: true,
+      executablePath,
+      args: [...sparticuz.args, `--user-data-dir=${userDataDir}`],
+    })
+    return {
+      browser,
+      cleanup: async () => {
+        await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+      },
+    }
+  } catch (e: unknown) {
+    sparticuzError = e
+    console.warn('Public Gold: @sparticuz/chromium launch failed, trying hermetic Playwright:', e)
+  }
+
+  try {
+    process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0'
+    const { chromium } = await import('playwright')
+    const browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
+    })
+    await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+    return { browser, cleanup: async () => {} }
+  } catch (fallbackErr: unknown) {
+    const a = sparticuzError instanceof Error ? sparticuzError.message : String(sparticuzError)
+    const b = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
+    throw new Error(`@sparticuz/chromium: ${a} | Playwright fallback: ${b}`)
   }
 }
 
@@ -307,15 +344,14 @@ export async function registerCustomerAtPublicGold(
     cleanup = launched.cleanup
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    if (/Executable doesn't exist|playwright install|browserType\.launch/i.test(msg)) {
-      return {
-        ok: false,
-        finalUrl: '',
-        statusText:
-          'Chromium failed to start. Locally run `npx playwright install chromium`. On Vercel we use @sparticuz/chromium — ensure it is installed and listed in next.config serverExternalPackages.',
-      }
+    console.error('Public Gold Chromium launch:', e)
+    return {
+      ok: false,
+      finalUrl: '',
+      statusText:
+        `Chromium failed to start: ${msg.slice(0, 900)}. ` +
+        'Local: run `npx playwright install chromium`. Vercel: use @sparticuz/chromium (see next.config serverExternalPackages) and ensure `postinstall` runs; check deployment CPU (arm64 may need chromium-min).',
     }
-    throw e
   }
   console.log('browser launched')
 

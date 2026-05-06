@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // @sparticuz/chromium resolves binaries via filesystem; must not be bundled.
-  serverExternalPackages: ["@sparticuz/chromium", "playwright-core"],
+  serverExternalPackages: [
+    "@sparticuz/chromium",
+    "playwright-core",
+    "playwright",
+  ],
 
   // Enable Incremental Static Regeneration (ISR)
   // Remove output: 'export' to enable ISR
