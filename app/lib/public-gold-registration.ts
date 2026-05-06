@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os'
 import path from 'path'
 
 import type { Browser, BrowserContext, LaunchOptions } from 'playwright-core'
@@ -271,7 +272,8 @@ async function runRegistrationAttempt(
   await page.click('#form_submit')
   await page.waitForTimeout(3500)
 
-  const screenshotPath = path.join(process.cwd(), `Registration-${introPgCode}-entire-page.png`)
+  // Vercel/serverless: /var/task (cwd) is read-only — screenshots must go to tmpdir.
+  const screenshotPath = path.join(tmpdir(), `Registration-${introPgCode}-entire-page.png`)
 
   const runWaha = async (label: string, fn: () => Promise<void>) => {
     try {
