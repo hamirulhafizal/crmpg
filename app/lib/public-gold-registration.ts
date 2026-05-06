@@ -1,16 +1,32 @@
 import path from 'path'
 
-import type { Browser, LaunchOptions } from 'playwright-core'
+import type { Browser, BrowserContext, LaunchOptions } from 'playwright-core'
 
 import { sendGapLeadWhatsAppImage, sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
 
 /**
- * Hermetic browser install (see package.json postinstall) for local/non-serverless `playwright`.
- * On Vercel we use `playwright-core` + `@sparticuz/chromium` instead.
+ * Hermetic browsers under node_modules (postinstall). Required on Vercel serverless — there is no
+ * stable ~/.cache; omitting this made fallback resolve to /tmp/.cache/ms-playwright and fail.
  */
-if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined && process.env.VERCEL !== '1') {
+if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '0'
 }
+
+const BROWSER_CONTEXT_OPTIONS = {
+  locale: 'en-MY' as const,
+  timezoneId: 'Asia/Kuala_Lumpur',
+  viewport: { width: 1366, height: 768 },
+  userAgent:
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  extraHTTPHeaders: {
+    'Accept-Language': 'en-MY,en;q=0.9,ms-MY;q=0.8',
+    Referer: 'https://publicgold.com.my/',
+  },
+}
+
+type LaunchedBrowser =
+  | { mode: 'ephemeral'; browser: Browser; cleanup: () => Promise<void> }
+  | { mode: 'persistent'; context: BrowserContext; cleanup: () => Promise<void> }
 
 function useServerlessChromiumBundle(): boolean {
   if (process.env.USE_SPARTICUZ_CHROMIUM === 'false') return false
@@ -39,13 +55,14 @@ function localPlaywrightLaunchOptions(): LaunchOptions {
 
 /**
  * Linux serverless: try @sparticuz/chromium first, then hermetic Playwright from postinstall.
+ * Playwright rejects `--user-data-dir` on launch(); use launchPersistentContext per Sparticuz/Lambda notes.
  * @see https://github.com/Sparticuz/chromium — Usage with Playwright
  */
-async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promise<void> }> {
+async function launchBrowser(): Promise<LaunchedBrowser> {
   if (!useServerlessChromiumBundle()) {
     const { chromium } = await import('playwright')
     const browser = await chromium.launch(localPlaywrightLaunchOptions())
-    return { browser, cleanup: async () => {} }
+    return { mode: 'ephemeral', browser, cleanup: async () => {} }
   }
 
   const { randomUUID } = await import('node:crypto')
@@ -60,13 +77,15 @@ async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promi
   try {
     const { chromium: pwChromium } = await import('playwright-core')
     const executablePath = await sparticuz.executablePath()
-    const browser = await pwChromium.launch({
+    const context = await pwChromium.launchPersistentContext(userDataDir, {
       headless: true,
       executablePath,
-      args: [...sparticuz.args, `--user-data-dir=${userDataDir}`],
+      args: sparticuz.args,
+      ...BROWSER_CONTEXT_OPTIONS,
     })
     return {
-      browser,
+      mode: 'persistent',
+      context,
       cleanup: async () => {
         await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
       },
@@ -77,7 +96,7 @@ async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promi
   }
 
   try {
-    process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0'
+    await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
     const { chromium } = await import('playwright')
     const browser = await chromium.launch({
       headless: true,
@@ -88,8 +107,7 @@ async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promi
         '--disable-gpu',
       ],
     })
-    await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
-    return { browser, cleanup: async () => {} }
+    return { mode: 'ephemeral', browser, cleanup: async () => {} }
   } catch (fallbackErr: unknown) {
     const a = sparticuzError instanceof Error ? sparticuzError.message : String(sparticuzError)
     const b = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)
@@ -336,12 +354,9 @@ export async function registerCustomerAtPublicGold(
   if (!localNumber) throw new Error('Phone number is required for Public Gold registration.')
 
 
-  let browser: Browser
-  let cleanup: () => Promise<void>
+  let handle: LaunchedBrowser
   try {
-    const launched = await launchBrowser()
-    browser = launched.browser
-    cleanup = launched.cleanup
+    handle = await launchBrowser()
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('Public Gold Chromium launch:', e)
@@ -356,18 +371,61 @@ export async function registerCustomerAtPublicGold(
   console.log('browser launched')
 
   try {
-    const primaryContext = await browser.newContext({
-      locale: 'en-MY',
-      timezoneId: 'Asia/Kuala_Lumpur',
-      viewport: { width: 1366, height: 768 },
-      userAgent:
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      extraHTTPHeaders: {
-        'Accept-Language': 'en-MY,en;q=0.9,ms-MY;q=0.8',
-        Referer: 'https://publicgold.com.my/',
-      },
-    })
-    const primaryPage = await primaryContext.newPage()
+    if (handle.mode === 'ephemeral') {
+      const { browser } = handle
+      const primaryContext = await browser.newContext(BROWSER_CONTEXT_OPTIONS)
+      const primaryPage = await primaryContext.newPage()
+      primaryPage.on('dialog', async (dialog) => {
+        try {
+          await dialog.accept()
+        } catch {
+          // Ignore dialog race conditions if already handled.
+        }
+      })
+
+      return await (async () => {
+        try {
+          return await runRegistrationAttempt(
+            primaryPage,
+            input,
+            introPgCode,
+            dialCode,
+            localNumber,
+            dob
+          )
+        } catch (error: unknown) {
+          if (!isGatewayBlockError(error)) throw error
+          console.warn('Primary Public Gold attempt blocked; retrying with default browser context...')
+        } finally {
+          await primaryContext.close()
+        }
+
+        const fallbackPage = await browser.newPage()
+        fallbackPage.on('dialog', async (dialog) => {
+          try {
+            await dialog.accept()
+          } catch {
+            // Ignore dialog race conditions if already handled.
+          }
+        })
+        try {
+          return await runRegistrationAttempt(
+            fallbackPage,
+            input,
+            introPgCode,
+            dialCode,
+            localNumber,
+            dob,
+            true
+          )
+        } finally {
+          await fallbackPage.close()
+        }
+      })()
+    }
+
+    const { context } = handle
+    const primaryPage = await context.newPage()
     primaryPage.on('dialog', async (dialog) => {
       try {
         await dialog.accept()
@@ -390,10 +448,10 @@ export async function registerCustomerAtPublicGold(
         if (!isGatewayBlockError(error)) throw error
         console.warn('Primary Public Gold attempt blocked; retrying with default browser context...')
       } finally {
-        await primaryContext.close()
+        await primaryPage.close()
       }
 
-      const fallbackPage = await browser.newPage()
+      const fallbackPage = await context.newPage()
       fallbackPage.on('dialog', async (dialog) => {
         try {
           await dialog.accept()
@@ -416,7 +474,11 @@ export async function registerCustomerAtPublicGold(
       }
     })()
   } finally {
-    await browser.close()
-    await cleanup()
+    if (handle.mode === 'ephemeral') {
+      await handle.browser.close()
+    } else {
+      await handle.context.close()
+    }
+    await handle.cleanup()
   }
 }
