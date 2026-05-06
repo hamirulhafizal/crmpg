@@ -25,6 +25,13 @@ function isPlausibleDealerPhone(raw: string | undefined | null): boolean {
   return digits.length >= 9
 }
 
+function normalizeWahaText(text: string): string {
+  const t = String(text ?? '')
+    .replace(/\u0000/g, '')
+    .trim()
+  return t.length > 0 ? t : ' '
+}
+
 /**
  * Send GAP lead text to the dealer on WhatsApp (and optional CC to @lid / group).
  * Uses `WAHA_GAP_LEAD_SESSION` (sender session) and `WAHA_GAP_LEAD_API_KEY` or `WAHA_API_KEY`.
@@ -44,26 +51,40 @@ export async function sendGapLeadWhatsAppMessages(opts: {
     }
   }
 
+  const messageText = normalizeWahaText(opts.text)
+
   let sentToDealer = false
   let sentCc = false
 
   if (isPlausibleDealerPhone(opts.dealerPhone)) {
     const chatId = phoneToWhatsappChatId(opts.dealerPhone!)
-    await sendText(cfg, session, chatId, opts.text)
+    await sendText(cfg, session, chatId, messageText)
     sentToDealer = true
   }
 
   const ccChatId = process.env.WAHA_GAP_LEAD_CC_CHAT_ID?.trim()
+  let ccFailed = false
   if (ccChatId) {
-    await sendText(cfg, session, ccChatId, opts.text)
-    sentCc = true
+    try {
+      await sendText(cfg, session, ccChatId, messageText)
+      sentCc = true
+    } catch (e: unknown) {
+      ccFailed = true
+      // WAHA occasionally 500s on @lid / CC with internal msgChunks errors; dealer send may still succeed.
+      console.warn(
+        'WAHA sendText to CC failed:',
+        e instanceof Error ? e.message : e
+      )
+    }
   }
 
   if (!sentToDealer && !sentCc) {
     return {
       sentToDealer: false,
       sentCc: false,
-      skipReason: 'No dealer phone and no WAHA_GAP_LEAD_CC_CHAT_ID',
+      skipReason: ccFailed
+        ? 'WAHA CC send failed (check session / WAHA_GAP_LEAD_CC_CHAT_ID).'
+        : 'No dealer phone and no WAHA_GAP_LEAD_CC_CHAT_ID',
     }
   }
 
@@ -135,7 +156,11 @@ export async function sendGapLeadWhatsAppImage(opts: {
 async function sendText(cfg: WahaConfig, session: string, chatId: string, text: string) {
   await wahaFetchWithConfig(cfg, '/api/sendText', {
     method: 'POST',
-    body: JSON.stringify({ session, chatId, text }),
+    body: JSON.stringify({
+      session,
+      chatId,
+      text: normalizeWahaText(text),
+    }),
   })
 }
 
