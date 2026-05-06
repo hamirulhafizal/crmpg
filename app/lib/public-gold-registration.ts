@@ -1,31 +1,63 @@
 import path from 'path'
 
-import { chromium } from 'playwright'
+import type { Browser, LaunchOptions } from 'playwright-core'
 
 import { sendGapLeadWhatsAppImage, sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
 
 /**
- * Hermetic browser install (see package.json postinstall). On Vercel there is no ~/.cache;
- * browsers must live under node_modules so the serverless bundle can find Chromium.
- * @see https://playwright.dev/docs/browsers#hermetic-install
+ * Hermetic browser install (see package.json postinstall) for local/non-serverless `playwright`.
+ * On Vercel we use `playwright-core` + `@sparticuz/chromium` instead.
  */
-if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined && process.env.VERCEL) {
+if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined && process.env.VERCEL !== '1') {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '0'
 }
 
-function chromiumLaunchOptions(): Parameters<typeof chromium.launch>[0] {
-  const base: Parameters<typeof chromium.launch>[0] = {
+function useServerlessChromiumBundle(): boolean {
+  if (process.env.USE_SPARTICUZ_CHROMIUM === 'false') return false
+  const serverless =
+    process.env.VERCEL === '1' ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    process.env.USE_SPARTICUZ_CHROMIUM === 'true'
+  if (!serverless) return false
+  // @sparticuz/chromium ships Linux x64/arm64 only (not macOS/Windows local dev).
+  if (process.platform !== 'linux') return false
+  return true
+}
+
+function chromiumLaunchOptions(): LaunchOptions {
+  /** Local `playwright` install only; Vercel uses `launchBrowser()` + @sparticuz/chromium. */
+  return { headless: true }
+}
+
+/** Linux serverless Chromium via https://github.com/Sparticuz/chromium — required on Vercel. */
+async function launchBrowser(): Promise<{ browser: Browser; cleanup: () => Promise<void> }> {
+  if (!useServerlessChromiumBundle()) {
+    const { chromium } = await import('playwright')
+    const browser = await chromium.launch(chromiumLaunchOptions())
+    return { browser, cleanup: async () => {} }
+  }
+
+  const { chromium: pwChromium } = await import('playwright-core')
+  const sparticuz = (await import('@sparticuz/chromium')).default
+  sparticuz.setGraphicsMode = false
+
+  const { randomUUID } = await import('node:crypto')
+  const { rm } = await import('node:fs/promises')
+  const userDataDir = `/tmp/pw-${randomUUID()}`
+
+  const executablePath = await sparticuz.executablePath()
+  const browser = await pwChromium.launch({
     headless: true,
+    executablePath,
+    args: [...sparticuz.args, `--user-data-dir=${userDataDir}`],
+  })
+
+  return {
+    browser,
+    cleanup: async () => {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => {})
+    },
   }
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    base.args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-    ]
-  }
-  return base
 }
 
 export type PublicGoldRegistrationInput = {
@@ -267,9 +299,12 @@ export async function registerCustomerAtPublicGold(
   if (!localNumber) throw new Error('Phone number is required for Public Gold registration.')
 
 
-  let browser: Awaited<ReturnType<typeof chromium.launch>>
+  let browser: Browser
+  let cleanup: () => Promise<void>
   try {
-    browser = await chromium.launch(chromiumLaunchOptions())
+    const launched = await launchBrowser()
+    browser = launched.browser
+    cleanup = launched.cleanup
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     if (/Executable doesn't exist|playwright install|browserType\.launch/i.test(msg)) {
@@ -277,7 +312,7 @@ export async function registerCustomerAtPublicGold(
         ok: false,
         finalUrl: '',
         statusText:
-          'Playwright Chromium missing. Ensure PLAYWRIGHT_BROWSERS_PATH=0 and `postinstall` runs on deploy (`npx playwright install chromium`).',
+          'Chromium failed to start. Locally run `npx playwright install chromium`. On Vercel we use @sparticuz/chromium — ensure it is installed and listed in next.config serverExternalPackages.',
       }
     }
     throw e
@@ -346,5 +381,6 @@ export async function registerCustomerAtPublicGold(
     })()
   } finally {
     await browser.close()
+    await cleanup()
   }
 }
