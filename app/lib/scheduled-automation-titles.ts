@@ -2,6 +2,7 @@
 export const SCHEDULED_TITLE_BIRTHDAY = 'Birthday'
 export const SCHEDULED_TITLE_INACTIVE_FOLLOWUP = 'Inactive follow-up'
 export const SCHEDULED_TITLE_FREE_FOLLOWUP = 'Free account follow-up'
+export const SCHEDULED_TITLE_GOLD_PRICE_POSTER = 'Gold price poster'
 
 export function normalizedScheduledTitle(title: string | null | undefined): string {
   return (title || '').trim().toLowerCase()
@@ -12,6 +13,7 @@ export function isBroadcastScheduledTitle(title: string | null | undefined): boo
   return (
     t === 'birthday' ||
     t === 'inactive follow-up' ||
-    t === 'free account follow-up'
+    t === 'free account follow-up' ||
+    t === 'gold price poster'
   )
 }

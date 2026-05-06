@@ -7,6 +7,7 @@ import Link from 'next/link'
 import {
   SCHEDULED_TITLE_BIRTHDAY,
   SCHEDULED_TITLE_FREE_FOLLOWUP,
+  SCHEDULED_TITLE_GOLD_PRICE_POSTER,
   SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
   normalizedScheduledTitle,
 } from '@/app/lib/scheduled-automation-titles'
@@ -22,6 +23,11 @@ interface ScheduledMessage {
   locked_at: string | null
   is_enable: boolean | null
   created_at: string
+}
+
+type GoldPosterConfig = {
+  session: string
+  groups: string[]
 }
 
 const DEFAULT_TEMPLATE = 'Salam {SenderName}, ini PG Code {PGCode} {SenderName} ya'
@@ -44,6 +50,7 @@ type AutomationTitleType =
   | 'birthday'
   | 'inactive_followup'
   | 'free_followup'
+  | 'gold_poster'
   | 'profile'
   | 'skde'
   | 'gap'
@@ -64,11 +71,20 @@ export default function AutomatedMessagesPage() {
     scheduled_at: '',
     is_enable: true,
     warmup_enabled: false,
+    poster_session: '',
+    poster_groups: [] as string[],
   })
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [isTesting, setIsTesting] = useState<string | null>(null)
   const [variables, setVariables] = useState<string[]>([])
   const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
+  const [activeTab, setActiveTab] = useState<'messages' | 'gold_poster'>('messages')
+  const [wahaSessions, setWahaSessions] = useState<Array<{ name: string; status?: string }>>([])
+  const [wahaGroups, setWahaGroups] = useState<Array<{ id: string; name: string }>>([])
+  const [groupSearch, setGroupSearch] = useState('')
+  const [isGroupsLoading, setIsGroupsLoading] = useState(false)
+  const [posterPreviewTick, setPosterPreviewTick] = useState(Date.now())
 
   // Prevent duplicated broadcast automations:
   // If there's already a pending + enabled scheduled message with the same title,
@@ -86,7 +102,87 @@ export default function AutomatedMessagesPage() {
   const isBroadcastAutomation =
     titleType === 'birthday' ||
     titleType === 'inactive_followup' ||
-    titleType === 'free_followup'
+    titleType === 'free_followup' ||
+    titleType === 'gold_poster'
+
+  const filteredItems = items.filter((item) => {
+    const isGold = normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
+    return activeTab === 'gold_poster' ? isGold : !isGold
+  })
+
+  const parseGoldPosterConfig = (raw: string): GoldPosterConfig | null => {
+    try {
+      const parsed = JSON.parse(raw) as Partial<GoldPosterConfig>
+      const session = String(parsed.session || '').trim()
+      const groups = Array.isArray(parsed.groups)
+        ? parsed.groups.map((g) => String(g || '').trim()).filter((g) => g.endsWith('@g.us'))
+        : []
+      if (!session || groups.length === 0) return null
+      return { session, groups }
+    } catch {
+      return null
+    }
+  }
+
+  useEffect(() => {
+    if (!user) return
+    if (!(isCreating || editing)) return
+    if (titleType !== 'gold_poster') return
+    const loadSessions = async () => {
+      try {
+        const res = await fetch('/api/waha/sessions')
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error || 'Failed to load sessions')
+        setWahaSessions(Array.isArray(json.sessions) ? json.sessions : [])
+      } catch {
+        setWahaSessions([])
+      }
+    }
+    loadSessions()
+  }, [user, isCreating, editing, titleType])
+
+  const loadGroups = async (sessionName: string) => {
+    if (!sessionName) {
+      setWahaGroups([])
+      setGroupSearch('')
+      return
+    }
+    setIsGroupsLoading(true)
+    try {
+      const res = await fetch(`/api/waha/sessions/${encodeURIComponent(sessionName)}/groups`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to load groups')
+      setWahaGroups(Array.isArray(json.groups) ? json.groups : [])
+    } catch {
+      setWahaGroups([])
+    } finally {
+      setIsGroupsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (titleType !== 'gold_poster' || !form.poster_session) {
+      setWahaGroups([])
+      setGroupSearch('')
+      return
+    }
+    loadGroups(form.poster_session)
+  }, [titleType, form.poster_session])
+
+  const filteredWahaGroups = wahaGroups.filter((g) =>
+    groupSearch.trim()
+      ? `${g.name} ${g.id}`.toLowerCase().includes(groupSearch.trim().toLowerCase())
+      : true
+  )
+
+  const posterPreviewUrl = `/api/automation/gold-poster?preview=${posterPreviewTick}`
+
+  useEffect(() => {
+    if (titleType !== 'gold_poster' || !(isCreating || editing)) return
+    setPosterPreviewTick(Date.now())
+    const timer = setInterval(() => setPosterPreviewTick(Date.now()), 30000)
+    return () => clearInterval(timer)
+  }, [titleType, isCreating, editing])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -150,8 +246,29 @@ export default function AutomatedMessagesPage() {
       scheduled_at: '',
       is_enable: true,
       warmup_enabled: false,
+      poster_session: '',
+      poster_groups: [],
     })
     setTitleType('birthday')
+    setEditing(null)
+    setIsCreating(true)
+  }
+
+  const openCreateGoldPoster = () => {
+    const nowMy = new Date(Date.now() + 3 * 60 * 1000)
+    const hh = String(nowMy.getHours()).padStart(2, '0')
+    const mm = String(nowMy.getMinutes()).padStart(2, '0')
+    setForm({
+      title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
+      phone: '',
+      message: 'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
+      scheduled_at: `${hh}:${mm}`,
+      is_enable: true,
+      warmup_enabled: false,
+      poster_session: '',
+      poster_groups: [],
+    })
+    setTitleType('gold_poster')
     setEditing(null)
     setIsCreating(true)
   }
@@ -163,6 +280,7 @@ export default function AutomatedMessagesPage() {
     if (lower === 'birthday' || lower.includes('birthday')) inferredType = 'birthday'
     else if (lower === 'inactive follow-up') inferredType = 'inactive_followup'
     else if (lower === 'free account follow-up') inferredType = 'free_followup'
+    else if (lower === 'gold price poster') inferredType = 'gold_poster'
     else if (lower.startsWith('profile')) inferredType = 'profile'
     else if (lower.includes('skde')) inferredType = 'skde'
     else if (lower === 'gap') inferredType = 'gap'
@@ -174,7 +292,8 @@ export default function AutomatedMessagesPage() {
         if (
           inferredType === 'birthday' ||
           inferredType === 'inactive_followup' ||
-          inferredType === 'free_followup'
+          inferredType === 'free_followup' ||
+          inferredType === 'gold_poster'
         ) {
           // For birthday flows we use a time-only input (HH:MM)
           const hh = String(d.getHours()).padStart(2, '0')
@@ -192,6 +311,21 @@ export default function AutomatedMessagesPage() {
 
     const itemMessage = item.message || ''
     const hasWarmup = itemMessage.startsWith(WARMUP_MESSAGE_MARKER)
+    const posterPayload = inferredType === 'gold_poster'
+      ? (() => {
+          try {
+            const parsed = JSON.parse(item.phone || '{}') as { session?: string; groups?: string[] }
+            return {
+              session: String(parsed.session || ''),
+              groups: Array.isArray(parsed.groups)
+                ? parsed.groups.map((g) => String(g)).filter((g) => g.endsWith('@g.us'))
+                : [],
+            }
+          } catch {
+            return { session: '', groups: [] as string[] }
+          }
+        })()
+      : { session: '', groups: [] as string[] }
 
     setForm({
       title: rawTitle,
@@ -200,6 +334,8 @@ export default function AutomatedMessagesPage() {
       scheduled_at: scheduledValue,
       is_enable: item.is_enable ?? true,
       warmup_enabled: hasWarmup,
+      poster_session: posterPayload.session,
+      poster_groups: posterPayload.groups,
     })
     setTitleType(inferredType)
     setEditing(item)
@@ -217,6 +353,9 @@ export default function AutomatedMessagesPage() {
     try {
       if (!form.title || !form.message || !form.scheduled_at) {
         throw new Error('Title, message and scheduled time are required')
+      }
+      if (titleType === 'gold_poster' && (!form.poster_session || form.poster_groups.length === 0)) {
+        throw new Error('Please choose WAHA session and at least one group')
       }
       if (!isBroadcastAutomation && !form.phone) {
         throw new Error('Phone is required for this message type')
@@ -249,7 +388,12 @@ export default function AutomatedMessagesPage() {
 
       const payload = {
         title: form.title,
-        phone: isBroadcastAutomation ? '' : form.phone,
+        phone:
+          titleType === 'gold_poster'
+            ? JSON.stringify({ session: form.poster_session, groups: form.poster_groups })
+            : isBroadcastAutomation
+              ? ''
+              : form.phone,
         message: form.warmup_enabled ? `${WARMUP_MESSAGE_MARKER}${form.message}` : form.message,
         scheduled_at: scheduledAtIso,
         is_enable: form.is_enable,
@@ -299,6 +443,21 @@ export default function AutomatedMessagesPage() {
     }
   }
 
+  const handleTestSend = async (id: string) => {
+    setIsTesting(id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/automated-messages/${id}/send-test`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to send test')
+      alert(`Test sent: ${json.sentCount ?? 0} group(s).`)
+    } catch (e: any) {
+      setError(e.message || 'Failed to send test')
+    } finally {
+      setIsTesting(null)
+    }
+  }
+
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -341,23 +500,45 @@ export default function AutomatedMessagesPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-slate-900">Automated WhatsApp Messages</h1>
             <button
-              onClick={openCreate}
+              onClick={activeTab === 'gold_poster' ? openCreateGoldPoster : openCreate}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Schedule message
+              {activeTab === 'gold_poster' ? 'Schedule poster' : 'Schedule message'}
+            </button>
+          </div>
+          <div className="mb-4 inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
+            <button
+              onClick={() => setActiveTab('messages')}
+              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'messages' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+            >
+              Messages
+            </button>
+            <button
+              onClick={() => setActiveTab('gold_poster')}
+              className={`px-3 py-1.5 text-sm rounded-md ${activeTab === 'gold_poster' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+            >
+              Gold Poster
             </button>
           </div>
           <p className="text-sm text-slate-600 mb-6">
-            Create scheduled WhatsApp messages for specific phone numbers, or broadcast automations (birthday, inactive
-            follow-up, free-account follow-up) that run daily at the time you set. Templates support variables like{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{SenderName}'}</code>,{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{PGCode}'}</code>,{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{LastPurchaseDate}'}</code>, and{' '}
-            <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{RegistrationDate}'}</code> from each customer
-            record.
+            {activeTab === 'gold_poster' ? (
+              <>
+                Schedule daily Public Gold buyback poster sends to one or more WAHA groups. Image is sent first, then your text message.
+              </>
+            ) : (
+              <>
+                Create scheduled WhatsApp messages for specific phone numbers, or broadcast automations (birthday, inactive
+                follow-up, free-account follow-up) that run daily at the time you set. Templates support variables like{' '}
+                <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{SenderName}'}</code>,{' '}
+                <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{PGCode}'}</code>,{' '}
+                <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{LastPurchaseDate}'}</code>, and{' '}
+                <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{RegistrationDate}'}</code> from each customer
+                record.
+              </>
+            )}
           </p>
 
           {error && (
@@ -368,19 +549,21 @@ export default function AutomatedMessagesPage() {
 
           {isLoading ? (
             <div className="py-12 text-center text-slate-500">Loading scheduled messages...</div>
-          ) : items.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="py-12 text-center text-slate-500">
-              <p className="mb-4">No scheduled messages yet.</p>
+              <p className="mb-4">
+                {activeTab === 'gold_poster' ? 'No scheduled gold poster yet.' : 'No scheduled messages yet.'}
+              </p>
               <button
-                onClick={openCreate}
+                onClick={activeTab === 'gold_poster' ? openCreateGoldPoster : openCreate}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Schedule your first message
+                {activeTab === 'gold_poster' ? 'Schedule your first poster' : 'Schedule your first message'}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <div
                   key={item.id}
                   className="flex items-start justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl"
@@ -401,17 +584,31 @@ export default function AutomatedMessagesPage() {
                       >
                         {item.status.toUpperCase()}
                       </span>
-                      {item.status === 'pending' && item.is_enable === false && (
+                    {(item.status === 'pending' || normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)) && item.is_enable === false && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           DISABLED
                         </span>
                       )}
                     </div>
-                    {item.phone && (
+                    {item.phone && normalizedScheduledTitle(item.title) !== 'gold price poster' && (
                       <p className="text-sm text-slate-600">
                         To:{' '}
                         <span className="font-mono text-slate-800">{item.phone}</span>
                       </p>
+                    )}
+                    {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
+                      <div className="text-sm text-slate-600">
+                        {(() => {
+                          const cfg = parseGoldPosterConfig(item.phone)
+                          if (!cfg) return <p>Config invalid. Edit this schedule.</p>
+                          return (
+                            <>
+                              <p>Session: <span className="font-mono text-slate-800">{cfg.session}</span></p>
+                              <p>Groups: <span className="font-semibold text-slate-800">{cfg.groups.length}</span></p>
+                            </>
+                          )
+                        })()}
+                      </div>
                     )}
                     <p className="text-sm text-slate-600">
                       Scheduled at{' '}
@@ -430,7 +627,7 @@ export default function AutomatedMessagesPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {item.status === 'pending' && (
+                    {(item.status === 'pending' || normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)) && (
                       <>
                         <button
                           onClick={() => openEdit(item)}
@@ -438,6 +635,15 @@ export default function AutomatedMessagesPage() {
                         >
                           Edit
                         </button>
+                        {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
+                          <button
+                            onClick={() => handleTestSend(item.id)}
+                            disabled={isTesting === item.id}
+                            className="px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {isTesting === item.id ? 'Sending...' : 'Send test now'}
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(item.id)}
                           disabled={isDeleting === item.id}
@@ -469,7 +675,12 @@ export default function AutomatedMessagesPage() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
                   <div className="flex flex-col gap-2">
-                    <select
+                    {activeTab === 'gold_poster' && isCreating && !editing ? (
+                      <div className="w-full px-3 py-2 text-slate-900 bg-blue-50 border border-blue-200 rounded-lg">
+                        Gold price poster (daily groups)
+                      </div>
+                    ) : (
+                      <select
                       value={titleType}
                       onChange={(e) => {
                         const value = e.target.value as AutomationTitleType
@@ -489,6 +700,15 @@ export default function AutomatedMessagesPage() {
                               title: SCHEDULED_TITLE_FREE_FOLLOWUP,
                               message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
                             }
+                          if (value === 'gold_poster')
+                            return {
+                              ...current,
+                              title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
+                              message:
+                                'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
+                              poster_session: current.poster_session || '',
+                              poster_groups: current.poster_groups || [],
+                            }
                           if (value === 'profile') return { ...current, title: 'Profile (coming soon)' }
                           if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
                           if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
@@ -507,6 +727,12 @@ export default function AutomatedMessagesPage() {
                         Free account follow-up (registration anniversary)
                       </option>
                       <option
+                        value="gold_poster"
+                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_GOLD_PRICE_POSTER)}
+                      >
+                        Gold price poster (daily groups)
+                      </option>
+                      <option
                         disabled
                         value="inactive_followup"
                         title={
@@ -522,6 +748,7 @@ export default function AutomatedMessagesPage() {
                       <option disabled value="gap">GAP (coming soon)</option>
                       {/* <option value="customer">Customer (custom title)</option> */}
                     </select>
+                    )}
 
                     {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
                       <p className="text-xs text-slate-500 mt-2">
@@ -557,6 +784,86 @@ export default function AutomatedMessagesPage() {
                       className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
+                )}
+
+                {titleType === 'gold_poster' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">WAHA Session</label>
+                      <select
+                        value={form.poster_session}
+                        onChange={(e) =>
+                          setForm((cur) => ({ ...cur, poster_session: e.target.value, poster_groups: [] }))
+                        }
+                        className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Select session...</option>
+                        {wahaSessions.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name} {s.status ? `(${s.status})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Target Groups</label>
+                      <div className="mb-2 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={groupSearch}
+                          onChange={(e) => setGroupSearch(e.target.value)}
+                          placeholder="Search group name..."
+                          className="flex-1 px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGroupSearch('')
+                            void loadGroups(form.poster_session)
+                          }}
+                          disabled={!form.poster_session || isGroupsLoading}
+                          className="px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+                        >
+                          {isGroupsLoading ? 'Loading...' : 'View all groups'}
+                        </button>
+                      </div>
+                      <div className="max-h-44 overflow-auto border border-slate-300 rounded-lg p-2 bg-white space-y-1">
+                        {filteredWahaGroups.length === 0 ? (
+                          <p className="text-xs text-slate-500 px-2 py-1">
+                            {form.poster_session
+                              ? groupSearch.trim()
+                                ? 'No groups match your search'
+                                : 'No groups found for this session'
+                              : 'Choose session first'}
+                          </p>
+                        ) : (
+                          filteredWahaGroups.map((g) => {
+                            const checked = form.poster_groups.includes(g.id)
+                            return (
+                              <label key={g.id} className="flex items-start gap-2 px-2 py-1 rounded hover:bg-slate-50">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    setForm((cur) => ({
+                                      ...cur,
+                                      poster_groups: e.target.checked
+                                        ? [...cur.poster_groups, g.id]
+                                        : cur.poster_groups.filter((x) => x !== g.id),
+                                    }))
+                                  }
+                                />
+                                <span className="text-sm text-slate-700">
+                                  {g.name} <span className="text-xs text-slate-400">({g.id})</span>
+                                </span>
+                              </label>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 <div>
@@ -678,6 +985,32 @@ export default function AutomatedMessagesPage() {
                       : 'loading...'}
                   </p>
                 </div>
+
+                {titleType === 'gold_poster' && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium text-slate-700">Poster preview (live)</label>
+                      <button
+                        type="button"
+                        onClick={() => setPosterPreviewTick(Date.now())}
+                        className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    <img
+                      src={posterPreviewUrl}
+                      alt="Gold poster preview"
+                      className="w-full rounded-lg border border-slate-200 bg-white"
+                    />
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                      <p className="text-xs text-slate-500 mb-1">Message preview</p>
+                      <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                        {form.message.trim() || '(empty message)'}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 mt-6">

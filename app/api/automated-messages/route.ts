@@ -62,14 +62,18 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { title, phone, message, scheduled_at } = body
     const isEnabled = body.is_enable === undefined ? true : Boolean(body.is_enable)
+    const normalizedTitle = String(title || '').trim().toLowerCase()
+    const isGoldPoster = normalizedTitle === 'gold price poster'
 
     const isBroadcast = isBroadcastScheduledTitle(title)
 
-    if (!title || !message || !scheduled_at || (!isBroadcast && !phone)) {
+    if (!title || !message || !scheduled_at || (!isBroadcast && !phone) || (isGoldPoster && !phone)) {
       return NextResponse.json(
         {
           error: isBroadcast
-            ? 'title, message and scheduled_at are required for broadcast automations'
+            ? isGoldPoster
+              ? 'title, phone payload, message and scheduled_at are required for gold poster automation'
+              : 'title, message and scheduled_at are required for broadcast automations'
             : 'title, phone, message and scheduled_at are required',
         },
         { status: 400 }
@@ -89,7 +93,7 @@ export async function POST(request: Request) {
       .insert({
         user_id: user.id,
         title: String(title),
-        phone: isBroadcast ? '' : String(phone),
+        phone: isGoldPoster ? String(phone) : isBroadcast ? '' : String(phone),
         message: String(message),
         scheduled_at: scheduledAtDate.toISOString(),
         is_enable: isEnabled,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { normalizedScheduledTitle, SCHEDULED_TITLE_GOLD_PRICE_POSTER } from '@/app/lib/scheduled-automation-titles'
 
 // GET /api/automated-messages/[id] - Fetch a single scheduled message
 export async function GET(
@@ -36,7 +37,8 @@ export async function GET(
   }
 }
 
-// PUT /api/automated-messages/[id] - Update a scheduled message (only if still pending)
+// PUT /api/automated-messages/[id] - Update a scheduled message.
+// Gold poster rows are editable even after sent/failed (treated as recurring schedules).
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -51,6 +53,18 @@ export async function PUT(
     }
 
     const body = await request.json()
+    const { data: existing, error: existingError } = await supabase
+      .from('scheduled_messages')
+      .select('id, title, status')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (existingError || !existing) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    const isGoldPoster =
+      normalizedScheduledTitle(existing.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
+
     const update: Record<string, unknown> = {}
 
     if (body.title !== undefined) update.title = String(body.title)
@@ -70,20 +84,26 @@ export async function PUT(
     // Always clear any stale processing lock when the user saves edits.
     update.locked_at = null
 
-    const { data, error } = await supabase
+    // Recurring gold poster schedules should become pending again when edited.
+    if (isGoldPoster) update.status = 'pending'
+
+    let query = supabase
       .from('scheduled_messages')
       .update(update)
       .eq('id', id)
       .eq('user_id', user.id)
-      .eq('status', 'pending') // do not modify messages already processed
       .select()
+    if (!isGoldPoster) {
+      query = query.eq('status', 'pending') // preserve previous behavior for non-recurring rows
+    }
+
+    const { data, error } = await query
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     if (!data || data.length === 0) {
-      // No matching pending row was updated – it may have been processed already.
       return NextResponse.json({ error: 'Not found or not editable' }, { status: 404 })
     }
 

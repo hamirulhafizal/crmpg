@@ -9,7 +9,11 @@ import {
   getLastPurchaseUtcMonthDate,
   getRegistrationUtcMonthDate,
 } from '@/app/lib/customer-account-status'
-import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
+import {
+  normalizedScheduledTitle,
+  SCHEDULED_TITLE_GOLD_PRICE_POSTER,
+} from '@/app/lib/scheduled-automation-titles'
+import { fetchPublicGoldBuybackSnapshot } from '@/app/lib/public-gold-prices'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
@@ -262,6 +266,61 @@ function normalisePhoneToMsisdn(phone: string): string {
   return digits
 }
 
+type GoldPosterPayload = {
+  session: string
+  groups: string[]
+}
+
+function parseGoldPosterPayload(raw: string): GoldPosterPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<GoldPosterPayload>
+    const session = String(parsed.session || '').trim()
+    const groups = Array.isArray(parsed.groups)
+      ? parsed.groups.map((g) => String(g || '').trim()).filter((g) => g.endsWith('@g.us'))
+      : []
+    if (!session || groups.length === 0) return null
+    return { session, groups: Array.from(new Set(groups)) }
+  } catch {
+    return null
+  }
+}
+
+function resolveAppBaseUrl(request: Request): string {
+  const envUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').trim()
+  if (envUrl) return envUrl.replace(/\/$/, '')
+  const vercel = (process.env.VERCEL_URL || '').trim()
+  if (vercel) return `https://${vercel.replace(/\/$/, '')}`
+  const fromReq = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'localhost:3000'
+  const proto = request.headers.get('x-forwarded-proto') || 'https'
+  return `${proto}://${fromReq}`.replace(/\/$/, '')
+}
+
+async function sendWhatsAppImageToChat(userId: string, session: string, chatId: string, imageUrl: string) {
+  const posterRes = await fetch(imageUrl, { cache: 'no-store' })
+  if (!posterRes.ok) {
+    throw new Error(`Poster fetch failed: ${posterRes.status} ${posterRes.statusText}`)
+  }
+  const posterBuffer = Buffer.from(await posterRes.arrayBuffer())
+  const posterBase64 = posterBuffer.toString('base64')
+
+  await wahaFetch(
+    '/api/sendImage',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        session,
+        chatId,
+        file: {
+          data: posterBase64,
+          filename: 'gold-price-poster.png',
+          mimetype: 'image/png',
+        },
+      }),
+    },
+    { userId }
+  )
+}
+
 /** WAHA `/api/contacts/check-exists` result — same auth as `wahaFetch`. */
 type WhatsAppContactCheck =
   | { ok: true; numberExists: boolean }
@@ -456,6 +515,43 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
   }
 }
 
+async function sendGoldPosterFailureNotice(
+  userId: string,
+  sessionName: string,
+  groups: string[],
+  reason: string
+): Promise<void> {
+  const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId)
+  if (error || !data?.user?.email) return
+
+  const smtpUser = process.env.GMAIL_USER
+  const smtpPass = process.env.GMAIL_PASS
+  if (!smtpUser || !smtpPass) return
+
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    service: 'gmail',
+    auth: { user: smtpUser, pass: smtpPass },
+  })
+
+  await transporter.sendMail({
+    from: smtpUser,
+    to: data.user.email,
+    subject: 'CRMPG - Gold price poster automation failed',
+    text: [
+      'Your Gold Price Poster automation failed after retry.',
+      '',
+      `Session: ${sessionName}`,
+      `Groups: ${groups.join(', ')}`,
+      `Reason: ${reason}`,
+      '',
+      'Please verify your WAHA session/group permissions.',
+    ].join('\n'),
+  })
+}
+
 // Use GET so you can call this via an HTTP GET (e.g. from Supabase cron if you switch to net.http_get).
 // The logic is identical; only the HTTP verb changes.
 export async function GET(request: Request) {
@@ -475,6 +571,7 @@ export async function GET(request: Request) {
   try {
     const supabase = supabaseAdmin
     const nowIso = new Date().toISOString()
+    const appBaseUrl = resolveAppBaseUrl(request)
 
     // Some environments may lag schema changes (or point to a different DB).
     // Probe once so cron can still run even if `is_enable` is unavailable.
@@ -789,7 +886,8 @@ export async function GET(request: Request) {
             const isDailyRecurringAutomation =
               title === 'birthday' ||
               // title === 'inactive follow-up' ||
-              title === 'free account follow-up'
+              title === 'free account follow-up' ||
+              title === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
 
             const session = sessionByUser.get(userId)
             const sessionName = session?.session_name
@@ -1046,6 +1144,66 @@ export async function GET(request: Request) {
                   } catch (err) {
                     console.error('Error preparing follow-up message:', err)
                     localFailed++
+                  }
+                }
+                break
+              }
+
+              case 'gold price poster': {
+                const payload = parseGoldPosterPayload(row.phone || '')
+                if (!payload) {
+                  console.error('Gold poster payload invalid for row:', row.id)
+                  localFailed++
+                  break
+                }
+
+                const snapshot = await fetchPublicGoldBuybackSnapshot()
+                const posterUrl = `${appBaseUrl}/api/automation/gold-poster?t=${encodeURIComponent(
+                  snapshot.fetchedAtIso
+                )}`
+
+                const sendText = row.message?.trim() || `PG Jewel 999 Buy: RM ${snapshot.pgJewel999Buy}/g
+PG Jewel 916 Buy: RM ${snapshot.pgJewel916Buy}/g
+Non-PG 999 Buy: RM ${snapshot.nonPg999Buy}/g
+Non-PG 916 Buy: RM ${snapshot.nonPg916Buy}/g`
+
+                let finalError: unknown = null
+                for (let attempt = 1; attempt <= 2; attempt++) {
+                  try {
+                    for (const groupId of payload.groups) {
+                      await sendWhatsAppImageToChat(row.user_id, payload.session, groupId, posterUrl)
+                      await randomDelayBetween(1200, 2600)
+                      await wahaFetch(
+                        '/api/sendText',
+                        {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            session: payload.session,
+                            chatId: groupId,
+                            text: sendText,
+                          }),
+                        },
+                        { userId: row.user_id }
+                      )
+                    }
+                    localSent++
+                    finalError = null
+                    break
+                  } catch (e) {
+                    finalError = e
+                    if (attempt < 2) {
+                      await randomDelayBetween(5000, 9000)
+                    }
+                  }
+                }
+
+                if (finalError) {
+                  localFailed++
+                  const reason = finalError instanceof Error ? finalError.message : String(finalError)
+                  try {
+                    await sendGoldPosterFailureNotice(row.user_id, payload.session, payload.groups, reason)
+                  } catch (mailErr) {
+                    console.error('Gold poster failure notice email failed:', mailErr)
                   }
                 }
                 break
