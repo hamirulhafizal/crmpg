@@ -142,7 +142,7 @@ function getCustomerRowsForSync() {
 }
 
 /**
- * Injected into bc.pgmall.my: fetch viewDownlineInfo for one page (filter_company=0).
+ * Injected into bc.pgmall.my: fetch viewDownlineInfo for one page.
  * First arg: page number (1-based). Returns { rows, totalPages } — totalPages set only when page === 1.
  */
 async function fetchDownlineSinglePage(pageNum) {
@@ -172,28 +172,57 @@ async function fetchDownlineSinglePage(pageNum) {
     var page = parseInt(pageNum, 10);
     if (isNaN(page) || page < 1) page = 1;
 
+    var currentUrl = null;
+    try {
+        currentUrl = new URL(window.location.href);
+    } catch (e) {
+        currentUrl = null;
+    }
+
     var input = document.querySelector('input[name="current-customer-id"]');
     var customerId = input && input.value && String(input.value).trim();
     if (!customerId) {
-        try {
-            var u = new URL(window.location.href);
-            customerId = u.searchParams.get('customer_id') || '';
-        } catch (e) {
-            customerId = '';
-        }
+        customerId = (currentUrl && (currentUrl.searchParams.get('customer_id') || currentUrl.searchParams.get('filter_customer_id'))) || '';
     }
+
+    var companySelect = document.querySelector('#company_select');
+    var sortCountrySelect = document.querySelector('#sort_country_select');
+    var sortStatusSelect = document.querySelector('#sort_status_select');
+    var sortProfileStatusSelect = document.querySelector('#sort_profile_status_select');
+
+    var filterCompany =
+        (companySelect && companySelect.value && String(companySelect.value).trim()) ||
+        (currentUrl && currentUrl.searchParams.get('filter_company')) ||
+        '1';
+    var filterSortCountry =
+        (sortCountrySelect && sortCountrySelect.value && String(sortCountrySelect.value).trim()) ||
+        (currentUrl && currentUrl.searchParams.get('filter_sort_country')) ||
+        '0';
+    var filterSortAccountStatus =
+        (sortStatusSelect && sortStatusSelect.value && String(sortStatusSelect.value).trim()) ||
+        (currentUrl && currentUrl.searchParams.get('filter_sort_account_status')) ||
+        '';
+    var filterSortProfileStatus =
+        (sortProfileStatusSelect && sortProfileStatusSelect.value && String(sortProfileStatusSelect.value).trim()) ||
+        (currentUrl && currentUrl.searchParams.get('filter_sort_profile_status')) ||
+        '';
+
     if (!customerId) return { rows: [], totalPages: page === 1 ? 1 : null };
 
-    var company = document.querySelector('#company_select') && document.querySelector('#company_select').value;
-    var isCompany1 = company === '1';
+    var urlObj = new URL('https://bc.pgmall.my/index.php');
+    urlObj.searchParams.set('route', 'business/group_details/viewDownlineInfo');
+    urlObj.searchParams.set('page', String(page));
+    urlObj.searchParams.set('filter_company', filterCompany);
+    urlObj.searchParams.set('filter_sort_country', filterSortCountry);
+    if (filterSortAccountStatus) {
+        urlObj.searchParams.set('filter_sort_account_status', filterSortAccountStatus);
+    }
+    if (filterSortProfileStatus) {
+        urlObj.searchParams.set('filter_sort_profile_status', filterSortProfileStatus);
+    }
+    urlObj.searchParams.set('customer_id', customerId);
 
-    var params = new URLSearchParams();
-    params.set('route', 'business/group_details/viewDownlineInfo');
-    params.set('page', String(page));
-    params.set('filter_company', '0');
-    params.set('customer_id', customerId);
-
-    var url = 'https://bc.pgmall.my/index.php?' + params.toString();
+    var url = urlObj.toString();
     var res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
     if (!res.ok) return { rows: [], totalPages: page === 1 ? 1 : null };
 
@@ -207,6 +236,15 @@ async function fetchDownlineSinglePage(pageNum) {
     if (!table) return { rows: [], totalPages: totalPages };
     var tbody = table.querySelector('tbody');
     if (!tbody) return { rows: [], totalPages: totalPages };
+    var hasProfileVerifiedColumn = false;
+    var ths = table.querySelectorAll('thead th');
+    for (var hi = 0; hi < ths.length; hi++) {
+        var headerText = (ths[hi].textContent || '').replace(/\s{2,}/g, ' ').trim().toLowerCase();
+        if (headerText === 'profile verified status' || headerText === 'profile verified') {
+            hasProfileVerifiedColumn = true;
+            break;
+        }
+    }
     var trs = tbody.querySelectorAll('tr');
     var rows = [];
     for (var i = 0; i < trs.length; i++) {
@@ -215,7 +253,7 @@ async function fetchDownlineSinglePage(pageNum) {
         var get = function (idx) {
             return (td[idx] && td[idx].textContent && td[idx].textContent.replace(/\s{2,}/g, ' ').trim()) || '';
         };
-        if (isCompany1) {
+        if (hasProfileVerifiedColumn) {
             rows.push({
                 PGCode: get(1),
                 Email: get(2),
@@ -440,6 +478,49 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         if (syncProgressText) syncProgressText.textContent = text || '';
     }
 
+    async function createSyncRun(supabaseUrl, anonKey, accessToken, userId, mode, totalRows, metadata) {
+        try {
+            var res = await fetch(supabaseUrl + '/rest/v1/customer_sync_runs', {
+                method: 'POST',
+                headers: {
+                    apikey: anonKey,
+                    Authorization: 'Bearer ' + accessToken,
+                    'Content-Type': 'application/json',
+                    Prefer: 'return=representation'
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    source: 'extension',
+                    mode: mode || 'customers_page',
+                    status: 'running',
+                    total_rows: totalRows,
+                    metadata: metadata || {}
+                })
+            });
+            if (!res.ok) return null;
+            var rows = await res.json();
+            return rows && rows[0] && rows[0].id ? rows[0].id : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function updateSyncRun(supabaseUrl, anonKey, accessToken, runId, patch) {
+        if (!runId) return;
+        try {
+            await fetch(supabaseUrl + '/rest/v1/customer_sync_runs?id=eq.' + runId, {
+                method: 'PATCH',
+                headers: {
+                    apikey: anonKey,
+                    Authorization: 'Bearer ' + accessToken,
+                    'Content-Type': 'application/json',
+                    Prefer: 'return=minimal'
+                },
+                body: JSON.stringify(patch || {})
+            });
+        } catch (e) { /* non-blocking */ }
+    }
+
     function storageGet(key) {
         return new Promise(function (resolve) {
             chrome.storage.local.get(key, function (data) {
@@ -557,7 +638,51 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return ly === cy && lm === cm;
     }
 
+    function normalizePgCodeForMatch(value) {
+        if (value == null) return '';
+        var s = String(value).trim();
+        return s;
+    }
+
+    function normalizeEmailForMatch(value) {
+        if (value == null) return '';
+        return String(value).trim().toLowerCase();
+    }
+
+    function normalizePhoneForMatch(value) {
+        if (value == null) return '';
+        var digits = String(value).replace(/\D/g, '');
+        if (!digits) return '';
+        if (digits.startsWith('0')) digits = '6' + digits;
+        if (!digits.startsWith('60') && digits.length >= 9) digits = '60' + digits;
+        return digits;
+    }
+
+    function isPatchValueNonEmpty(value) {
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'string') return value.trim() !== '';
+        if (Array.isArray(value)) return value.length > 0;
+        return true; // keep numbers (incl. 0), booleans, and objects
+    }
+
+    function buildPatchBodyFromPayload(payload) {
+        var patchBody = {};
+        Object.keys(payload || {}).forEach(function (key) {
+            if (key === 'user_id' || key === 'is_friend') return;
+            if (key === 'original_data') {
+                // Explicitly overwrite with latest original_data snapshot.
+                patchBody.original_data = payload.original_data;
+                return;
+            }
+            if (isPatchValueNonEmpty(payload[key])) {
+                patchBody[key] = payload[key];
+            }
+        });
+        return patchBody;
+    }
+
     function buildCustomerPayload(row, processed, userId) {
+        var nowIso = new Date().toISOString();
         var name = row.Name || row.name || null;
         var dob = row['D.O.B.'] || row['D.O.B'] || row.DOB || row.dob || null;
         var pgCode = row.PGCode || row.pg_code || null;
@@ -587,6 +712,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             last_purchase_at: lastPurchaseIso,
             is_monthly_buyer: isLastPurchaseInCurrentMalaysiaMonth(lastPurchaseIso),
             is_friend: false,
+            updated_at: nowIso,
             original_data: Object.keys(originalData).length ? originalData : null
         };
         return payload;
@@ -604,46 +730,42 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var total = rows.length;
         var inserted = 0;
         var updated = 0;
+        var failed = 0;
 
-        var pgCodes = rows.map(function (r) { return (r.PGCode || r.pg_code || '').trim(); }).filter(Boolean);
-        var existingMap = {};
-        if (pgCodes.length > 0) {
-            var checkPct = progressOpts.existingCheckPct != null
-                ? progressOpts.existingCheckPct
-                : (rowStart > 18 ? rowStart - 5 : 2);
-            setProgress(checkPct, 'Checking existing...');
-            var url = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&select=id,pg_code,is_friend';
-            var headers = { apikey: anonKey, Authorization: 'Bearer ' + accessToken };
-            if (pgCodes.length <= 100) {
-                url += '&pg_code=in.(' + pgCodes.map(function (c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',') + ')';
-            }
-            try {
+        var existingByPgCode = {};
+        var existingByPhone = {};
+        var existingByEmail = {};
+        var headers = { apikey: anonKey, Authorization: 'Bearer ' + accessToken };
+        var checkPct = progressOpts.existingCheckPct != null
+            ? progressOpts.existingCheckPct
+            : (rowStart > 18 ? rowStart - 5 : 2);
+        setProgress(checkPct, 'Checking existing...');
+        try {
+            var pageSize = 1000;
+            var offset = 0;
+            while (true) {
+                var url = supabaseUrl
+                    + '/rest/v1/customers?user_id=eq.' + userId
+                    + '&select=id,pg_code,is_friend,phone,email'
+                    + '&limit=' + pageSize
+                    + '&offset=' + offset;
                 var res = await fetch(url, { headers: headers });
-                if (res.ok) {
-                    var list = await res.json();
-                    (list || []).forEach(function (c) {
-                        if (c.pg_code) {
-                            existingMap[c.pg_code] = { id: c.id, is_friend: c.is_friend === true };
-                        }
-                    });
-                }
-            } catch (e) { /* ignore */ }
-            if (pgCodes.length > 100) {
-                for (var b = 0; b < pgCodes.length; b += 100) {
-                    var batch = pgCodes.slice(b, b + 100);
-                    var batchUrl = supabaseUrl + '/rest/v1/customers?user_id=eq.' + userId + '&pg_code=in.(' + batch.map(function (c) { return '"' + c.replace(/"/g, '""') + '"'; }).join(',') + ')&select=id,pg_code,is_friend';
-                    var r = await fetch(batchUrl, { headers: headers });
-                    if (r.ok) {
-                        var arr = await r.json();
-                        (arr || []).forEach(function (c) {
-                            if (c.pg_code) {
-                                existingMap[c.pg_code] = { id: c.id, is_friend: c.is_friend === true };
-                            }
-                        });
-                    }
-                }
+                if (!res.ok) break;
+                var list = await res.json();
+                if (!Array.isArray(list) || list.length === 0) break;
+                list.forEach(function (c) {
+                    var entry = { id: c.id, is_friend: c.is_friend === true };
+                    var pgKey = normalizePgCodeForMatch(c.pg_code);
+                    var phoneKey = normalizePhoneForMatch(c.phone);
+                    var emailKey = normalizeEmailForMatch(c.email);
+                    if (pgKey) existingByPgCode[pgKey] = entry;
+                    if (phoneKey) existingByPhone[phoneKey] = entry;
+                    if (emailKey) existingByEmail[emailKey] = entry;
+                });
+                if (list.length < pageSize) break;
+                offset += pageSize;
             }
-        }
+        } catch (e) { /* ignore */ }
 
         for (var i = startIndex; i < rows.length; i++) {
             var pct = rowStart + Math.round((rowSpan * (i + 1)) / total);
@@ -671,14 +793,22 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             } catch (e) { /* use row only */ }
 
             var payload = buildCustomerPayload(row, processResult, userId);
-            var pgCode = (payload.pg_code || '').trim();
-            var existing = pgCode ? existingMap[pgCode] : null;
+            var pgCode = normalizePgCodeForMatch(payload.pg_code);
+            var phoneKey = normalizePhoneForMatch(payload.phone);
+            var emailKey = normalizeEmailForMatch(payload.email);
+            var existing = null;
+            if (pgCode && existingByPgCode[pgCode]) {
+                existing = existingByPgCode[pgCode];
+            } else if (phoneKey && existingByPhone[phoneKey]) {
+                existing = existingByPhone[phoneKey];
+            } else if (emailKey && existingByEmail[emailKey]) {
+                existing = existingByEmail[emailKey];
+            }
             var existingId = existing && existing.id;
 
             try {
                 if (existingId) {
-                    var patchBody = Object.assign({}, payload);
-                    delete patchBody.is_friend;
+                    var patchBody = buildPatchBodyFromPayload(payload);
                     if (pgCode && existing.is_friend === true) {
                         delete patchBody.name;
                         delete patchBody.sender_name;
@@ -694,7 +824,15 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                         },
                         body: JSON.stringify(patchBody)
                     });
-                    if (patchRes.ok) updated++;
+                    if (patchRes.ok) {
+                        updated++;
+                        var updatedEntry = { id: existingId, is_friend: existing.is_friend === true };
+                        if (pgCode) existingByPgCode[pgCode] = updatedEntry;
+                        if (phoneKey) existingByPhone[phoneKey] = updatedEntry;
+                        if (emailKey) existingByEmail[emailKey] = updatedEntry;
+                    } else {
+                        failed++;
+                    }
                 } else {
                     var postRes = await fetch(supabaseUrl + '/rest/v1/customers', {
                         method: 'POST',
@@ -710,16 +848,23 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                         var created = await postRes.json();
                         if (created && created[0] && created[0].id) {
                             inserted++;
-                            if (pgCode) {
-                                existingMap[pgCode] = {
-                                    id: created[0].id,
-                                    is_friend: created[0].is_friend === true
-                                };
-                            }
+                            var createdEntry = {
+                                id: created[0].id,
+                                is_friend: created[0].is_friend === true
+                            };
+                            if (pgCode) existingByPgCode[pgCode] = createdEntry;
+                            if (phoneKey) existingByPhone[phoneKey] = createdEntry;
+                            if (emailKey) existingByEmail[emailKey] = createdEntry;
+                        } else {
+                            failed++;
                         }
+                    } else {
+                        failed++;
                     }
                 }
-            } catch (e) { /* skip row */ }
+            } catch (e) {
+                failed++;
+            }
             if (typeof progressOpts.onRowProcessed === 'function') {
                 try {
                     await progressOpts.onRowProcessed(i, total, row);
@@ -728,12 +873,18 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             await new Promise(function (r) { setTimeout(r, 80); });
         }
 
-        setProgress(100, 'Done: ' + inserted + ' added, ' + updated + ' updated.');
+        setProgress(100, 'Done: ' + inserted + ' added, ' + updated + ' updated, ' + failed + ' failed.');
         triggerConfetti();
         setBusy(false);
         setTimeout(function () {
             syncProgress.style.display = 'none';
         }, 3000);
+        return {
+            total: total,
+            inserted: inserted,
+            updated: updated,
+            failed: failed
+        };
     }
 
     async function runSync(rowsFetcher, loadingText, fetchErrorMsg) {
@@ -781,7 +932,23 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 return;
             }
 
-            await syncRowsToSupabase(rows, supabaseUrl, anonKey, webappOrigin, userId, accessToken);
+            var runId = await createSyncRun(
+                supabaseUrl,
+                anonKey,
+                accessToken,
+                userId,
+                'single_page_sync',
+                rows.length,
+                { source: 'btn-sync-supabase' }
+            );
+            var result = await syncRowsToSupabase(rows, supabaseUrl, anonKey, webappOrigin, userId, accessToken);
+            await updateSyncRun(supabaseUrl, anonKey, accessToken, runId, {
+                status: result.failed > 0 ? 'failed' : 'completed',
+                inserted_count: result.inserted,
+                updated_count: result.updated,
+                failed_count: result.failed,
+                finished_at: new Date().toISOString()
+            });
         } catch (e) {
             syncProgress.style.display = 'none';
             setBusy(false);
@@ -832,7 +999,16 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                     40 + Math.round((57 * resumeFrom) / resumeState.rows.length),
                     'Resuming from row ' + (resumeFrom + 1) + ' of ' + resumeState.rows.length + '...'
                 );
-                await syncRowsToSupabase(resumeState.rows, supabaseUrl, anonKey, webappOrigin, userId, accessToken, {
+                var resumeRunId = await createSyncRun(
+                    supabaseUrl,
+                    anonKey,
+                    accessToken,
+                    userId,
+                    'downline_all_pages_resume',
+                    resumeState.rows.length,
+                    { source: 'btn-sync-supabase-2', resumed: true }
+                );
+                var resumeResult = await syncRowsToSupabase(resumeState.rows, supabaseUrl, anonKey, webappOrigin, userId, accessToken, {
                     rowStart: 40,
                     rowEnd: 97,
                     startIndex: resumeFrom,
@@ -853,6 +1029,13 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             currentPage: getPageFromRowNumber(resumeState.pageBreaks, rowNumber) || null
                         });
                     }
+                });
+                await updateSyncRun(supabaseUrl, anonKey, accessToken, resumeRunId, {
+                    status: resumeResult.failed > 0 ? 'failed' : 'completed',
+                    inserted_count: resumeResult.inserted,
+                    updated_count: resumeResult.updated,
+                    failed_count: resumeResult.failed,
+                    finished_at: new Date().toISOString()
                 });
                 await clearSync2State(userId);
                 return;
@@ -946,7 +1129,16 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 currentPage: 1
             });
 
-            await syncRowsToSupabase(allRows, supabaseUrl, anonKey, webappOrigin, userId, accessToken, {
+            var runId = await createSyncRun(
+                supabaseUrl,
+                anonKey,
+                accessToken,
+                userId,
+                'downline_all_pages',
+                allRows.length,
+                { source: 'btn-sync-supabase-2', total_pages: totalPages }
+            );
+            var result = await syncRowsToSupabase(allRows, supabaseUrl, anonKey, webappOrigin, userId, accessToken, {
                 rowStart: 40,
                 rowEnd: 97,
                 getRowProgressText: function (rowIndex, totalRows) {
@@ -962,6 +1154,17 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                         lastProcessedRow: rowNumber,
                         currentPage: getPageFromRowNumber(pageBreaks, rowNumber)
                     });
+                }
+            });
+            await updateSyncRun(supabaseUrl, anonKey, accessToken, runId, {
+                status: result.failed > 0 ? 'failed' : 'completed',
+                inserted_count: result.inserted,
+                updated_count: result.updated,
+                failed_count: result.failed,
+                finished_at: new Date().toISOString(),
+                metadata: {
+                    source: 'btn-sync-supabase-2',
+                    total_pages: totalPages
                 }
             });
             await clearSync2State(userId);

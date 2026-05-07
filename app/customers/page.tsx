@@ -226,9 +226,10 @@ export default function CustomersPage() {
   const [ethnicityFilter, setEthnicityFilter] = useState('')
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
+  const [profileVerifiedFilter, setProfileVerifiedFilter] = useState<'' | 'yes' | 'no'>('')
   const [registerMonthFilter, setRegisterMonthFilter] = useState('')
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
-  const [sortBy, setSortBy] = useState('created_at')
+  const [sortBy, setSortBy] = useState('updated_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const [statusCounts, setStatusCounts] = useState<Record<AccountStatusKey, number>>(EMPTY_STATUS_COUNTS)
@@ -313,7 +314,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -327,6 +328,7 @@ export default function CustomersPage() {
     setEthnicityFilter('')
     setBirthdayFilter('')
     setAccountStatusFilter('')
+    setProfileVerifiedFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
     setTagFilter('')
@@ -465,6 +467,7 @@ export default function CustomersPage() {
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
+      if (profileVerifiedFilter) params.append('profileVerified', profileVerifiedFilter)
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
       if (tagFilter) params.append('tagId', tagFilter)
@@ -492,7 +495,7 @@ export default function CustomersPage() {
     }
   }
 
-  const toggleSort = (field: 'created_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob') => {
+  const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
     } else {
@@ -1041,6 +1044,19 @@ export default function CustomersPage() {
               <option value="temporary">Temporary account (daftar, tiada PG code, tak beli)</option>
               <option value="active">Active account (monthly buyer dalam bulan semasa)</option>
               <option value="unknown">Unknown</option>
+            </select>
+
+            <select
+              value={profileVerifiedFilter}
+              onChange={(e) => {
+                setProfileVerifiedFilter((e.target.value || '') as '' | 'yes' | 'no')
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Verified</option>
+              <option value="yes">Verified: Yes</option>
+              <option value="no">Verified: No</option>
             </select>
 
             <select
@@ -2231,12 +2247,12 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                     <button
                       type="button"
-                      onClick={() => toggleSort('created_at')}
+                      onClick={() => toggleSort('updated_at')}
                       className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                       title={sortOrder === 'desc' ? 'Newest first (click for oldest)' : 'Oldest first (click for newest)'}
                     >
                       Imported at
-                      {sortBy === 'created_at' && (
+                      {sortBy === 'updated_at' && (
                         sortOrder === 'desc' ? (
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                         ) : (
@@ -2356,8 +2372,8 @@ export default function CustomersPage() {
                         </td>
 
                         <td className="px-4 py-3 text-sm text-slate-600 whitespace-nowrap">
-                          {customer.created_at
-                            ? new Date(customer.created_at).toLocaleDateString('en-US', {
+                          {(customer.updated_at || customer.created_at)
+                            ? new Date(customer.updated_at || customer.created_at).toLocaleDateString('en-US', {
                               year: 'numeric',
                               month: 'short',
                               day: 'numeric',

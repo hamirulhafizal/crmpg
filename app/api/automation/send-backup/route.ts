@@ -8,8 +8,12 @@ import {
   getAccountStatusKey,
   getLastPurchaseUtcMonthDate,
   getRegistrationUtcMonthDate,
+  isProfileVerifiedNo,
 } from '@/app/lib/customer-account-status'
-import { normalizedScheduledTitle } from '@/app/lib/scheduled-automation-titles'
+import {
+  normalizedScheduledTitle,
+  SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
+} from '@/app/lib/scheduled-automation-titles'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
@@ -729,7 +733,8 @@ export async function GET(request: Request) {
         const isDailyRecurringAutomation =
           title === 'birthday' ||
           // title === 'inactive follow-up' ||
-          title === 'free account follow-up'
+          title === 'free account follow-up' ||
+          title === normalizedScheduledTitle(SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP)
 
         const session = sessionByUser.get(row.user_id)
         const sessionName = session?.session_name
@@ -832,8 +837,9 @@ export async function GET(request: Request) {
           }
 
           //case 'inactive follow-up':
-          case 'free account follow-up': {
-            const kind = 'free'
+          case 'free account follow-up':
+          case 'active account profile-unverified follow-up': {
+            const kind = title === 'free account follow-up' ? 'free' : 'active_profile_unverified'
 
             const { data: sentRows, error: sentErr } = await supabaseAdmin
               .from('followup_campaign_sends')
@@ -866,6 +872,14 @@ export async function GET(request: Request) {
             const candidates = (allCustomers || []).filter((c: Customer) => {
               if (alreadySent.has(c.id)) return false
               const status = getAccountStatusKey(c)
+              if (kind === 'active_profile_unverified') {
+                if (status !== 'active') return false
+                const purchaseParts = getLastPurchaseUtcMonthDate(c)
+                if (!purchaseParts) return false
+                if (purchaseParts.month !== todayMonth) return false
+                return isProfileVerifiedNo(c.original_data)
+              }
+
               // if (kind === 'inactive') {
               //   if (status !== 'inactive') return false
               //   const parts = getLastPurchaseUtcMonthDate(c)

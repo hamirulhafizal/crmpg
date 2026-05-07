@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
+  isBroadcastScheduledTitle,
+  SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
   SCHEDULED_TITLE_BIRTHDAY,
   SCHEDULED_TITLE_FREE_FOLLOWUP,
   SCHEDULED_TITLE_GOLD_PRICE_POSTER,
@@ -42,6 +44,10 @@ const DEFAULT_FREE_FOLLOWUP_TEMPLATE =
   `saya semak kat system tiada jualan dalam tempoh setahun yang lalu
 
 boleh saya tahu, {SenderName} ada perlukan apa-apa bantuan ka ?`
+const DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE =
+  `saya nampak ada pembelian terbaru bulan ini, tapi status profile masih belum verified.
+
+kalau {SenderName} perlukan bantuan untuk lengkapkan profile, saya boleh bantu.`
 // Persist warm-greeting toggle without requiring a new DB column.
 // The worker detects this marker and strips it before rendering the template.
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
@@ -50,6 +56,7 @@ type AutomationTitleType =
   | 'birthday'
   | 'inactive_followup'
   | 'free_followup'
+  | 'active_profile_unverified_followup'
   | 'gold_poster'
   | 'profile'
   | 'skde'
@@ -103,6 +110,7 @@ export default function AutomatedMessagesPage() {
     titleType === 'birthday' ||
     titleType === 'inactive_followup' ||
     titleType === 'free_followup' ||
+    titleType === 'active_profile_unverified_followup' ||
     titleType === 'gold_poster'
 
   const filteredItems = items.filter((item) => {
@@ -280,6 +288,9 @@ export default function AutomatedMessagesPage() {
     if (lower === 'birthday' || lower.includes('birthday')) inferredType = 'birthday'
     else if (lower === 'inactive follow-up') inferredType = 'inactive_followup'
     else if (lower === 'free account follow-up') inferredType = 'free_followup'
+    else if (lower === 'active account profile-unverified follow-up') {
+      inferredType = 'active_profile_unverified_followup'
+    }
     else if (lower === 'gold price poster') inferredType = 'gold_poster'
     else if (lower.startsWith('profile')) inferredType = 'profile'
     else if (lower.includes('skde')) inferredType = 'skde'
@@ -293,6 +304,7 @@ export default function AutomatedMessagesPage() {
           inferredType === 'birthday' ||
           inferredType === 'inactive_followup' ||
           inferredType === 'free_followup' ||
+          inferredType === 'active_profile_unverified_followup' ||
           inferredType === 'gold_poster'
         ) {
           // For birthday flows we use a time-only input (HH:MM)
@@ -531,7 +543,7 @@ export default function AutomatedMessagesPage() {
             ) : (
               <>
                 Create scheduled WhatsApp messages for specific phone numbers, or broadcast automations (birthday, inactive
-                follow-up, free-account follow-up) that run daily at the time you set. Templates support variables like{' '}
+                follow-up, free-account follow-up, active-profile-unverified follow-up) that run daily at the time you set. Templates support variables like{' '}
                 <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{SenderName}'}</code>,{' '}
                 <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{PGCode}'}</code>,{' '}
                 <code className="px-1 py-0.5 rounded bg-slate-100 text-xs">{'{LastPurchaseDate}'}</code>, and{' '}
@@ -568,6 +580,11 @@ export default function AutomatedMessagesPage() {
                   key={item.id}
                   className="flex items-start justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl"
                 >
+                  {(() => {
+                    const isEditableRecurring =
+                      item.status === 'pending' || isBroadcastScheduledTitle(item.title)
+                    return (
+                      <>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-slate-900">
@@ -584,7 +601,7 @@ export default function AutomatedMessagesPage() {
                       >
                         {item.status.toUpperCase()}
                       </span>
-                    {(item.status === 'pending' || normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)) && item.is_enable === false && (
+                    {isEditableRecurring && item.is_enable === false && (
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           DISABLED
                         </span>
@@ -627,7 +644,7 @@ export default function AutomatedMessagesPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {(item.status === 'pending' || normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)) && (
+                    {isEditableRecurring && (
                       <>
                         <button
                           onClick={() => openEdit(item)}
@@ -654,6 +671,9 @@ export default function AutomatedMessagesPage() {
                       </>
                     )}
                   </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
@@ -700,6 +720,12 @@ export default function AutomatedMessagesPage() {
                               title: SCHEDULED_TITLE_FREE_FOLLOWUP,
                               message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
                             }
+                          if (value === 'active_profile_unverified_followup')
+                            return {
+                              ...current,
+                              title: SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
+                              message: DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE,
+                            }
                           if (value === 'gold_poster')
                             return {
                               ...current,
@@ -733,6 +759,12 @@ export default function AutomatedMessagesPage() {
                         Gold price poster (daily groups)
                       </option>
                       <option
+                        value="active_profile_unverified_followup"
+                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP)}
+                      >
+                        Active account profile-unverified follow-up (monthly purchase)
+                      </option>
+                      <option
                         disabled
                         value="inactive_followup"
                         title={
@@ -750,13 +782,17 @@ export default function AutomatedMessagesPage() {
                     </select>
                     )}
 
-                    {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
+                    {(titleType === 'inactive_followup' ||
+                      titleType === 'free_followup' ||
+                      titleType === 'active_profile_unverified_followup') && (
                       <p className="text-xs text-slate-500 mt-2">
                         Auto-send logic: this automation will check customers daily (Malaysia date) and
                         send when the customer matches the selected rule:
                         {titleType === 'inactive_followup'
                           ? ' same month/day as their Last Purchase Date (inactive)'
-                          : ' same month/day as their Date Register (or record created date) (free)'}.
+                          : titleType === 'free_followup'
+                            ? ' same month/day as their Date Register (or record created date) (free)'
+                            : ' active account with purchase in current month and "Profile Verified" = "No"'}.
                         Each customer is sent at most once for each automation type.
                       </p>
                     )}
@@ -925,7 +961,9 @@ export default function AutomatedMessagesPage() {
                   </div>
                 </div>
 
-                {(titleType === 'inactive_followup' || titleType === 'free_followup') && (
+                {(titleType === 'inactive_followup' ||
+                  titleType === 'free_followup' ||
+                  titleType === 'active_profile_unverified_followup') && (
                   <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     <div className="min-w-0">
                       <label className="block text-sm font-medium text-slate-700">Warm greeting</label>

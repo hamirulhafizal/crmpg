@@ -397,3 +397,11 @@ export function formatRegistrationForTemplate(
   }
   return ''
 }
+
+export function isProfileVerifiedNo(originalData: unknown): boolean {
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = data?.['Profile Verified']
+  if (raw === undefined || raw === null) return false
+  const normalized = String(raw).trim().toLowerCase()
+  return normalized === 'no' || normalized === 'n' || normalized === 'false' || normalized === '0'
+}

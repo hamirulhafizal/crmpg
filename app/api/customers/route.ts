@@ -4,9 +4,29 @@ import {
   getAccountStatusKey,
   getLastPurchaseUtcMonthDate,
   getLastPurchaseUtcYmd,
+  normalizeCustomerOriginalData,
   getRegistrationUtcMonthDate,
   getRegistrationUtcYmd,
 } from '@/app/lib/customer-account-status'
+
+function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data['Profile Verified']
+  if (raw === undefined || raw === null || raw === '') return null
+  if (raw === true) return true
+  if (raw === false) return false
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase()
+    if (['true', 'yes', 'y', '1'].includes(v)) return true
+    if (['false', 'no', 'n', '0'].includes(v)) return false
+  }
+  if (typeof raw === 'number') {
+    if (raw === 1) return true
+    if (raw === 0) return false
+  }
+  return null
+}
 
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
@@ -39,6 +59,7 @@ export async function GET(request: Request) {
     const ethnicity = searchParams.get('ethnicity') || ''
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
     const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
+    const profileVerified = searchParams.get('profileVerified') || '' // '', 'yes', 'no'
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
     const tagId = (searchParams.get('tagId') || '').trim()
@@ -52,6 +73,7 @@ export async function GET(request: Request) {
       !!ethnicity ||
       !!birthday ||
       !!accountStatus ||
+      !!profileVerified ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       !!tagId
@@ -94,6 +116,7 @@ export async function GET(request: Request) {
       birthday === 'today' ||
       birthday === 'month' ||
       !!accountStatus ||
+      !!profileVerified ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       isComputedDateSort ||
@@ -241,6 +264,13 @@ export async function GET(request: Request) {
       if (accountStatus) {
         filtered = filtered.filter((c: any) => {
           return getAccountStatusKey(c) === accountStatus
+        })
+      }
+
+      if (profileVerified === 'yes' || profileVerified === 'no') {
+        const wanted = profileVerified === 'yes'
+        filtered = filtered.filter((c: any) => {
+          return parseProfileVerifiedFromOriginalData(c?.original_data) === wanted
         })
       }
 
