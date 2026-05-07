@@ -20,6 +20,11 @@ import { fetchPublicGoldBuybackSnapshot } from '@/app/lib/public-gold-prices'
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
 const MAX_USERS_IN_PARALLEL = 3
+const FOLLOWUP_MAX_CUSTOMERS_PER_RUN = 3
+const FOLLOWUP_CUSTOMER_GAP_MIN_MS = 5 * 1000
+const FOLLOWUP_CUSTOMER_GAP_MAX_MS = 15 * 1000
+const FOLLOWUP_WARMUP_GAP_MIN_MS = 5 * 1000
+const FOLLOWUP_WARMUP_GAP_MAX_MS = 10 * 1000
 
 /** Random wait between *different* customers to avoid WhatsApp bursts (1–3 minutes). */
 const CUSTOMER_SEND_GAP_MIN_MS = 60 * 1000
@@ -1077,7 +1082,15 @@ export async function GET(request: Request) {
                   if (!regParts) return false
                   return regParts.month === todayMonth && regParts.day === todayDate
                 })
-                log.info('[followup] candidates to send:', candidates.length, 'row:', row.id)
+                const followupBatch = candidates.slice(0, FOLLOWUP_MAX_CUSTOMERS_PER_RUN)
+                log.info(
+                  '[followup] candidates to send this run:',
+                  followupBatch.length,
+                  'of',
+                  candidates.length,
+                  'row:',
+                  row.id
+                )
 
                 const warmupEnabled = row.message.startsWith(WARMUP_MESSAGE_MARKER)
                 const followupTemplate = warmupEnabled
@@ -1085,11 +1098,11 @@ export async function GET(request: Request) {
                   : row.message
                 const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
 
-                for (let i = 0; i < candidates.length; i++) {
-                  const customer = candidates[i]
+                for (let i = 0; i < followupBatch.length; i++) {
+                  const customer = followupBatch[i]
                   try {
                     if (i > 0) {
-                      await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
+                      await randomDelayBetween(FOLLOWUP_CUSTOMER_GAP_MIN_MS, FOLLOWUP_CUSTOMER_GAP_MAX_MS)
                     }
 
                     const message = renderCustomerTemplate(followupTemplate, customer)
@@ -1114,7 +1127,7 @@ export async function GET(request: Request) {
 
                         const warmerText = renderCustomerTemplate(warmerTemplate, customer)
                         await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, warmerText)
-                        await randomDelayBetween(30000, 60000)
+                        await randomDelayBetween(FOLLOWUP_WARMUP_GAP_MIN_MS, FOLLOWUP_WARMUP_GAP_MAX_MS)
                       }
 
                       await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)

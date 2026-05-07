@@ -17,6 +17,11 @@ import {
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
+const FOLLOWUP_MAX_CUSTOMERS_PER_RUN = 3
+const FOLLOWUP_CUSTOMER_GAP_MIN_MS = 5 * 1000
+const FOLLOWUP_CUSTOMER_GAP_MAX_MS = 15 * 1000
+const FOLLOWUP_WARMUP_GAP_MIN_MS = 5 * 1000
+const FOLLOWUP_WARMUP_GAP_MAX_MS = 10 * 1000
 
 // set for 1 day
 const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
@@ -909,6 +914,7 @@ export async function GET(request: Request) {
               if (!regParts) return false
               return regParts.month === todayMonth && regParts.day === todayDate
             })
+            const followupBatch = candidates.slice(0, FOLLOWUP_MAX_CUSTOMERS_PER_RUN)
 
             const warmupEnabled = row.message.startsWith(WARMUP_MESSAGE_MARKER)
             const followupTemplate = warmupEnabled
@@ -916,7 +922,7 @@ export async function GET(request: Request) {
               : row.message
             const localHour = localTzNow.getUTCHours() // local time (Malaysia) hour
 
-            for (const customer of candidates) {
+            for (const customer of followupBatch) {
               try {
                 const message = renderCustomerTemplate(followupTemplate, customer)
 
@@ -940,7 +946,7 @@ export async function GET(request: Request) {
 
                     const warmerText = renderCustomerTemplate(warmerTemplate, customer)
                     await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, warmerText)
-                    await randomDelayBetween(30000, 60000)
+                    await randomDelayBetween(FOLLOWUP_WARMUP_GAP_MIN_MS, FOLLOWUP_WARMUP_GAP_MAX_MS)
                   }
 
                   await sendWhatsAppMessage(row.user_id, sessionName, customer.phone!, message)
@@ -1004,7 +1010,7 @@ export async function GET(request: Request) {
                 }
 
                 // Interval between customers to avoid bursts / rate limits.
-                await randomDelayBetween(30000, 60000)
+                await randomDelayBetween(FOLLOWUP_CUSTOMER_GAP_MIN_MS, FOLLOWUP_CUSTOMER_GAP_MAX_MS)
               } catch (err) {
                 console.error('Error preparing follow-up message:', err)
                 failed++
