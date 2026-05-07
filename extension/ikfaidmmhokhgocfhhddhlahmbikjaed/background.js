@@ -723,6 +723,21 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return patchBody;
     }
 
+    function hasExistingClassificationData(existingEntry) {
+        if (!existingEntry) return false;
+        var hasText = function (v) { return typeof v === 'string' && v.trim() !== ''; };
+        var hasAge = function (v) { return typeof v === 'number' && Number.isFinite(v); };
+        return (
+            hasText(existingEntry.gender) &&
+            hasText(existingEntry.ethnicity) &&
+            hasAge(existingEntry.age) &&
+            hasText(existingEntry.prefix) &&
+            hasText(existingEntry.first_name) &&
+            hasText(existingEntry.sender_name) &&
+            hasText(existingEntry.save_name)
+        );
+    }
+
     function buildCustomerPayload(row, processed, userId) {
         var nowIso = new Date().toISOString();
         var name = row.Name || row.name || null;
@@ -788,7 +803,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             while (true) {
                 var url = supabaseUrl
                     + '/rest/v1/customers?user_id=eq.' + userId
-                    + '&select=id,pg_code,is_friend,phone,email'
+                    + '&select=id,pg_code,is_friend,phone,email,gender,ethnicity,age,prefix,first_name,sender_name,save_name'
                     + '&limit=' + pageSize
                     + '&offset=' + offset;
                 var res = await fetch(url, { headers: headers });
@@ -796,7 +811,17 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 var list = await res.json();
                 if (!Array.isArray(list) || list.length === 0) break;
                 list.forEach(function (c) {
-                    var entry = { id: c.id, is_friend: c.is_friend === true };
+                    var entry = {
+                        id: c.id,
+                        is_friend: c.is_friend === true,
+                        gender: c.gender || null,
+                        ethnicity: c.ethnicity || null,
+                        age: c.age,
+                        prefix: c.prefix || null,
+                        first_name: c.first_name || null,
+                        sender_name: c.sender_name || null,
+                        save_name: c.save_name || null
+                    };
                     var pgKey = normalizePgCodeForMatch(c.pg_code);
                     var phoneKey = normalizePhoneForMatch(c.phone);
                     var emailKey = normalizeEmailForMatch(c.email);
@@ -821,24 +846,10 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             setProgress(pct, progressText);
 
             var row = rows[i];
-            var processResult = null;
-            try {
-                var pr = await fetch(webappOrigin + '/api/openai/process-row', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ rowData: row, rowNumber: i + 1 })
-                });
-                var data = await pr.json();
-                if (pr.ok && data && data.result) {
-                    processResult = data.result;
-                }
-            } catch (e) { /* use row only */ }
-
-            var payload = buildCustomerPayload(row, processResult, userId);
-            var pgCode = normalizePgCodeForMatch(payload.pg_code);
-            var phoneKey = normalizePhoneForMatch(payload.phone);
-            var emailKey = normalizeEmailForMatch(payload.email);
             var existing = null;
+            var pgCode = normalizePgCodeForMatch(row.PGCode || row.pg_code || '');
+            var phoneKey = normalizePhoneForMatch(row.Telephone || row.phone || '');
+            var emailKey = normalizeEmailForMatch(row.Email || row.email || '');
             if (pgCode && existingByPgCode[pgCode]) {
                 existing = existingByPgCode[pgCode];
             } else if (phoneKey && existingByPhone[phoneKey]) {
@@ -846,6 +857,25 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             } else if (emailKey && existingByEmail[emailKey]) {
                 existing = existingByEmail[emailKey];
             }
+            var processResult = null;
+            try {
+                if (!hasExistingClassificationData(existing)) {
+                    var pr = await fetch(webappOrigin + '/api/openai/process-row', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rowData: row, rowNumber: i + 1 })
+                    });
+                    var data = await pr.json();
+                    if (pr.ok && data && data.result) {
+                        processResult = data.result;
+                    }
+                }
+            } catch (e) { /* use row only */ }
+
+            var payload = buildCustomerPayload(row, processResult, userId);
+            pgCode = normalizePgCodeForMatch(payload.pg_code);
+            phoneKey = normalizePhoneForMatch(payload.phone);
+            emailKey = normalizeEmailForMatch(payload.email);
             var existingId = existing && existing.id;
 
             try {
@@ -867,7 +897,17 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                     });
                     if (patchRes.ok) {
                         updated++;
-                        var updatedEntry = { id: existingId, is_friend: existing.is_friend === true };
+                        var updatedEntry = {
+                            id: existingId,
+                            is_friend: existing.is_friend === true,
+                            gender: (patchBody.gender != null ? patchBody.gender : existing.gender) || null,
+                            ethnicity: (patchBody.ethnicity != null ? patchBody.ethnicity : existing.ethnicity) || null,
+                            age: patchBody.age != null ? patchBody.age : existing.age,
+                            prefix: (patchBody.prefix != null ? patchBody.prefix : existing.prefix) || null,
+                            first_name: (patchBody.first_name != null ? patchBody.first_name : existing.first_name) || null,
+                            sender_name: (patchBody.sender_name != null ? patchBody.sender_name : existing.sender_name) || null,
+                            save_name: (patchBody.save_name != null ? patchBody.save_name : existing.save_name) || null
+                        };
                         if (pgCode) existingByPgCode[pgCode] = updatedEntry;
                         if (phoneKey) existingByPhone[phoneKey] = updatedEntry;
                         if (emailKey) existingByEmail[emailKey] = updatedEntry;
@@ -891,7 +931,14 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             inserted++;
                             var createdEntry = {
                                 id: created[0].id,
-                                is_friend: created[0].is_friend === true
+                                is_friend: created[0].is_friend === true,
+                                gender: created[0].gender || payload.gender || null,
+                                ethnicity: created[0].ethnicity || payload.ethnicity || null,
+                                age: created[0].age != null ? created[0].age : payload.age,
+                                prefix: created[0].prefix || payload.prefix || null,
+                                first_name: created[0].first_name || payload.first_name || null,
+                                sender_name: created[0].sender_name || payload.sender_name || null,
+                                save_name: created[0].save_name || payload.save_name || null
                             };
                             if (pgCode) existingByPgCode[pgCode] = createdEntry;
                             if (phoneKey) existingByPhone[phoneKey] = createdEntry;
