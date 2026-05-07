@@ -28,6 +28,25 @@ function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | 
   return null
 }
 
+function parseDirectDebitFromOriginalData(originalData: unknown): boolean | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data['Direct Debit Subscription']
+  if (raw === undefined || raw === null || raw === '') return null
+  if (raw === true) return true
+  if (raw === false) return false
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase()
+    if (['true', 'yes', 'y', '1', 'active', 'subscribed'].includes(v)) return true
+    if (['false', 'no', 'n', '0', 'inactive', 'none'].includes(v)) return false
+  }
+  if (typeof raw === 'number') {
+    if (raw === 1) return true
+    if (raw === 0) return false
+  }
+  return null
+}
+
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
   try {
@@ -60,6 +79,7 @@ export async function GET(request: Request) {
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
     const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
     const profileVerified = searchParams.get('profileVerified') || '' // '', 'yes', 'no'
+    const directDebit = searchParams.get('directDebit') || '' // '', 'yes', 'no'
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
     const tagId = (searchParams.get('tagId') || '').trim()
@@ -74,6 +94,7 @@ export async function GET(request: Request) {
       !!birthday ||
       !!accountStatus ||
       !!profileVerified ||
+      !!directDebit ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       !!tagId
@@ -117,6 +138,7 @@ export async function GET(request: Request) {
       birthday === 'month' ||
       !!accountStatus ||
       !!profileVerified ||
+      !!directDebit ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       isComputedDateSort ||
@@ -271,6 +293,13 @@ export async function GET(request: Request) {
         const wanted = profileVerified === 'yes'
         filtered = filtered.filter((c: any) => {
           return parseProfileVerifiedFromOriginalData(c?.original_data) === wanted
+        })
+      }
+
+      if (directDebit === 'yes' || directDebit === 'no') {
+        const wanted = directDebit === 'yes'
+        filtered = filtered.filter((c: any) => {
+          return parseDirectDebitFromOriginalData(c?.original_data) === wanted
         })
       }
 

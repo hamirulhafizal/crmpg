@@ -94,6 +94,23 @@ function getCustomerRowsForSync() {
             return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
         }).join(' ');
     }
+    function parseDirectDebitInfo(rawText) {
+        var text = String(rawText || '').replace(/\s{2,}/g, ' ').trim();
+        if (!text || /^no$/i.test(text)) {
+            return {
+                status: 'No',
+                amount: null,
+                date: null
+            };
+        }
+        var amountMatch = text.match(/rm\s*([\d,]+(?:\.\d+)?)/i);
+        var dateMatch = text.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/);
+        return {
+            status: 'Yes',
+            amount: amountMatch ? amountMatch[1].replace(/,/g, '') : null,
+            date: dateMatch ? dateMatch[1] : null
+        };
+    }
     const company = document.querySelector('#company_select') && document.querySelector('#company_select').value;
     const tables = document.querySelectorAll('.business-center-data-table');
     const table = tables[1];
@@ -108,6 +125,7 @@ function getCustomerRowsForSync() {
         if (td.length < 5) continue;
         const get = (idx) => (td[idx] && td[idx].textContent && td[idx].textContent.replace(/\s{2,}/g, ' ').trim()) || '';
         if (isCompany1) {
+            var directDebit = parseDirectDebitInfo(get(14));
             rows.push({
                 PGCode: get(1),
                 Email: get(2),
@@ -121,7 +139,10 @@ function getCustomerRowsForSync() {
                 'Total Frontline': get(10),
                 'Empire Size': get(11),
                 'Date Register': get(12),
-                'Last Purchase Date': get(13)
+                'Last Purchase Date': get(13),
+                'Direct Debit Subscription': directDebit.status,
+                'Direct Debit Amount': directDebit.amount,
+                'Direct Debit Date': directDebit.date
             });
         } else {
             rows.push({
@@ -151,6 +172,23 @@ async function fetchDownlineSinglePage(pageNum) {
         return s.trim().split(/\s+/).map(function (w) {
             return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
         }).join(' ');
+    }
+    function parseDirectDebitInfo(rawText) {
+        var text = String(rawText || '').replace(/\s{2,}/g, ' ').trim();
+        if (!text || /^no$/i.test(text)) {
+            return {
+                status: 'No',
+                amount: null,
+                date: null
+            };
+        }
+        var amountMatch = text.match(/rm\s*([\d,]+(?:\.\d+)?)/i);
+        var dateMatch = text.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/);
+        return {
+            status: 'Yes',
+            amount: amountMatch ? amountMatch[1].replace(/,/g, '') : null,
+            date: dateMatch ? dateMatch[1] : null
+        };
     }
     function parseTotalPagesFromDoc(doc) {
         var el = doc.querySelector('.pagination-result-block');
@@ -254,6 +292,7 @@ async function fetchDownlineSinglePage(pageNum) {
             return (td[idx] && td[idx].textContent && td[idx].textContent.replace(/\s{2,}/g, ' ').trim()) || '';
         };
         if (hasProfileVerifiedColumn) {
+            var directDebit = parseDirectDebitInfo(get(14));
             rows.push({
                 PGCode: get(1),
                 Email: get(2),
@@ -267,7 +306,10 @@ async function fetchDownlineSinglePage(pageNum) {
                 'Total Frontline': get(10),
                 'Empire Size': get(11),
                 'Date Register': get(12),
-                'Last Purchase Date': get(13)
+                'Last Purchase Date': get(13),
+                'Direct Debit Subscription': directDebit.status,
+                'Direct Debit Amount': directDebit.amount,
+                'Direct Debit Date': directDebit.date
             });
         } else {
             rows.push({
@@ -809,11 +851,10 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             try {
                 if (existingId) {
                     var patchBody = buildPatchBodyFromPayload(payload);
-                    if (pgCode && existing.is_friend === true) {
-                        delete patchBody.name;
-                        delete patchBody.sender_name;
-                        delete patchBody.save_name;
-                    }
+                    // Never overwrite relationship naming fields that users can curate manually in CRM.
+                    delete patchBody.sender_name;
+                    delete patchBody.save_name;
+                    if (pgCode && existing.is_friend === true) delete patchBody.name;
                     var patchRes = await fetch(supabaseUrl + '/rest/v1/customers?id=eq.' + existingId, {
                         method: 'PATCH',
                         headers: {

@@ -133,6 +133,29 @@ const parseProfileVerified = (originalData: any): boolean | null => {
   return null
 }
 
+const parseDirectDebitSubscription = (originalData: any): boolean | null => {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data['Direct Debit Subscription']
+
+  if (raw === undefined || raw === null || raw === '') return null
+  if (raw === true) return true
+  if (raw === false) return false
+
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase()
+    if (['true', 'yes', 'y', '1', 'active', 'subscribed'].includes(v)) return true
+    if (['false', 'no', 'n', '0', 'inactive', 'none'].includes(v)) return false
+  }
+
+  if (typeof raw === 'number') {
+    if (raw === 1) return true
+    if (raw === 0) return false
+  }
+
+  return null
+}
+
 const parseOriginalDateToUTC = (value: unknown): number | null => {
   if (!value) return null
   if (typeof value !== 'string') return null
@@ -227,6 +250,7 @@ export default function CustomersPage() {
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
   const [profileVerifiedFilter, setProfileVerifiedFilter] = useState<'' | 'yes' | 'no'>('')
+  const [directDebitFilter, setDirectDebitFilter] = useState<'' | 'yes' | 'no'>('')
   const [registerMonthFilter, setRegisterMonthFilter] = useState('')
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('updated_at')
@@ -314,7 +338,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -329,6 +353,7 @@ export default function CustomersPage() {
     setBirthdayFilter('')
     setAccountStatusFilter('')
     setProfileVerifiedFilter('')
+    setDirectDebitFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
     setTagFilter('')
@@ -468,6 +493,7 @@ export default function CustomersPage() {
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
       if (profileVerifiedFilter) params.append('profileVerified', profileVerifiedFilter)
+      if (directDebitFilter) params.append('directDebit', directDebitFilter)
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
       if (tagFilter) params.append('tagId', tagFilter)
@@ -1057,6 +1083,19 @@ export default function CustomersPage() {
               <option value="">All Verified</option>
               <option value="yes">Verified: Yes</option>
               <option value="no">Verified: No</option>
+            </select>
+
+            <select
+              value={directDebitFilter}
+              onChange={(e) => {
+                setDirectDebitFilter((e.target.value || '') as '' | 'yes' | 'no')
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Direct Debit (all)</option>
+              <option value="yes">Direct Debit: Yes</option>
+              <option value="no">Direct Debit: No</option>
             </select>
 
             <select
@@ -2207,6 +2246,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Friend</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Direct Debit</th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Status</th>
 
@@ -2268,7 +2308,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={19} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={20} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -2323,6 +2363,30 @@ export default function CustomersPage() {
                             : parseProfileVerified(customer.original_data) === false
                               ? 'No'
                               : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {(() => {
+                            const directDebit = parseDirectDebitSubscription(customer.original_data)
+                            if (directDebit === true) {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  Yes
+                                </span>
+                              )
+                            }
+                            if (directDebit === false) {
+                              return (
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                                  No
+                                </span>
+                              )
+                            }
+                            return (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                -
+                              </span>
+                            )
+                          })()}
                         </td>
 
                         <td className="px-4 py-3 text-sm">
