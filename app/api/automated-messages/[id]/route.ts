@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { normalizedScheduledTitle, SCHEDULED_TITLE_GOLD_PRICE_POSTER } from '@/app/lib/scheduled-automation-titles'
+import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import {
+  isBroadcastScheduledTitle,
+  normalizedScheduledTitle,
+  SCHEDULED_TITLE_GOLD_PRICE_POSTER,
+} from '@/app/lib/scheduled-automation-titles'
 
 // GET /api/automated-messages/[id] - Fetch a single scheduled message
 export async function GET(
@@ -126,21 +131,48 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
+    const admin = createServiceRoleClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { error } = await supabase
+    const { data: existing, error: existingError } = await admin
+      .from('scheduled_messages')
+      .select('id, title')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (existingError || !existing) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
+    const isGoldPoster =
+      normalizedScheduledTitle(existing.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
+    const isRecurringAutomation = isGoldPoster || isBroadcastScheduledTitle(existing.title)
+
+    let deleteQuery = admin
       .from('scheduled_messages')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id)
-      .eq('status', 'pending')
+
+    // Preserve old safety for one-off personal schedules; recurring automations
+    // should be removable even if latest run already marked as sent.
+    if (!isRecurringAutomation) {
+      deleteQuery = deleteQuery.eq('status', 'pending')
+    }
+
+    const { data, error } = await deleteQuery.select('id')
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: 'Not found or not deletable' }, { status: 404 })
     }
 
     return NextResponse.json({ success: true })

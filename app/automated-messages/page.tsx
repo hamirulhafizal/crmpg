@@ -45,12 +45,18 @@ const DEFAULT_FREE_FOLLOWUP_TEMPLATE =
 
 boleh saya tahu, {SenderName} ada perlukan apa-apa bantuan ka ?`
 const DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE =
-  `saya nampak ada pembelian terbaru bulan ini, tapi status profile masih belum verified.
-
-kalau {SenderName} perlukan bantuan untuk lengkapkan profile, saya boleh bantu.`
+  `saya dapat info dari PG, {SenderName} dah mula menabung Emas, Tahniah ya {SenderName} ! 👏🎉 \n
+cuma status profile masih belum verified.\n\nkalau {SenderName} sedia sekarang, kita update profile kejap boleh ?`
 // Persist warm-greeting toggle without requiring a new DB column.
 // The worker detects this marker and strips it before rendering the template.
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
+
+const getDefaultScheduleTimePlus3Minutes = (): string => {
+  const d = new Date(Date.now() + 3 * 60 * 1000)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
+}
 
 type AutomationTitleType =
   | 'birthday'
@@ -75,7 +81,7 @@ export default function AutomatedMessagesPage() {
     title: '',
     phone: '',
     message: DEFAULT_TEMPLATE,
-    scheduled_at: '',
+    scheduled_at: getDefaultScheduleTimePlus3Minutes(),
     is_enable: true,
     warmup_enabled: false,
     poster_session: '',
@@ -251,7 +257,7 @@ export default function AutomatedMessagesPage() {
       title: SCHEDULED_TITLE_BIRTHDAY,
       phone: '',
       message: DEFAULT_TEMPLATE,
-      scheduled_at: '',
+      scheduled_at: getDefaultScheduleTimePlus3Minutes(),
       is_enable: true,
       warmup_enabled: false,
       poster_session: '',
@@ -263,14 +269,11 @@ export default function AutomatedMessagesPage() {
   }
 
   const openCreateGoldPoster = () => {
-    const nowMy = new Date(Date.now() + 3 * 60 * 1000)
-    const hh = String(nowMy.getHours()).padStart(2, '0')
-    const mm = String(nowMy.getMinutes()).padStart(2, '0')
     setForm({
       title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
       phone: '',
       message: 'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
-      scheduled_at: `${hh}:${mm}`,
+      scheduled_at: getDefaultScheduleTimePlus3Minutes(),
       is_enable: true,
       warmup_enabled: false,
       poster_session: '',
@@ -296,7 +299,8 @@ export default function AutomatedMessagesPage() {
     else if (lower.includes('skde')) inferredType = 'skde'
     else if (lower === 'gap') inferredType = 'gap'
 
-    let scheduledValue = ''
+    // set now as scheduled_at
+    let scheduledValue = new Date().toISOString();
     if (item.scheduled_at) {
       const d = new Date(item.scheduled_at)
       if (!Number.isNaN(d.getTime())) {
@@ -325,18 +329,18 @@ export default function AutomatedMessagesPage() {
     const hasWarmup = itemMessage.startsWith(WARMUP_MESSAGE_MARKER)
     const posterPayload = inferredType === 'gold_poster'
       ? (() => {
-          try {
-            const parsed = JSON.parse(item.phone || '{}') as { session?: string; groups?: string[] }
-            return {
-              session: String(parsed.session || ''),
-              groups: Array.isArray(parsed.groups)
-                ? parsed.groups.map((g) => String(g)).filter((g) => g.endsWith('@g.us'))
-                : [],
-            }
-          } catch {
-            return { session: '', groups: [] as string[] }
+        try {
+          const parsed = JSON.parse(item.phone || '{}') as { session?: string; groups?: string[] }
+          return {
+            session: String(parsed.session || ''),
+            groups: Array.isArray(parsed.groups)
+              ? parsed.groups.map((g) => String(g)).filter((g) => g.endsWith('@g.us'))
+              : [],
           }
-        })()
+        } catch {
+          return { session: '', groups: [] as string[] }
+        }
+      })()
       : { session: '', groups: [] as string[] }
 
     setForm({
@@ -439,7 +443,7 @@ export default function AutomatedMessagesPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Cancel this scheduled message? It will not be sent.')) return
+    if (!confirm('Delete this scheduled message? This action cannot be undone.')) return
     setIsDeleting(id)
     setError(null)
     try {
@@ -585,92 +589,91 @@ export default function AutomatedMessagesPage() {
                       item.status === 'pending' || isBroadcastScheduledTitle(item.title)
                     return (
                       <>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900">
-                        {item.title || 'Untitled'}
-                      </span>
-                      <span
-                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          item.status === 'pending'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : item.status === 'sent'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}
-                      >
-                        {item.status.toUpperCase()}
-                      </span>
-                    {isEditableRecurring && item.is_enable === false && (
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          DISABLED
-                        </span>
-                      )}
-                    </div>
-                    {item.phone && normalizedScheduledTitle(item.title) !== 'gold price poster' && (
-                      <p className="text-sm text-slate-600">
-                        To:{' '}
-                        <span className="font-mono text-slate-800">{item.phone}</span>
-                      </p>
-                    )}
-                    {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
-                      <div className="text-sm text-slate-600">
-                        {(() => {
-                          const cfg = parseGoldPosterConfig(item.phone)
-                          if (!cfg) return <p>Config invalid. Edit this schedule.</p>
-                          return (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-slate-900">
+                              {item.title || 'Untitled'}
+                            </span>
+                            <span
+                              className={`text-xs font-semibold px-2 py-0.5 rounded-full ${item.status === 'pending'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : item.status === 'sent'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-red-50 text-red-700 border border-red-200'
+                                }`}
+                            >
+                              {item.status.toUpperCase()}
+                            </span>
+                            {isEditableRecurring && item.is_enable === false && (
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                DISABLED
+                              </span>
+                            )}
+                          </div>
+                          {item.phone && normalizedScheduledTitle(item.title) !== 'gold price poster' && (
+                            <p className="text-sm text-slate-600">
+                              To:{' '}
+                              <span className="font-mono text-slate-800">{item.phone}</span>
+                            </p>
+                          )}
+                          {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
+                            <div className="text-sm text-slate-600">
+                              {(() => {
+                                const cfg = parseGoldPosterConfig(item.phone)
+                                if (!cfg) return <p>Config invalid. Edit this schedule.</p>
+                                return (
+                                  <>
+                                    <p>Session: <span className="font-mono text-slate-800">{cfg.session}</span></p>
+                                    <p>Groups: <span className="font-semibold text-slate-800">{cfg.groups.length}</span></p>
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          )}
+                          <p className="text-sm text-slate-600">
+                            Scheduled at{' '}
+                            {new Date(item.scheduled_at).toLocaleString(undefined, {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                          <p className="text-sm text-slate-700 mt-1 line-clamp-2">
+                            {item.message.startsWith(WARMUP_MESSAGE_MARKER)
+                              ? item.message.slice(WARMUP_MESSAGE_MARKER.length)
+                              : item.message}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isEditableRecurring && (
                             <>
-                              <p>Session: <span className="font-mono text-slate-800">{cfg.session}</span></p>
-                              <p>Groups: <span className="font-semibold text-slate-800">{cfg.groups.length}</span></p>
+                              <button
+                                onClick={() => openEdit(item)}
+                                className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              >
+                                Edit
+                              </button>
+                              {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
+                                <button
+                                  onClick={() => handleTestSend(item.id)}
+                                  disabled={isTesting === item.id}
+                                  className="px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                  {isTesting === item.id ? 'Sending...' : 'Send test now'}
+                                </button>
+                              )}
                             </>
-                          )
-                        })()}
-                      </div>
-                    )}
-                    <p className="text-sm text-slate-600">
-                      Scheduled at{' '}
-                      {new Date(item.scheduled_at).toLocaleString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </p>
-                    <p className="text-sm text-slate-700 mt-1 line-clamp-2">
-                      {item.message.startsWith(WARMUP_MESSAGE_MARKER)
-                        ? item.message.slice(WARMUP_MESSAGE_MARKER.length)
-                        : item.message}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isEditableRecurring && (
-                      <>
-                        <button
-                          onClick={() => openEdit(item)}
-                          className="px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        >
-                          Edit
-                        </button>
-                        {normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) && (
+                          )}
                           <button
-                            onClick={() => handleTestSend(item.id)}
-                            disabled={isTesting === item.id}
-                            className="px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                            onClick={() => handleDelete(item.id)}
+                            disabled={isDeleting === item.id}
+                            className="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            {isTesting === item.id ? 'Sending...' : 'Send test now'}
+                            {isDeleting === item.id ? 'Deleting...' : 'Delete'}
                           </button>
-                        )}
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          disabled={isDeleting === item.id}
-                          className="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          {isDeleting === item.id ? 'Deleting...' : 'Cancel'}
-                        </button>
-                      </>
-                    )}
-                  </div>
+                        </div>
                       </>
                     )
                   })()}
@@ -701,101 +704,101 @@ export default function AutomatedMessagesPage() {
                       </div>
                     ) : (
                       <select
-                      value={titleType}
-                      onChange={(e) => {
-                        const value = e.target.value as AutomationTitleType
-                        setTitleType(value)
-                        setForm(current => {
-                          if (value === 'birthday')
-                            return { ...current, title: SCHEDULED_TITLE_BIRTHDAY, message: DEFAULT_TEMPLATE }
-                          if (value === 'inactive_followup')
-                            return {
-                              ...current,
-                              title: SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
-                              message: DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE,
-                            }
-                          if (value === 'free_followup')
-                            return {
-                              ...current,
-                              title: SCHEDULED_TITLE_FREE_FOLLOWUP,
-                              message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
-                            }
-                          if (value === 'active_profile_unverified_followup')
-                            return {
-                              ...current,
-                              title: SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
-                              message: DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE,
-                            }
-                          if (value === 'gold_poster')
-                            return {
-                              ...current,
-                              title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
-                              message:
-                                'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
-                              poster_session: current.poster_session || '',
-                              poster_groups: current.poster_groups || [],
-                            }
-                          if (value === 'profile') return { ...current, title: 'Profile (coming soon)' }
-                          if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
-                          if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
-                          return { ...current, title: '' }
-                        })
-                      }}
-                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="birthday" disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_BIRTHDAY)}>
-                        Birthday
-                      </option>
-                      <option
-                        value="free_followup"
-                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_FREE_FOLLOWUP)}
+                        value={titleType}
+                        onChange={(e) => {
+                          const value = e.target.value as AutomationTitleType
+                          setTitleType(value)
+                          setForm(current => {
+                            if (value === 'birthday')
+                              return { ...current, title: SCHEDULED_TITLE_BIRTHDAY, message: DEFAULT_TEMPLATE }
+                            if (value === 'inactive_followup')
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
+                                message: DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE,
+                              }
+                            if (value === 'free_followup')
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_FREE_FOLLOWUP,
+                                message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
+                              }
+                            if (value === 'active_profile_unverified_followup')
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
+                                message: DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE,
+                              }
+                            if (value === 'gold_poster')
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
+                                message:
+                                  'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
+                                poster_session: current.poster_session || '',
+                                poster_groups: current.poster_groups || [],
+                              }
+                            if (value === 'profile') return { ...current, title: 'Profile (coming soon)' }
+                            if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
+                            if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
+                            return { ...current, title: '' }
+                          })
+                        }}
+                        className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       >
-                        Free account follow-up (registration anniversary)
-                      </option>
-                      <option
-                        value="gold_poster"
-                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_GOLD_PRICE_POSTER)}
-                      >
-                        Gold price poster (daily groups)
-                      </option>
-                      <option
-                        value="active_profile_unverified_followup"
-                        disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP)}
-                      >
-                        Active account profile-unverified follow-up (monthly purchase)
-                      </option>
-                      <option
-                        disabled
-                        value="inactive_followup"
-                        title={
-                          isBroadcastTitleOngoing(SCHEDULED_TITLE_INACTIVE_FOLLOWUP)
-                            ? 'Already scheduled'
-                            : 'Coming soon'
-                        }
-                      >
-                        Inactive follow-up (last purchase anniversary)
-                      </option>
-                      <option disabled value="profile">Profile (coming soon)</option>
-                      <option disabled value="skde">SKDE (coming soon)</option>
-                      <option disabled value="gap">GAP (coming soon)</option>
-                      {/* <option value="customer">Customer (custom title)</option> */}
-                    </select>
+                        <option value="birthday" disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_BIRTHDAY)}>
+                          Birthday
+                        </option>
+                        <option
+                          value="free_followup"
+                          disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_FREE_FOLLOWUP)}
+                        >
+                          Free account follow-up (registration anniversary)
+                        </option>
+                        <option
+                          value="gold_poster"
+                          disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_GOLD_PRICE_POSTER)}
+                        >
+                          Gold price poster (daily groups)
+                        </option>
+                        <option
+                          value="active_profile_unverified_followup"
+                          disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP)}
+                        >
+                          Active account profile-unverified follow-up (monthly purchase)
+                        </option>
+                        <option
+                          disabled
+                          value="inactive_followup"
+                          title={
+                            isBroadcastTitleOngoing(SCHEDULED_TITLE_INACTIVE_FOLLOWUP)
+                              ? 'Already scheduled'
+                              : 'Coming soon'
+                          }
+                        >
+                          Inactive follow-up (last purchase anniversary)
+                        </option>
+                        <option disabled value="profile">Profile (coming soon)</option>
+                        <option disabled value="skde">SKDE (coming soon)</option>
+                        <option disabled value="gap">GAP (coming soon)</option>
+                        {/* <option value="customer">Customer (custom title)</option> */}
+                      </select>
                     )}
 
                     {(titleType === 'inactive_followup' ||
                       titleType === 'free_followup' ||
                       titleType === 'active_profile_unverified_followup') && (
-                      <p className="text-xs text-slate-500 mt-2">
-                        Auto-send logic: this automation will check customers daily (Malaysia date) and
-                        send when the customer matches the selected rule:
-                        {titleType === 'inactive_followup'
-                          ? ' same month/day as their Last Purchase Date (inactive)'
-                          : titleType === 'free_followup'
-                            ? ' same month/day as their Date Register (or record created date) (free)'
-                            : ' active account with purchase in current month and "Profile Verified" = "No"'}.
-                        Each customer is sent at most once for each automation type.
-                      </p>
-                    )}
+                        <p className="text-xs text-slate-500 mt-2">
+                          Auto-send logic: this automation will check customers daily (Malaysia date) and
+                          send when the customer matches the selected rule:
+                          {titleType === 'inactive_followup'
+                            ? ' same month/day as their Last Purchase Date (inactive)'
+                            : titleType === 'free_followup'
+                              ? ' same month/day as their Date Register (or record created date) (free)'
+                              : ' active account with purchase in current month and "Profile Verified" = "No"'}.
+                          Each customer is sent at most once for each automation type.
+                        </p>
+                      )}
 
                     {titleType === 'customer' && (
                       <input
@@ -936,7 +939,7 @@ export default function AutomatedMessagesPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 w-[35%] md:w-[17%]"> 
+                  <div className="flex items-center gap-2 w-[35%] md:w-[17%]">
 
                     <button
                       type="button"
@@ -946,15 +949,13 @@ export default function AutomatedMessagesPage() {
                       onClick={() =>
                         setForm((cur) => ({ ...cur, is_enable: !Boolean(cur.is_enable) }))
                       }
-                      className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                        form.is_enable ? 'bg-blue-600' : 'bg-slate-300'
-                      }`}
+                      className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${form.is_enable ? 'bg-blue-600' : 'bg-slate-300'
+                        }`}
                     >
                       <span
                         aria-hidden="true"
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                          form.is_enable ? 'translate-x-6' : 'translate-x-0'
-                        }`}
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${form.is_enable ? 'translate-x-6' : 'translate-x-0'
+                          }`}
                       />
                     </button>
 
@@ -964,41 +965,39 @@ export default function AutomatedMessagesPage() {
                 {(titleType === 'inactive_followup' ||
                   titleType === 'free_followup' ||
                   titleType === 'active_profile_unverified_followup') && (
-                  <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <div className="min-w-0">
-                      <label className="block text-sm font-medium text-slate-700">Warm greeting</label>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Malay: <span className="font-mono">Salam, {'{SenderName}'}</span>
-                        <br />
-                        Others: <span className="font-mono">Selamat Pagi/Petang/Malam, {'{SenderName}'}</span>
-                        <br />
-                        Send greeting, wait 3–5s, then send the main template.
-                      </p>
-                    </div>
+                    <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="min-w-0">
+                        <label className="block text-sm font-medium text-slate-700">Warm greeting</label>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Malay: <span className="font-mono">Salam, {'{SenderName}'}</span>
+                          <br />
+                          Others: <span className="font-mono">Selamat Pagi/Petang/Malam, {'{SenderName}'}</span>
+                          <br />
+                          Send greeting, wait 3–5s, then send the main template.
+                        </p>
+                      </div>
 
-                    <div className="flex items-center gap-2 w-[35%] md:w-[17%]">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Enable warm greeting"
-                        aria-checked={Boolean(form.warmup_enabled)}
-                        onClick={() =>
-                          setForm((cur) => ({ ...cur, warmup_enabled: !Boolean(cur.warmup_enabled) }))
-                        }
-                        className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                          form.warmup_enabled ? 'bg-blue-600' : 'bg-slate-300'
-                        }`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                            form.warmup_enabled ? 'translate-x-6' : 'translate-x-0'
-                          }`}
-                        />
-                      </button>
+                      <div className="flex items-center gap-2 w-[35%] md:w-[17%]">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-label="Enable warm greeting"
+                          aria-checked={Boolean(form.warmup_enabled)}
+                          onClick={() =>
+                            setForm((cur) => ({ ...cur, warmup_enabled: !Boolean(cur.warmup_enabled) }))
+                          }
+                          className={`relative inline-flex h-6 w-[-webkit-fill-available] items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${form.warmup_enabled ? 'bg-blue-600' : 'bg-slate-300'
+                            }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${form.warmup_enabled ? 'translate-x-6' : 'translate-x-0'
+                              }`}
+                          />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Message template</label>
@@ -1013,13 +1012,13 @@ export default function AutomatedMessagesPage() {
                     Available variables from your customer record:{' '}
                     {variables.length > 0
                       ? variables.map((v, idx) => (
-                          <span key={v}>
-                            {'{'}
-                            {v}
-                            {'}'}
-                            {idx < variables.length - 1 ? ', ' : ''}
-                          </span>
-                        ))
+                        <span key={v}>
+                          {'{'}
+                          {v}
+                          {'}'}
+                          {idx < variables.length - 1 ? ', ' : ''}
+                        </span>
+                      ))
                       : 'loading...'}
                   </p>
                 </div>
