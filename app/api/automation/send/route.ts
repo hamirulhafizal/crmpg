@@ -37,6 +37,16 @@ async function randomDelayBetween(minMs: number, maxMs: number) {
   await sleep(delay)
 }
 
+function isTypingChatNotFoundError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+      ? error
+      : JSON.stringify(error)
+  return message.toLowerCase().includes('chat not found')
+}
+
 async function runWithConcurrency<TItem, TResult>(
   items: TItem[],
   maxConcurrent: number,
@@ -227,7 +237,11 @@ async function sendWhatsAppMessage(userId: string, session: string, phone: strin
       }),
     }, { userId })
   } catch (e) {
-    console.warn('startTyping failed; continuing with sendText:', e)
+    if (isTypingChatNotFoundError(e)) {
+      console.info('startTyping skipped: chat not found (continuing with sendText)')
+    } else {
+      console.warn('startTyping failed; continuing with sendText:', e)
+    }
   }
 
   await randomDelayBetween(minTyping, maxTyping)
@@ -241,7 +255,11 @@ async function sendWhatsAppMessage(userId: string, session: string, phone: strin
       }),
     }, { userId })
   } catch (e) {
-    console.warn('stopTyping failed; continuing with sendText:', e)
+    if (isTypingChatNotFoundError(e)) {
+      console.info('stopTyping skipped: chat not found (continuing with sendText)')
+    } else {
+      console.warn('stopTyping failed; continuing with sendText:', e)
+    }
   }
 
   await wahaFetch('/api/sendText', {
