@@ -26,9 +26,9 @@ const FOLLOWUP_CUSTOMER_GAP_MAX_MS = 15 * 1000
 const FOLLOWUP_WARMUP_GAP_MIN_MS = 5 * 1000
 const FOLLOWUP_WARMUP_GAP_MAX_MS = 10 * 1000
 
-/** Random wait between *different* customers to avoid WhatsApp bursts (1–3 minutes). */
-const CUSTOMER_SEND_GAP_MIN_MS = 60 * 1000
-const CUSTOMER_SEND_GAP_MAX_MS = 3 * 60 * 1000
+/** Random wait between *different* birthday customers to avoid bursts. */
+const CUSTOMER_SEND_GAP_MIN_MS = 8 * 1000
+const CUSTOMER_SEND_GAP_MAX_MS = 20 * 1000
 
 // set for 1 day
 const SESSION_EXPIRED_NOTICE_COOLDOWN_MS = 24 * 60 * 60 * 1000
@@ -50,6 +50,49 @@ function isTypingChatNotFoundError(error: unknown): boolean {
       ? error
       : JSON.stringify(error)
   return message.toLowerCase().includes('chat not found')
+}
+
+function isRetryableSendChatError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+      ? error
+      : JSON.stringify(error)
+  const m = message.toLowerCase()
+  return (
+    m.includes('chat not found') ||
+    m.includes('chat_not_found') ||
+    m.includes('unknown chat') ||
+    m.includes('no lid for user') ||
+    m.includes('no lid')
+  )
+}
+
+async function resolveWahaLidChatId(
+  userId: string,
+  session: string,
+  digits: string
+): Promise<string | null> {
+  const encSession = encodeURIComponent(session)
+  const candidates = [
+    `/api/${encSession}/lids/pn/${encodeURIComponent(digits)}`,
+    `/api/${encSession}/lids/pn/${encodeURIComponent(`${digits}@c.us`)}`,
+    `/api/sessions/${encSession}/lids/pn/${encodeURIComponent(digits)}`,
+  ]
+  for (const path of candidates) {
+    try {
+      const data = await wahaFetch<unknown>(path, { method: 'GET' }, { userId })
+      if (data && typeof data === 'object') {
+        const lid = (data as Record<string, unknown>).lid
+        if (typeof lid === 'string' && /@lid$/i.test(lid.trim())) return lid.trim()
+      }
+    } catch (e) {
+      if (e instanceof WahaApiError && (e.status === 404 || e.status === 405)) continue
+      // Best-effort lookup only.
+    }
+  }
+  return null
 }
 
 async function runWithConcurrency<TItem, TResult>(
@@ -219,7 +262,11 @@ function humanizeWhatsAppText(input: string): string {
 
 async function sendWhatsAppMessage(userId: string, session: string, phone: string, text: string) {
   const digits = normalisePhoneToMsisdn(phone)
-  const chatId = `${digits}@c.us`
+  const lidChatId = await resolveWahaLidChatId(userId, session, digits)
+  const chatCandidates = Array.from(
+    new Set([...(lidChatId ? [lidChatId] : []), `${digits}@c.us`, `${digits}@s.whatsapp.net`])
+  )
+  const typingChatId = chatCandidates[0]
   const humanText = humanizeWhatsAppText(text)
 
   // WAHA "human-like" typing indicators.
@@ -238,7 +285,7 @@ async function sendWhatsAppMessage(userId: string, session: string, phone: strin
       method: 'POST',
       body: JSON.stringify({
         session,
-        chatId,
+        chatId: typingChatId,
       }),
     }, { userId })
   } catch (e) {
@@ -256,7 +303,7 @@ async function sendWhatsAppMessage(userId: string, session: string, phone: strin
       method: 'POST',
       body: JSON.stringify({
         session,
-        chatId,
+        chatId: typingChatId,
       }),
     }, { userId })
   } catch (e) {
@@ -267,14 +314,25 @@ async function sendWhatsAppMessage(userId: string, session: string, phone: strin
     }
   }
 
-  await wahaFetch('/api/sendText', {
-    method: 'POST',
-    body: JSON.stringify({
-      session,
-      chatId,
-      text: humanText,
-    }),
-  }, { userId })
+  let lastErr: unknown = null
+  for (const chatId of chatCandidates) {
+    try {
+      await wahaFetch('/api/sendText', {
+        method: 'POST',
+        body: JSON.stringify({
+          session,
+          chatId,
+          text: humanText,
+        }),
+      }, { userId })
+      return
+    } catch (e) {
+      lastErr = e
+      if (isRetryableSendChatError(e)) continue
+      throw e
+    }
+  }
+  if (lastErr) throw lastErr
 }
 
 function normalisePhoneToMsisdn(phone: string): string {
