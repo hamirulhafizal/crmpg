@@ -86,7 +86,7 @@ function buildMessageFetchCandidates(
   const encChatS = encodeURIComponent(`${msisdn}@s.whatsapp.net`)
   const encLid =
     lidChatId && /@lid$/i.test(lidChatId.trim()) ? encodeURIComponent(lidChatId.trim()) : null
-  const L = encodeURIComponent(String(lim))
+  const limitVariants = [...new Set([lim, 100, 50, 20].filter((n) => n <= lim && n >= 1))]
 
   const encKnown =
     knownChatId && knownChatId.includes('@') ? encodeURIComponent(knownChatId.trim()) : null
@@ -95,12 +95,15 @@ function buildMessageFetchCandidates(
   ]
 
   const ordered: string[] = []
-  for (const ec of encChats) {
-    ordered.push(`/api/${encSession}/chats/${ec}/messages?limit=${L}`)
-    ordered.push(`/api/${encSession}/chats/${ec}/messages/?limit=${L}`)
-    ordered.push(`/api/${encSession}/chats/${ec}/messages?limit=${L}&downloadMedia=false`)
-    ordered.push(`/api/sessions/${encSession}/chats/${ec}/messages?limit=${L}`)
-    ordered.push(`/api/sessions/${encSession}/chats/${ec}/messages/?limit=${L}`)
+  for (const currentLimit of limitVariants) {
+    const L = encodeURIComponent(String(currentLimit))
+    for (const ec of encChats) {
+      ordered.push(`/api/${encSession}/chats/${ec}/messages?limit=${L}`)
+      ordered.push(`/api/${encSession}/chats/${ec}/messages/?limit=${L}`)
+      ordered.push(`/api/${encSession}/chats/${ec}/messages?limit=${L}&downloadMedia=false`)
+      ordered.push(`/api/sessions/${encSession}/chats/${ec}/messages?limit=${L}`)
+      ordered.push(`/api/sessions/${encSession}/chats/${ec}/messages/?limit=${L}`)
+    }
   }
   const seen = new Set<string>()
   return ordered.filter((p) => (seen.has(p) ? false : (seen.add(p), true)))
@@ -109,6 +112,7 @@ function buildMessageFetchCandidates(
 /** WAHA often returns 500 + chat_not_found for wrong JID suffix; same as 404 for our retry loop */
 function isRetryableChatIdOrRouteFailure(e: WahaApiError): boolean {
   if (e.status === 404 || e.status === 405) return true
+  if (e.status === 408) return true
   if (e.status !== 500) return false
   const m = e.message.toLowerCase()
   if (m.includes('chat not found')) return true
