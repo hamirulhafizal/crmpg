@@ -7,6 +7,7 @@ import Link from 'next/link'
 import {
   isBroadcastScheduledTitle,
   SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
+  SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP,
   SCHEDULED_TITLE_BIRTHDAY,
   SCHEDULED_TITLE_FREE_FOLLOWUP,
   SCHEDULED_TITLE_GOLD_PRICE_POSTER,
@@ -47,6 +48,17 @@ boleh saya tahu, {SenderName} ada perlukan apa-apa bantuan ka ?`
 const DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE =
   `saya dapat info dari PG, {SenderName} dah mula menabung Emas, Tahniah ya {SenderName} ! 👏🎉 \n
 cuma status profile masih belum verified.\n\nkalau {SenderName} sedia sekarang, kita update profile kejap boleh ?`
+const DEFAULT_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP_TEMPLATE =
+  `saya semak akaun {SenderName} aktif dan profile sudah verified 👍
+
+belum aktifkan Direct Debit lagi kan? kalau {SenderName} nak, saya boleh bantu setup auto debit sekarang.`
+const DEFAULT_AUTOMATION_TEMPLATES = {
+  birthday: DEFAULT_TEMPLATE,
+  inactive_followup: DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE,
+  free_followup: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
+  active_profile_unverified_followup: DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE,
+  active_verified_no_autodebit_followup: DEFAULT_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP_TEMPLATE,
+}
 // Persist warm-greeting toggle without requiring a new DB column.
 // The worker detects this marker and strips it before rendering the template.
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
@@ -63,6 +75,7 @@ type AutomationTitleType =
   | 'inactive_followup'
   | 'free_followup'
   | 'active_profile_unverified_followup'
+  | 'active_verified_no_autodebit_followup'
   | 'gold_poster'
   | 'profile'
   | 'skde'
@@ -91,6 +104,7 @@ export default function AutomatedMessagesPage() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const [isTesting, setIsTesting] = useState<string | null>(null)
   const [variables, setVariables] = useState<string[]>([])
+  const [defaultTemplates, setDefaultTemplates] = useState(DEFAULT_AUTOMATION_TEMPLATES)
   const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
   const [activeTab, setActiveTab] = useState<'personal' | 'group'>('personal')
   const [wahaSessions, setWahaSessions] = useState<Array<{ name: string; status?: string }>>([])
@@ -117,6 +131,7 @@ export default function AutomatedMessagesPage() {
     titleType === 'inactive_followup' ||
     titleType === 'free_followup' ||
     titleType === 'active_profile_unverified_followup' ||
+    titleType === 'active_verified_no_autodebit_followup' ||
     titleType === 'gold_poster'
 
   const filteredItems = items.filter((item) => {
@@ -209,6 +224,41 @@ export default function AutomatedMessagesPage() {
   }, [user])
 
   useEffect(() => {
+    const loadTemplateDefaults = async () => {
+      try {
+        const res = await fetch('/api/admin/automation-templates', { cache: 'no-store' })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || !json?.templates || typeof json.templates !== 'object') return
+        setDefaultTemplates({
+          birthday:
+            typeof json.templates.birthday === 'string'
+              ? json.templates.birthday
+              : DEFAULT_AUTOMATION_TEMPLATES.birthday,
+          inactive_followup:
+            typeof json.templates.inactive_followup === 'string'
+              ? json.templates.inactive_followup
+              : DEFAULT_AUTOMATION_TEMPLATES.inactive_followup,
+          free_followup:
+            typeof json.templates.free_followup === 'string'
+              ? json.templates.free_followup
+              : DEFAULT_AUTOMATION_TEMPLATES.free_followup,
+          active_profile_unverified_followup:
+            typeof json.templates.active_profile_unverified_followup === 'string'
+              ? json.templates.active_profile_unverified_followup
+              : DEFAULT_AUTOMATION_TEMPLATES.active_profile_unverified_followup,
+          active_verified_no_autodebit_followup:
+            typeof json.templates.active_verified_no_autodebit_followup === 'string'
+              ? json.templates.active_verified_no_autodebit_followup
+              : DEFAULT_AUTOMATION_TEMPLATES.active_verified_no_autodebit_followup,
+        })
+      } catch {
+        // Keep hardcoded fallbacks.
+      }
+    }
+    loadTemplateDefaults()
+  }, [])
+
+  useEffect(() => {
     if (!user) return
     const loadVariables = async () => {
       try {
@@ -256,7 +306,7 @@ export default function AutomatedMessagesPage() {
     setForm({
       title: SCHEDULED_TITLE_BIRTHDAY,
       phone: '',
-      message: DEFAULT_TEMPLATE,
+      message: defaultTemplates.birthday,
       scheduled_at: getDefaultScheduleTimePlus3Minutes(),
       is_enable: true,
       warmup_enabled: false,
@@ -294,6 +344,9 @@ export default function AutomatedMessagesPage() {
     else if (lower === 'active account profile-unverified follow-up') {
       inferredType = 'active_profile_unverified_followup'
     }
+    else if (lower === 'active account verified no-autodebit follow-up') {
+      inferredType = 'active_verified_no_autodebit_followup'
+    }
     else if (lower === 'gold price poster') inferredType = 'gold_poster'
     else if (lower.startsWith('profile')) inferredType = 'profile'
     else if (lower.includes('skde')) inferredType = 'skde'
@@ -309,6 +362,7 @@ export default function AutomatedMessagesPage() {
           inferredType === 'inactive_followup' ||
           inferredType === 'free_followup' ||
           inferredType === 'active_profile_unverified_followup' ||
+          inferredType === 'active_verified_no_autodebit_followup' ||
           inferredType === 'gold_poster'
         ) {
           // For birthday flows we use a time-only input (HH:MM)
@@ -710,24 +764,34 @@ export default function AutomatedMessagesPage() {
                           setTitleType(value)
                           setForm(current => {
                             if (value === 'birthday')
-                              return { ...current, title: SCHEDULED_TITLE_BIRTHDAY, message: DEFAULT_TEMPLATE }
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_BIRTHDAY,
+                                message: defaultTemplates.birthday,
+                              }
                             if (value === 'inactive_followup')
                               return {
                                 ...current,
                                 title: SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
-                                message: DEFAULT_INACTIVE_FOLLOWUP_TEMPLATE,
+                                message: defaultTemplates.inactive_followup,
                               }
                             if (value === 'free_followup')
                               return {
                                 ...current,
                                 title: SCHEDULED_TITLE_FREE_FOLLOWUP,
-                                message: DEFAULT_FREE_FOLLOWUP_TEMPLATE,
+                                message: defaultTemplates.free_followup,
                               }
                             if (value === 'active_profile_unverified_followup')
                               return {
                                 ...current,
                                 title: SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
-                                message: DEFAULT_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP_TEMPLATE,
+                                message: defaultTemplates.active_profile_unverified_followup,
+                              }
+                            if (value === 'active_verified_no_autodebit_followup')
+                              return {
+                                ...current,
+                                title: SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP,
+                                message: defaultTemplates.active_verified_no_autodebit_followup,
                               }
                             if (value === 'gold_poster')
                               return {
@@ -738,7 +802,6 @@ export default function AutomatedMessagesPage() {
                                 poster_session: current.poster_session || '',
                                 poster_groups: current.poster_groups || [],
                               }
-                            if (value === 'profile') return { ...current, title: 'Profile (coming soon)' }
                             if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
                             if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
                             return { ...current, title: '' }
@@ -768,6 +831,12 @@ export default function AutomatedMessagesPage() {
                           Active account profile-unverified follow-up (monthly purchase)
                         </option>
                         <option
+                          value="active_verified_no_autodebit_followup"
+                          disabled={isBroadcastTitleOngoing(SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP)}
+                        >
+                          Active account verified no-autodebit follow-up
+                        </option>
+                        <option
                           disabled
                           value="inactive_followup"
                           title={
@@ -778,7 +847,6 @@ export default function AutomatedMessagesPage() {
                         >
                           Inactive follow-up (last purchase anniversary)
                         </option>
-                        <option disabled value="profile">Profile (coming soon)</option>
                         <option disabled value="skde">SKDE (coming soon)</option>
                         <option disabled value="gap">GAP (coming soon)</option>
                         {/* <option value="customer">Customer (custom title)</option> */}
@@ -787,7 +855,8 @@ export default function AutomatedMessagesPage() {
 
                     {(titleType === 'inactive_followup' ||
                       titleType === 'free_followup' ||
-                      titleType === 'active_profile_unverified_followup') && (
+                      titleType === 'active_profile_unverified_followup' ||
+                      titleType === 'active_verified_no_autodebit_followup') && (
                         <p className="text-xs text-slate-500 mt-2">
                           Auto-send logic: this automation will check customers daily (Malaysia date) and
                           send when the customer matches the selected rule:
@@ -795,7 +864,9 @@ export default function AutomatedMessagesPage() {
                             ? ' same month/day as their Last Purchase Date (inactive)'
                             : titleType === 'free_followup'
                               ? ' same month/day as their Date Register (or record created date) (free)'
-                              : ' active account with purchase in current month and "Profile Verified" = "No"'}.
+                              : titleType === 'active_profile_unverified_followup'
+                                ? ' active account with purchase in current month and "Profile Verified" = "No"'
+                                : ' active account with purchase in current month, "Profile Verified" = "Yes", and "Direct Debit Subscription" = "No"'}.
                           Each customer is sent at most once for each automation type.
                         </p>
                       )}
@@ -964,7 +1035,8 @@ export default function AutomatedMessagesPage() {
 
                 {(titleType === 'inactive_followup' ||
                   titleType === 'free_followup' ||
-                  titleType === 'active_profile_unverified_followup') && (
+                  titleType === 'active_profile_unverified_followup' ||
+                  titleType === 'active_verified_no_autodebit_followup') && (
                     <div className="flex items-center justify-between gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <div className="min-w-0">
                         <label className="block text-sm font-medium text-slate-700">Warm greeting</label>
@@ -1005,7 +1077,7 @@ export default function AutomatedMessagesPage() {
                     value={form.message}
                     onChange={(e) => setForm({ ...form, message: e.target.value })}
                     rows={4}
-                    placeholder={DEFAULT_TEMPLATE}
+                    placeholder={defaultTemplates.birthday}
                     className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   <p className="text-xs text-slate-500 mt-1">

@@ -4,6 +4,8 @@ export const SCHEDULED_TITLE_INACTIVE_FOLLOWUP = 'Inactive follow-up'
 export const SCHEDULED_TITLE_FREE_FOLLOWUP = 'Free account follow-up'
 export const SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP =
   'Active account profile-unverified follow-up'
+export const SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP =
+  'Active account verified no-autodebit follow-up'
 export const SCHEDULED_TITLE_GOLD_PRICE_POSTER = 'Gold price poster'
 
 export function normalizedScheduledTitle(title: string | null | undefined): string {
@@ -17,6 +19,7 @@ export function isBroadcastScheduledTitle(title: string | null | undefined): boo
     t === 'inactive follow-up' ||
     t === 'free account follow-up' ||
     t === 'active account profile-unverified follow-up' ||
+    t === 'active account verified no-autodebit follow-up' ||
     t === 'gold price poster'
   )
 }

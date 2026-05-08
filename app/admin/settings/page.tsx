@@ -80,8 +80,24 @@ type PaymentGatewayStatus = {
   fullyConfigured: boolean
 }
 
+type AutomationTemplateSettings = {
+  birthday: string
+  inactive_followup: string
+  free_followup: string
+  active_profile_unverified_followup: string
+  active_verified_no_autodebit_followup: string
+}
+
+const EMPTY_AUTOMATION_TEMPLATES: AutomationTemplateSettings = {
+  birthday: '',
+  inactive_followup: '',
+  free_followup: '',
+  active_profile_unverified_followup: '',
+  active_verified_no_autodebit_followup: '',
+}
+
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<'servers' | 'users' | 'tags' | 'payment'>('servers')
+  const [tab, setTab] = useState<'servers' | 'users' | 'tags' | 'payment' | 'automation_templates'>('servers')
 
   const [servers, setServers] = useState<WahaServerRow[]>([])
   const [loadingServers, setLoadingServers] = useState(true)
@@ -129,6 +145,14 @@ export default function AdminSettingsPage() {
   const [paymentGatewayLoading, setPaymentGatewayLoading] = useState(false)
   const [paymentGatewayError, setPaymentGatewayError] = useState<string | null>(null)
   const [paymentGatewayCacheReady, setPaymentGatewayCacheReady] = useState(false)
+  const [automationTemplates, setAutomationTemplates] = useState<AutomationTemplateSettings>(
+    EMPTY_AUTOMATION_TEMPLATES
+  )
+  const [automationTemplateLoading, setAutomationTemplateLoading] = useState(false)
+  const [automationTemplateSaving, setAutomationTemplateSaving] = useState(false)
+  const [automationTemplateError, setAutomationTemplateError] = useState<string | null>(null)
+  const [automationTemplateSuccess, setAutomationTemplateSuccess] = useState<string | null>(null)
+  const [automationTemplateCacheReady, setAutomationTemplateCacheReady] = useState(false)
 
   const loadTagCatalog = useCallback(async () => {
     setTagCatalogLoading(true)
@@ -179,6 +203,46 @@ export default function AdminSettingsPage() {
     if (tab !== 'payment' || paymentGatewayCacheReady) return
     void loadPaymentGateway().finally(() => setPaymentGatewayCacheReady(true))
   }, [tab, paymentGatewayCacheReady, loadPaymentGateway])
+
+  const loadAutomationTemplates = useCallback(async () => {
+    setAutomationTemplateLoading(true)
+    setAutomationTemplateError(null)
+    setAutomationTemplateSuccess(null)
+    try {
+      const res = await fetch('/api/admin/automation-templates', { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setAutomationTemplateError(
+          typeof data.error === 'string' ? data.error : 'Failed to load automation templates'
+        )
+        return
+      }
+      const templates = data.templates && typeof data.templates === 'object' ? data.templates : {}
+      setAutomationTemplates({
+        birthday: typeof templates.birthday === 'string' ? templates.birthday : '',
+        inactive_followup:
+          typeof templates.inactive_followup === 'string' ? templates.inactive_followup : '',
+        free_followup: typeof templates.free_followup === 'string' ? templates.free_followup : '',
+        active_profile_unverified_followup:
+          typeof templates.active_profile_unverified_followup === 'string'
+            ? templates.active_profile_unverified_followup
+            : '',
+        active_verified_no_autodebit_followup:
+          typeof templates.active_verified_no_autodebit_followup === 'string'
+            ? templates.active_verified_no_autodebit_followup
+            : '',
+      })
+    } catch {
+      setAutomationTemplateError('Failed to load automation templates')
+    } finally {
+      setAutomationTemplateLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab !== 'automation_templates' || automationTemplateCacheReady) return
+    void loadAutomationTemplates().finally(() => setAutomationTemplateCacheReady(true))
+  }, [tab, automationTemplateCacheReady, loadAutomationTemplates])
 
   const currentUserSessions = useMemo(() => {
     if (!editingUserId) return [] as UserSessionRow[]
@@ -555,6 +619,13 @@ export default function AdminSettingsPage() {
         >
           Payment gateway
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('automation_templates')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'automation_templates' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        >
+          Automation templates
+        </button>
       </div>
 
       {tab === 'users' && (
@@ -916,6 +987,104 @@ export default function AdminSettingsPage() {
           ) : (
             <p className="text-sm text-slate-500">No data.</p>
           )}
+        </section>
+      )}
+
+      {tab === 'automation_templates' && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Automation default templates</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Manage default message templates shown in Scheduled WhatsApp Messages.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadAutomationTemplates()}
+              disabled={automationTemplateLoading || automationTemplateSaving}
+              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {automationTemplateLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {automationTemplateError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {automationTemplateError}
+            </div>
+          )}
+          {automationTemplateSuccess && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {automationTemplateSuccess}
+            </div>
+          )}
+
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void (async () => {
+                setAutomationTemplateSaving(true)
+                setAutomationTemplateError(null)
+                setAutomationTemplateSuccess(null)
+                try {
+                  const res = await fetch('/api/admin/automation-templates', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ templates: automationTemplates }),
+                  })
+                  const data = await res.json().catch(() => ({}))
+                  if (!res.ok) {
+                    setAutomationTemplateError(
+                      typeof data.error === 'string' ? data.error : 'Failed to save templates'
+                    )
+                    return
+                  }
+                  setAutomationTemplateSuccess('Templates saved successfully.')
+                } catch {
+                  setAutomationTemplateError('Failed to save templates')
+                } finally {
+                  setAutomationTemplateSaving(false)
+                }
+              })()
+            }}
+          >
+            {(
+              [
+                ['birthday', 'Birthday'],
+                ['inactive_followup', 'Inactive follow-up'],
+                ['free_followup', 'Free account follow-up'],
+                ['active_profile_unverified_followup', 'Active profile-unverified follow-up'],
+                ['active_verified_no_autodebit_followup', 'Active verified no-autodebit follow-up'],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key}>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+                <textarea
+                  value={automationTemplates[key]}
+                  onChange={(e) =>
+                    setAutomationTemplates((prev) => ({
+                      ...prev,
+                      [key]: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"
+                />
+              </div>
+            ))}
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={automationTemplateSaving || automationTemplateLoading}
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {automationTemplateSaving ? 'Saving...' : 'Save templates'}
+              </button>
+            </div>
+          </form>
         </section>
       )}
 

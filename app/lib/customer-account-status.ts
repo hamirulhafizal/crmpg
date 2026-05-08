@@ -405,3 +405,26 @@ export function isProfileVerifiedNo(originalData: unknown): boolean {
   const normalized = String(raw).trim().toLowerCase()
   return normalized === 'no' || normalized === 'n' || normalized === 'false' || normalized === '0'
 }
+
+export function isProfileVerifiedYes(originalData: unknown): boolean {
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = data?.['Profile Verified']
+  if (raw === undefined || raw === null) return false
+  const normalized = String(raw).trim().toLowerCase()
+  return normalized === 'yes' || normalized === 'y' || normalized === 'true' || normalized === '1'
+}
+
+export function isDirectDebitSubscriptionNo(originalData: unknown): boolean {
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = data?.['Direct Debit Subscription']
+  if (raw === undefined || raw === null || raw === '') return true
+  const normalized = String(raw).trim().toLowerCase()
+  return (
+    normalized === 'no' ||
+    normalized === 'n' ||
+    normalized === 'false' ||
+    normalized === '0' ||
+    normalized === 'inactive' ||
+    normalized === 'none'
+  )
+}

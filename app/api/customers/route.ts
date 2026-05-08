@@ -47,6 +47,25 @@ function parseDirectDebitFromOriginalData(originalData: unknown): boolean | null
   return null
 }
 
+function deriveCustomerSource(originalData: unknown, segmentAttributes: unknown): string {
+  const seg =
+    segmentAttributes && typeof segmentAttributes === 'object' && !Array.isArray(segmentAttributes)
+      ? (segmentAttributes as Record<string, unknown>)
+      : null
+  const segSourceRaw =
+    seg?.source ?? seg?.lead_source ?? seg?.channel ?? seg?.acquisition_source ?? null
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = segSourceRaw ?? data?.Source ?? data?.source ?? null
+  const value = raw == null ? '' : String(raw).trim().toLowerCase()
+  if (!value) return 'unknown'
+  if (value.includes('gap registration form') || value.includes('google ads')) return 'google_ads'
+  if (value.includes('referral') || value.includes('network')) return 'referral'
+  if (value.includes('social') || value.includes('socmed') || value.includes('facebook') || value.includes('tiktok') || value.includes('instagram')) return 'social_media'
+  if (value.includes('walk in') || value.includes('walk-in') || value.includes('offline') || value.includes('booth') || value.includes('event')) return 'offline'
+  if (value.includes('extension') || value.includes('import') || value.includes('sync')) return 'import'
+  return 'other'
+}
+
 // GET /api/customers - List all customers for logged-in user
 export async function GET(request: Request) {
   try {
@@ -80,6 +99,7 @@ export async function GET(request: Request) {
     const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
     const profileVerified = searchParams.get('profileVerified') || '' // '', 'yes', 'no'
     const directDebit = searchParams.get('directDebit') || '' // '', 'yes', 'no'
+    const acquisitionSource = searchParams.get('acquisitionSource') || '' // '', google_ads|referral|social_media|offline|import|other|unknown
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
     const tagId = (searchParams.get('tagId') || '').trim()
@@ -95,6 +115,7 @@ export async function GET(request: Request) {
       !!accountStatus ||
       !!profileVerified ||
       !!directDebit ||
+      !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       !!tagId
@@ -139,6 +160,7 @@ export async function GET(request: Request) {
       !!accountStatus ||
       !!profileVerified ||
       !!directDebit ||
+      !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
       isComputedDateSort ||
@@ -300,6 +322,12 @@ export async function GET(request: Request) {
         const wanted = directDebit === 'yes'
         filtered = filtered.filter((c: any) => {
           return parseDirectDebitFromOriginalData(c?.original_data) === wanted
+        })
+      }
+
+      if (acquisitionSource) {
+        filtered = filtered.filter((c: any) => {
+          return deriveCustomerSource(c?.original_data, c?.segment_attributes) === acquisitionSource
         })
       }
 

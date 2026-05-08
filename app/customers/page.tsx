@@ -156,6 +156,43 @@ const parseDirectDebitSubscription = (originalData: any): boolean | null => {
   return null
 }
 
+const deriveCustomerSource = (
+  originalData: unknown,
+  segmentAttributes?: Record<string, unknown> | null
+): 'google_ads' | 'referral' | 'social_media' | 'offline' | 'import' | 'other' | 'unknown' => {
+  const segSourceRaw =
+    segmentAttributes?.source ??
+    segmentAttributes?.lead_source ??
+    segmentAttributes?.channel ??
+    segmentAttributes?.acquisition_source
+  const data = normalizeCustomerOriginalData(originalData)
+  const raw = segSourceRaw ?? data?.['Source'] ?? data?.['source']
+  const value = raw == null ? '' : String(raw).trim().toLowerCase()
+  if (!value) return 'unknown'
+  if (value.includes('gap registration form') || value.includes('google ads')) return 'google_ads'
+  if (value.includes('referral') || value.includes('network')) return 'referral'
+  if (
+    value.includes('social') ||
+    value.includes('socmed') ||
+    value.includes('facebook') ||
+    value.includes('tiktok') ||
+    value.includes('instagram')
+  ) {
+    return 'social_media'
+  }
+  if (
+    value.includes('walk in') ||
+    value.includes('walk-in') ||
+    value.includes('offline') ||
+    value.includes('booth') ||
+    value.includes('event')
+  ) {
+    return 'offline'
+  }
+  if (value.includes('extension') || value.includes('import') || value.includes('sync')) return 'import'
+  return 'other'
+}
+
 const parseOriginalDateToUTC = (value: unknown): number | null => {
   if (!value) return null
   if (typeof value !== 'string') return null
@@ -251,6 +288,9 @@ export default function CustomersPage() {
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
   const [profileVerifiedFilter, setProfileVerifiedFilter] = useState<'' | 'yes' | 'no'>('')
   const [directDebitFilter, setDirectDebitFilter] = useState<'' | 'yes' | 'no'>('')
+  const [acquisitionSourceFilter, setAcquisitionSourceFilter] = useState<
+    '' | 'google_ads' | 'referral' | 'social_media' | 'offline' | 'import' | 'other' | 'unknown'
+  >('')
   const [registerMonthFilter, setRegisterMonthFilter] = useState('')
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('updated_at')
@@ -338,7 +378,7 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -354,6 +394,7 @@ export default function CustomersPage() {
     setAccountStatusFilter('')
     setProfileVerifiedFilter('')
     setDirectDebitFilter('')
+    setAcquisitionSourceFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
     setTagFilter('')
@@ -494,6 +535,7 @@ export default function CustomersPage() {
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
       if (profileVerifiedFilter) params.append('profileVerified', profileVerifiedFilter)
       if (directDebitFilter) params.append('directDebit', directDebitFilter)
+      if (acquisitionSourceFilter) params.append('acquisitionSource', acquisitionSourceFilter)
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
       if (tagFilter) params.append('tagId', tagFilter)
@@ -1096,6 +1138,34 @@ export default function CustomersPage() {
               <option value="">Direct Debit (all)</option>
               <option value="yes">Direct Debit: Yes</option>
               <option value="no">Direct Debit: No</option>
+            </select>
+
+            <select
+              value={acquisitionSourceFilter}
+              onChange={(e) => {
+                setAcquisitionSourceFilter(
+                  (e.target.value || '') as
+                    | ''
+                    | 'google_ads'
+                    | 'referral'
+                    | 'social_media'
+                    | 'offline'
+                    | 'import'
+                    | 'other'
+                    | 'unknown'
+                )
+                setPage(1)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Source (all)</option>
+              <option value="google_ads">Google Ads</option>
+              <option value="referral">Referral / Network</option>
+              <option value="social_media">Social Media</option>
+              <option value="offline">Offline / Event</option>
+              <option value="import">Import / Sync</option>
+              <option value="other">Other</option>
+              <option value="unknown">Unknown</option>
             </select>
 
             <select
@@ -2247,6 +2317,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Friend</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Direct Debit</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Source</th>
 
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Status</th>
 
@@ -2308,7 +2379,7 @@ export default function CustomersPage() {
               <tbody className="bg-white divide-y divide-slate-200">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={20} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={21} className="px-4 py-8 text-center text-slate-500">
                       {isLoading ? 'Loading...' : 'No customers found'}
                     </td>
                   </tr>
@@ -2384,6 +2455,28 @@ export default function CustomersPage() {
                             return (
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
                                 -
+                              </span>
+                            )
+                          })()}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {(() => {
+                            const source = deriveCustomerSource(
+                              customer.original_data,
+                              customer.segment_attributes
+                            )
+                            const labelMap: Record<string, string> = {
+                              google_ads: 'Google Ads',
+                              referral: 'Referral',
+                              social_media: 'Social Media',
+                              offline: 'Offline',
+                              import: 'Import',
+                              other: 'Other',
+                              unknown: 'Unknown',
+                            }
+                            return (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {labelMap[source] || 'Unknown'}
                               </span>
                             )
                           })()}
