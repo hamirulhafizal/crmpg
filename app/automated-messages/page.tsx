@@ -93,7 +93,7 @@ export default function AutomatedMessagesPage() {
   const [form, setForm] = useState({
     title: '',
     phone: '',
-    message: DEFAULT_TEMPLATE,
+    message: DEFAULT_AUTOMATION_TEMPLATES.birthday,
     scheduled_at: getDefaultScheduleTimePlus3Minutes(),
     is_enable: true,
     warmup_enabled: false,
@@ -226,7 +226,7 @@ export default function AutomatedMessagesPage() {
   useEffect(() => {
     const loadTemplateDefaults = async () => {
       try {
-        const res = await fetch('/api/admin/automation-templates', { cache: 'no-store' })
+        const res = await fetch('/api/automation/templates', { cache: 'no-store' })
         const json = await res.json().catch(() => ({}))
         if (!res.ok || !json?.templates || typeof json.templates !== 'object') return
         setDefaultTemplates({
