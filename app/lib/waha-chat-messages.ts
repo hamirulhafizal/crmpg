@@ -50,7 +50,11 @@ async function resolveExistingChatId(
     try {
       const data = await wahaFetch<unknown>(path, { method: 'GET' }, { userId })
       const rows = Array.isArray(data) ? (data as WahaChatOverviewRow[]) : []
-      const id = rows.find((r) => typeof r?.id === 'string' && r.id.trim())?.id?.trim()
+      // WAHA may return many chats; never take rows[0] blindly — it can be an unrelated thread.
+      const wanted = new Set(filtered.map((x) => x.trim()))
+      const id = rows
+        .map((r) => (typeof r?.id === 'string' ? r.id.trim() : ''))
+        .find((rid) => rid && wanted.has(rid))
       if (id) return id
     } catch (e) {
       if (e instanceof WahaApiError && (e.status === 404 || e.status === 405)) continue
@@ -90,8 +94,16 @@ function buildMessageFetchCandidates(
 
   const encKnown =
     knownChatId && knownChatId.includes('@') ? encodeURIComponent(knownChatId.trim()) : null
+  // Prefer explicit PN JIDs (@c.us / @s.whatsapp.net) first — matches CRM "phone" chat.
+  // Overview-derived knownChatId can point at a different @lid thread; use it only after PN paths.
   const encChats = [
-    ...new Set([...(encKnown ? [encKnown] : []), encChat, encChatC, encChatS, ...(encLid ? [encLid] : [])]),
+    ...new Set([
+      encChat,
+      encChatC,
+      encChatS,
+      ...(encLid ? [encLid] : []),
+      ...(encKnown ? [encKnown] : []),
+    ]),
   ]
 
   const ordered: string[] = []

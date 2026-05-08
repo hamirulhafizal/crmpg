@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 import { fetchWahaChatMessages } from '@/app/lib/waha-chat-messages'
-import { wahaFetch, WahaApiError } from '@/app/lib/waha'
+import { wahaFetch, WahaApiError, type WahaAttempt } from '@/app/lib/waha'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -75,6 +75,22 @@ function mapMessages(rows: unknown[]): ChatHistoryRow[] {
 
   mapped.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
   return mapped
+}
+
+/** Every try failed with WAHA "no such chat in local store" (not auth/timeout). */
+function looksLikeChatMissingFromWahaStore(attempts: WahaAttempt[]): boolean {
+  if (!attempts.length) return false
+  return attempts.every((a) => {
+    if (a.status === 404 || a.status === 405) return true
+    if (a.status !== 500) return false
+    const m = a.message.toLowerCase()
+    return (
+      m.includes('chat not found') ||
+      m.includes('chat_not_found') ||
+      m.includes('unknown chat') ||
+      m.includes('no chat')
+    )
+  })
 }
 
 function mergeById(rows: ChatHistoryRow[]): ChatHistoryRow[] {
@@ -229,20 +245,28 @@ export async function GET(request: Request, context: Params) {
         messages,
       })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'WAHA request failed'
+      const rawMsg = e instanceof Error ? e.message : 'WAHA request failed'
       const status = e instanceof WahaApiError ? e.status : 502
       const attempts = e instanceof WahaApiError ? e.attempts ?? [] : []
       const lastPath = e instanceof WahaApiError ? e.path : undefined
       const resolvedLid = e instanceof WahaApiError ? e.resolvedLid ?? null : null
       const knownChatId = e instanceof WahaApiError ? e.knownChatId ?? null : null
 
+      const storeMiss = looksLikeChatMissingFromWahaStore(attempts)
+      const error = storeMiss
+        ? 'No WhatsApp chat history is available for this number in your WAHA session right now.'
+        : rawMsg
+      const hint = storeMiss
+        ? 'WhatsApp usually syncs only a limited history to the linked phone (often about the last year, depending on app version and settings). WAHA reads from that local store: if the thread is outside the synced window, was never opened on the device, or has not finished syncing, WAHA returns "chat not found" on every route. Open the conversation in WhatsApp on the linked phone and wait for history to load, then try again. You can also confirm WAHA version and NOWEB sync if the chat is recent but still missing.'
+        : status === 404
+          ? 'Chat messages API returned 404 on all tried routes. Check WAHA version and NOWEB store/sync settings.'
+          : 'Unable to load chat messages from WAHA.'
+
       return NextResponse.json(
         {
-          error: msg,
-          hint:
-            status === 404
-              ? 'Chat messages API returned 404 on all tried routes. Check WAHA version and NOWEB store/sync settings.'
-              : 'Unable to load chat messages from WAHA.',
+          error,
+          hint,
+          ...(storeMiss ? { code: 'WAHA_CHAT_NOT_IN_LOCAL_STORE' as const } : {}),
           debug: {
             wahaHttpStatus: status,
             session: sessionName,
@@ -251,6 +275,7 @@ export async function GET(request: Request, context: Params) {
             resolvedLid,
             knownChatId,
             attempts,
+            ...(storeMiss ? { reason: 'all_routes_chat_not_found' as const } : {}),
           },
         },
         { status: status >= 400 && status < 600 ? status : 502 }
