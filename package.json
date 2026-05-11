@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "node scripts/install-playwright-chromium.mjs",
-    "update-avatars-from-dealers-json": "node scripts/update-profile-avatars-from-dealers-json.mjs"
+    "update-avatars-from-dealers-json": "node scripts/update-profile-avatars-from-dealers-json.mjs",
+    "env:pull": "vercel env pull .env --yes"
   },
   "dependencies": {
     "@sparticuz/chromium": "^148.0.0",
@@ -41,6 +42,7 @@
     "@types/web-push": "^3.6.4",
     "@types/xlsx": "^0.0.35",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vercel": "^53.3.2"
   }
 }

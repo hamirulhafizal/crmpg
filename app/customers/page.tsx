@@ -22,6 +22,9 @@ const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   unknown: 0,
 }
 
+const AGE_FILTER_MIN = 0
+const AGE_FILTER_MAX = 100
+
 const runConfetti = () => {
   if (typeof window === 'undefined') return
   import('canvas-confetti').then(({ default: confetti }) => {
@@ -284,6 +287,13 @@ export default function CustomersPage() {
   const [searchInput, setSearchInput] = useState('') // immediate input value; search is debounced
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
+  const [ageMinFilter, setAgeMinFilter] = useState<number>(AGE_FILTER_MIN)
+  const [ageMaxFilter, setAgeMaxFilter] = useState<number>(AGE_FILTER_MAX)
+  const [ageMinDraft, setAgeMinDraft] = useState<number>(AGE_FILTER_MIN)
+  const [ageMaxDraft, setAgeMaxDraft] = useState<number>(AGE_FILTER_MAX)
+  const [agePresetFilter, setAgePresetFilter] = useState<
+    '' | '0-18' | '19-26' | '27-45' | '46-above'
+  >('')
   const [birthdayFilter, setBirthdayFilter] = useState<'today' | 'month' | ''>('')
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
   const [profileVerifiedFilter, setProfileVerifiedFilter] = useState<'' | 'yes' | 'no'>('')
@@ -378,10 +388,20 @@ export default function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, ageMinFilter, ageMaxFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
+    setPage(1)
+  }
+
+  const commitAgeRangeWithPreset = (minAge: number, maxAge: number) => {
+    const min = Math.min(minAge, maxAge)
+    const max = Math.max(minAge, maxAge)
+    setAgeMinDraft(min)
+    setAgeMaxDraft(max)
+    setAgeMinFilter(min)
+    setAgeMaxFilter(max)
     setPage(1)
   }
 
@@ -390,6 +410,11 @@ export default function CustomersPage() {
     setSearch('')
     setGenderFilter('')
     setEthnicityFilter('')
+    setAgeMinFilter(AGE_FILTER_MIN)
+    setAgeMaxFilter(AGE_FILTER_MAX)
+    setAgeMinDraft(AGE_FILTER_MIN)
+    setAgeMaxDraft(AGE_FILTER_MAX)
+    setAgePresetFilter('')
     setBirthdayFilter('')
     setAccountStatusFilter('')
     setProfileVerifiedFilter('')
@@ -531,6 +556,8 @@ export default function CustomersPage() {
       if (search) params.append('search', search)
       if (genderFilter) params.append('gender', genderFilter)
       if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
+      if (ageMinFilter > AGE_FILTER_MIN) params.append('ageMin', ageMinFilter.toString())
+      if (ageMaxFilter < AGE_FILTER_MAX) params.append('ageMax', ageMaxFilter.toString())
       if (birthdayFilter) params.append('birthday', birthdayFilter)
       if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
       if (profileVerifiedFilter) params.append('profileVerified', profileVerifiedFilter)
@@ -563,12 +590,12 @@ export default function CustomersPage() {
     }
   }
 
-  const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob') => {
+  const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob' | 'age') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
     } else {
       setSortBy(field)
-      setSortOrder(field === 'pg_code' || field === 'dob' ? 'asc' : 'desc')
+      setSortOrder(field === 'pg_code' || field === 'dob' || field === 'age' ? 'asc' : 'desc')
     }
     setPage(1)
   }
@@ -1080,6 +1107,30 @@ export default function CustomersPage() {
               <option value="Chinese">Chinese</option>
               <option value="Indian">Indian</option>
               <option value="Other">Other</option>
+            </select>
+
+            {/* Age Filter */}
+            <select
+              value={agePresetFilter}
+              onChange={(e) => {
+                const v = e.target.value as '' | '0-18' | '19-26' | '27-45' | '46-above'
+                setAgePresetFilter(v)
+                if (v === '') {
+                  commitAgeRangeWithPreset(AGE_FILTER_MIN, AGE_FILTER_MAX)
+                  return
+                }
+                if (v === '0-18') commitAgeRangeWithPreset(0, 18)
+                else if (v === '19-26') commitAgeRangeWithPreset(19, 26)
+                else if (v === '27-45') commitAgeRangeWithPreset(27, 45)
+                else if (v === '46-above') commitAgeRangeWithPreset(46, AGE_FILTER_MAX)
+              }}
+              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">All Ages</option>
+              <option value="0-18">0-18 (junior account)</option>
+              <option value="19-26">19-26 (anak muda)</option>
+              <option value="27-45">27-45</option>
+              <option value="46-above">46-above (vetren)</option>
             </select>
 
             {/* Birthday Filter */}
@@ -2295,7 +2346,29 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Phone</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Gender</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Ethnicity</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Age</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort('age')}
+                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      title={
+                        sortOrder === 'desc' ? 'Oldest age first (click for youngest)' : 'Youngest age first (click for oldest)'
+                      }
+                    >
+                      Age
+                      {sortBy === 'age' && (
+                        sortOrder === 'desc' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        )
+                      )}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
                     <button
                       type="button"

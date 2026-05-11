@@ -705,24 +705,6 @@ export default function AdminSettingsPage() {
             </button>
           </div>
 
-          <div className="mb-4 flex items-center gap-2 text-sm">
-            {isFilterActive ? (
-              <>
-                <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
-                  Filter active
-                </span>
-                <span className="text-slate-700">
-                  Showing <span className="font-semibold">{filteredUsers.length}</span> of{' '}
-                  <span className="font-semibold">{users.length}</span> users
-                </span>
-              </>
-            ) : (
-              <span className="text-slate-700">
-                Showing all users: <span className="font-semibold">{users.length}</span>
-              </span>
-            )}
-          </div>
-
           {userError && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{userError}</div>
           )}
@@ -736,6 +718,23 @@ export default function AdminSettingsPage() {
             <p className="text-sm text-slate-500">Loading...</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <div className="mb-4 flex items-center gap-2 p-4 text-sm">
+                {isFilterActive ? (
+                  <>
+                    <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+                      Filter active
+                    </span>
+                    <span className="text-slate-700">
+                      Showing <span className="font-semibold">{filteredUsers.length}</span> of{' '}
+                      <span className="font-semibold">{users.length}</span> users
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-700">
+                    Showing all users: <span className="font-semibold">{users.length}</span>
+                  </span>
+                )}
+              </div>
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>

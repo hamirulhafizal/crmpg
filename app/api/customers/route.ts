@@ -102,6 +102,28 @@ export async function GET(request: Request) {
     const acquisitionSource = searchParams.get('acquisitionSource') || '' // '', google_ads|referral|social_media|offline|import|other|unknown
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
+    const parseOptionalInt = (raw: string | null): number | null => {
+      if (raw == null) return null
+      const s = raw.trim()
+      if (!s) return null
+      const n = Number(s)
+      if (!Number.isFinite(n)) return null
+      return Math.trunc(n)
+    }
+
+    const AGE_FILTER_MIN = 0
+    const AGE_FILTER_MAX = 120
+    let ageMin = parseOptionalInt(searchParams.get('ageMin'))
+    let ageMax = parseOptionalInt(searchParams.get('ageMax'))
+
+    if (ageMin != null) ageMin = Math.max(AGE_FILTER_MIN, Math.min(AGE_FILTER_MAX, ageMin))
+    if (ageMax != null) ageMax = Math.max(AGE_FILTER_MIN, Math.min(AGE_FILTER_MAX, ageMax))
+    if (ageMin != null && ageMax != null && ageMin > ageMax) {
+      const tmp = ageMin
+      ageMin = ageMax
+      ageMax = tmp
+    }
+
     const tagId = (searchParams.get('tagId') || '').trim()
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
@@ -118,7 +140,9 @@ export async function GET(request: Request) {
       !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
-      !!tagId
+      !!tagId ||
+      ageMin != null ||
+      ageMax != null
 
     const selectColumns =
       tagId.length > 0 ? '*, customer_tags!inner(tag_id)' : '*'
@@ -144,6 +168,12 @@ export async function GET(request: Request) {
     }
     if (ethnicity) {
       query = query.eq('ethnicity', ethnicity)
+    }
+    if (ageMin != null) {
+      query = query.gte('age', ageMin)
+    }
+    if (ageMax != null) {
+      query = query.lte('age', ageMax)
     }
 
     // Apply sorting
@@ -197,6 +227,12 @@ export async function GET(request: Request) {
         }
         if (ethnicity) {
           batchQuery = batchQuery.eq('ethnicity', ethnicity)
+        }
+        if (ageMin != null) {
+          batchQuery = batchQuery.gte('age', ageMin)
+        }
+        if (ageMax != null) {
+          batchQuery = batchQuery.lte('age', ageMax)
         }
         if (birthday === 'today' || birthday === 'month') {
           batchQuery = batchQuery.not('dob', 'is', null)
@@ -328,6 +364,18 @@ export async function GET(request: Request) {
       if (acquisitionSource) {
         filtered = filtered.filter((c: any) => {
           return deriveCustomerSource(c?.original_data, c?.segment_attributes) === acquisitionSource
+        })
+      }
+
+      if (ageMin != null || ageMax != null) {
+        filtered = filtered.filter((c: any) => {
+          const rawAge = c?.age
+          if (rawAge === null || rawAge === undefined || rawAge === '') return false
+          const n = typeof rawAge === 'number' ? rawAge : Number(String(rawAge).trim())
+          if (!Number.isFinite(n)) return false
+          if (ageMin != null && n < ageMin) return false
+          if (ageMax != null && n > ageMax) return false
+          return true
         })
       }
 
