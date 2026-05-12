@@ -14,6 +14,28 @@ export type StoredFollowUpResume = {
   updatedAt: number
 }
 
+/** Row shape from GET/PUT `/api/me/follow-up-bookmark` */
+export type FollowUpBookmarkApiRow = {
+  customer_id: string
+  save_name: string
+  account_status_filter: string
+  page: number
+  view_mode: string
+  updated_at: string
+}
+
+export function storedFollowUpResumeFromApi(row: FollowUpBookmarkApiRow | null | undefined): StoredFollowUpResume | null {
+  if (!row || typeof row.customer_id !== 'string' || row.customer_id.length < 10) return null
+  return {
+    customerId: row.customer_id,
+    saveName: typeof row.save_name === 'string' ? row.save_name : 'Customer',
+    accountStatusFilter: typeof row.account_status_filter === 'string' ? row.account_status_filter : '',
+    page: typeof row.page === 'number' && row.page >= 1 ? row.page : 1,
+    viewMode: row.view_mode === 'all' ? 'all' : 'paginated',
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+  }
+}
+
 export function loadFollowUpResume(): StoredFollowUpResume | null {
   if (typeof window === 'undefined') return null
   try {

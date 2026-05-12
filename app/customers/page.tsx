@@ -3,9 +3,13 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
-import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
+import {
+  CustomerEditModalShell,
+  type CustomerEditModalTab,
+} from '@/app/components/customer-edit-modal/CustomerEditModalShell'
 import {
   getAccountStatusKey,
   getAccountStatusLabel,
@@ -20,21 +24,11 @@ import {
   type BusinessRankBucket,
 } from '@/app/lib/customer-account-status'
 import {
-  FOLLOW_UP_CHANNELS,
-  FOLLOW_UP_OUTCOMES,
-  FOLLOW_UP_TOPICS,
-  DEFAULT_MAX_TOUCHES_PER_WEEK,
-  getChannelLabel,
-  getTopicCooldownDays,
-  getTopicLabel,
-  type FollowUpActivityRow,
-  type FollowUpChannel,
-} from '@/app/lib/customer-follow-up-activities'
-import {
   loadFollowUpResume,
   saveFollowUpResume,
   clearFollowUpResume,
   buildFollowUpResumeUrl,
+  storedFollowUpResumeFromApi,
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 
@@ -151,20 +145,6 @@ interface TagDto {
   category_id: string
   slug: string
   label: string
-}
-
-interface CustomerLabel {
-  id?: string | number
-  name?: string
-  color?: number
-  colorHex?: string
-}
-
-interface ChatHistoryMessage {
-  id: string
-  text: string
-  timestamp: number | null
-  fromMe: boolean
 }
 
 /** JSON columns sometimes arrive as string; normalize so Verified / account UI stay correct. */
@@ -324,15 +304,8 @@ function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const [isPostingCustomer, setIsPostingCustomer] = useState(false)
   const [isEditing, setIsEditing] = useState<string | null>(null)
-  const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null)
-  const [customerLabels, setCustomerLabels] = useState<CustomerLabel[]>([])
-  const [labelsLoading, setLabelsLoading] = useState(false)
-  const [labelsError, setLabelsError] = useState<string | null>(null)
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
-  const [profileImageLoading, setProfileImageLoading] = useState(false)
-  const [profileImageError, setProfileImageError] = useState<string | null>(null)
+  const [editModalInitialTab, setEditModalInitialTab] = useState<CustomerEditModalTab>('details')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   /** Desktop (md+): filter grid collapsed by default to save vertical space. */
   const [filtersAccordionOpen, setFiltersAccordionOpen] = useState(false)
@@ -342,34 +315,7 @@ function CustomersPage() {
     tags: TagDto[]
   } | null>(null)
   const [tagCatalogLoading, setTagCatalogLoading] = useState(false)
-  const [crmSelectedTagIds, setCrmSelectedTagIds] = useState<string[]>([])
-  const [crmTagsLoading, setCrmTagsLoading] = useState(false)
   const [tagFilter, setTagFilter] = useState('')
-  const [customerModalTab, setCustomerModalTab] = useState<'details' | 'follow_up' | 'tags'>('details')
-  const [analyzeAiLoading, setAnalyzeAiLoading] = useState(false)
-  const [analyzeAiError, setAnalyzeAiError] = useState<string | null>(null)
-  const [analyzeAiNotice, setAnalyzeAiNotice] = useState<string | null>(null)
-  const [chatHistory, setChatHistory] = useState<ChatHistoryMessage[]>([])
-  const [chatHistoryLoading, setChatHistoryLoading] = useState(false)
-  const [chatHistoryError, setChatHistoryError] = useState<string | null>(null)
-  const [chatHistoryDialogOpen, setChatHistoryDialogOpen] = useState(false)
-  const [chatHistoryDialogLoading, setChatHistoryDialogLoading] = useState(false)
-
-  const [followUpActivities, setFollowUpActivities] = useState<FollowUpActivityRow[]>([])
-  const [followUpLimits, setFollowUpLimits] = useState<{
-    touchesLast7Days: number
-    maxTouchesPerWeek: number
-  } | null>(null)
-  const [followUpLoading, setFollowUpLoading] = useState(false)
-  const [followUpSubmitting, setFollowUpSubmitting] = useState(false)
-  const [followUpError, setFollowUpError] = useState<string | null>(null)
-  const [followUpTopic, setFollowUpTopic] = useState('general_check_in')
-  const [followUpChannel, setFollowUpChannel] = useState<FollowUpChannel>('call')
-  const [followUpOutcome, setFollowUpOutcome] = useState('')
-  const [followUpNotes, setFollowUpNotes] = useState('')
-  const [followUpOccurredAt, setFollowUpOccurredAt] = useState('')
-  const [followUpCountsQuota, setFollowUpCountsQuota] = useState(true)
-
   const [resumeCheckpoint, setResumeCheckpoint] = useState<StoredFollowUpResume | null>(null)
 
   /** Full-screen follow-up queue (e.g. all FREE) + highlight next call after checkpoint */
@@ -431,6 +377,71 @@ function CustomersPage() {
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('updated_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  const syncFollowUpBookmarkToServer = useCallback(
+    async (
+      payload: Omit<StoredFollowUpResume, 'updatedAt'> & { updatedAt?: number }
+    ): Promise<boolean> => {
+      if (!user) return false
+      try {
+        const res = await fetch('/api/me/follow-up-bookmark', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            customerId: payload.customerId,
+            saveName: payload.saveName,
+            accountStatusFilter: payload.accountStatusFilter,
+            page: payload.page,
+            viewMode: payload.viewMode,
+          }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || !json.data) return false
+        const stored = storedFollowUpResumeFromApi(json.data)
+        if (stored && isMountedRef.current) {
+          saveFollowUpResume(stored)
+          setResumeCheckpoint(stored)
+        }
+        return Boolean(stored)
+      } catch {
+        return false
+      }
+    },
+    [user]
+  )
+
+  const loadFollowUpBookmarkFromServer = useCallback(async () => {
+    if (!user) {
+      if (isMountedRef.current) setResumeCheckpoint(null)
+      return
+    }
+    try {
+      const res = await fetch('/api/me/follow-up-bookmark', { cache: 'no-store', credentials: 'same-origin' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (isMountedRef.current) setResumeCheckpoint(loadFollowUpResume())
+        return
+      }
+      if (json.data?.customer_id) {
+        const stored = storedFollowUpResumeFromApi(json.data)
+        if (stored && isMountedRef.current) {
+          saveFollowUpResume(stored)
+          setResumeCheckpoint(stored)
+        }
+        return
+      }
+      const local = loadFollowUpResume()
+      if (local) {
+        const ok = await syncFollowUpBookmarkToServer(local)
+        if (!ok && isMountedRef.current) setResumeCheckpoint(local)
+      } else if (isMountedRef.current) {
+        setResumeCheckpoint(null)
+      }
+    } catch {
+      if (isMountedRef.current) setResumeCheckpoint(loadFollowUpResume())
+    }
+  }, [user, syncFollowUpBookmarkToServer])
 
   const openFollowUpQueueDialog = useCallback(async () => {
     if (!resumeCheckpoint) return
@@ -510,32 +521,17 @@ function CustomersPage() {
   }, [])
 
   useEffect(() => {
-    setResumeCheckpoint(loadFollowUpResume())
-  }, [])
+    if (loading) return
+    if (!user) {
+      setResumeCheckpoint(null)
+      return
+    }
+    void loadFollowUpBookmarkFromServer()
+  }, [user?.id, loading, loadFollowUpBookmarkFromServer])
 
   useEffect(() => {
     urlOpenDoneRef.current = null
   }, [openCustomerParam])
-
-  useEffect(() => {
-    if (isCreating && customerModalTab === 'follow_up') {
-      setCustomerModalTab('details')
-    }
-  }, [isCreating, customerModalTab])
-
-  useEffect(() => {
-    if (!isEditing && !isCreating) {
-      setFollowUpActivities([])
-      setFollowUpLimits(null)
-      setFollowUpError(null)
-      setFollowUpTopic('general_check_in')
-      setFollowUpChannel('call')
-      setFollowUpOutcome('')
-      setFollowUpNotes('')
-      setFollowUpOccurredAt('')
-      setFollowUpCountsQuota(true)
-    }
-  }, [isEditing, isCreating])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -859,16 +855,6 @@ function CustomersPage() {
     })
   }, [salesJourneyRows, salesJourneySearch, salesJourneyStageFilter])
 
-  const followUpTopicHint = useMemo(() => {
-    const last = followUpActivities.find((a) => a.topic === followUpTopic)
-    if (!last) return null
-    const cd = getTopicCooldownDays(followUpTopic)
-    const lastMs = new Date(last.occurred_at).getTime()
-    if (!Number.isFinite(lastMs)) return null
-    const next = new Date(lastMs + cd * 24 * 60 * 60 * 1000)
-    return `Log terakhir topik ini: ${new Date(last.occurred_at).toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}. Cooldown ${cd} hari — log seterusnya selepas ${next.toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}.`
-  }, [followUpActivities, followUpTopic])
-
   const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob' | 'age') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
@@ -953,281 +939,10 @@ function CustomersPage() {
     }
   }
 
-  const fetchCrmTagAssignments = async (customerId: string) => {
-    setCrmTagsLoading(true)
-    try {
-      const response = await fetch(`/api/customers/${customerId}/crm-tags`, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to load CRM tags')
-      }
-      const ids = (result.assignments || []).map((a: { tag_id: string }) => a.tag_id)
-      setCrmSelectedTagIds(ids)
-    } catch {
-      setCrmSelectedTagIds([])
-    } finally {
-      setCrmTagsLoading(false)
-    }
-  }
-
-  const handleAnalyzeAi = async () => {
-    if (!isEditing) return
-    setAnalyzeAiLoading(true)
-    setAnalyzeAiError(null)
-    setAnalyzeAiNotice(null)
-    try {
-      const res = await fetch(`/api/customers/${isEditing}/analyze-tags`, {
-        method: 'POST',
-        credentials: 'same-origin',
-      })
-      const raw = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        const body = raw as { error?: string; hint?: string; debug?: unknown }
-        console.error('[Analyze AI] failed', {
-          httpStatus: res.status,
-          error: body.error,
-          hint: body.hint,
-          debug: body.debug,
-        })
-        const hint = typeof body.hint === 'string' ? ` ${body.hint}` : ''
-        throw new Error((typeof body.error === 'string' ? body.error : 'Analyze failed') + hint)
-      }
-      const data = raw as {
-        rationale_ms?: string
-        rationale_en?: string
-        applied_tag_ids?: string[]
-      }
-      await fetchCrmTagAssignments(isEditing)
-      const ms = typeof data.rationale_ms === 'string' ? data.rationale_ms.trim() : ''
-      const en = typeof data.rationale_en === 'string' ? data.rationale_en.trim() : ''
-      const n = Number(data.applied_tag_ids?.length)
-      const summary =
-        ms || en
-          ? [ms, en].filter(Boolean).join(' — ')
-          : Number.isFinite(n)
-            ? `Applied ${n} tag(s) from chat analysis.`
-            : 'Analysis complete.'
-      setAnalyzeAiNotice(summary)
-    } catch (e: unknown) {
-      setAnalyzeAiError(e instanceof Error ? e.message : 'Analyze failed')
-    } finally {
-      setAnalyzeAiLoading(false)
-    }
-  }
-
-  const toggleCrmTag = (tagId: string, category: TagCategoryDto) => {
-    if (!tagCatalog) return
-    setCrmSelectedTagIds((prev) => {
-      const selected = new Set(prev)
-      const tagsInCategory = tagCatalog.tags.filter((t) => t.category_id === category.id)
-      const idsInCat = new Set(tagsInCategory.map((t) => t.id))
-
-      if (!category.allows_multiple) {
-        if (selected.has(tagId)) {
-          selected.delete(tagId)
-        } else {
-          for (const id of idsInCat) selected.delete(id)
-          selected.add(tagId)
-        }
-        return Array.from(selected)
-      }
-
-      if (selected.has(tagId)) selected.delete(tagId)
-      else selected.add(tagId)
-      return Array.from(selected)
-    })
-  }
-
-  const fetchCustomerLabels = async (customerId: string) => {
-    setLabelsLoading(true)
-    setLabelsError(null)
-    setCustomerLabels([])
-    try {
-      const response = await fetch(`/api/customers/${customerId}/labels`, {
-        cache: 'no-store',
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch customer labels')
-      }
-      setCustomerLabels(Array.isArray(result.labels) ? result.labels : [])
-    } catch (err: any) {
-      setLabelsError(err.message || 'Failed to fetch customer labels')
-    } finally {
-      setLabelsLoading(false)
-    }
-  }
-
-  const fetchCustomerProfileImage = async (customerId: string) => {
-    setProfileImageLoading(true)
-    setProfileImageError(null)
-    setProfileImageUrl(null)
-    try {
-      const response = await fetch(`/api/customers/${customerId}/profile-picture`, {
-        cache: 'no-store',
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch customer profile image')
-      }
-      setProfileImageUrl(typeof result.profilePictureURL === 'string' ? result.profilePictureURL : null)
-    } catch (err: any) {
-      setProfileImageError(err.message || 'Failed to fetch customer profile image')
-    } finally {
-      setProfileImageLoading(false)
-    }
-  }
-
-  const fetchCustomerChatHistory = async (customerId: string, limit = 80, forDialog = false) => {
-    if (forDialog) setChatHistoryDialogLoading(true)
-    else setChatHistoryLoading(true)
-    setChatHistoryError(null)
-    try {
-      const response = await fetch(`/api/customers/${customerId}/chat-history?limit=${limit}`, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const hint = typeof result.hint === 'string' ? ` ${result.hint}` : ''
-        console.error('[Customer Chat History] failed', {
-          httpStatus: response.status,
-          error: result.error,
-          hint: result.hint,
-          debug: result.debug,
-        })
-        throw new Error((typeof result.error === 'string' ? result.error : 'Failed to fetch chat history') + hint)
-      }
-      setChatHistory(Array.isArray(result.messages) ? result.messages : [])
-    } catch (err: any) {
-      setChatHistory([])
-      setChatHistoryError(err.message || 'Failed to fetch chat history')
-    } finally {
-      if (forDialog) setChatHistoryDialogLoading(false)
-      else setChatHistoryLoading(false)
-    }
-  }
-
-  const handleOpenFullChatHistory = async () => {
-    if (!isEditing) return
-    setChatHistoryDialogOpen(true)
-    await fetchCustomerChatHistory(isEditing, 500, true)
-  }
-
-  const fetchFollowUpActivities = useCallback(async (customerId: string) => {
-    setFollowUpLoading(true)
-    setFollowUpError(null)
-    setFollowUpActivities([])
-    setFollowUpLimits(null)
-    try {
-      const res = await fetch(`/api/customers/${customerId}/follow-up-activities`, { cache: 'no-store' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to load follow-up log')
-      setFollowUpActivities(Array.isArray(json.data) ? json.data : [])
-      setFollowUpLimits(
-        json.limits && typeof json.limits === 'object'
-          ? {
-              touchesLast7Days: Number(json.limits.touchesLast7Days) || 0,
-              maxTouchesPerWeek:
-                Number(json.limits.maxTouchesPerWeek) || DEFAULT_MAX_TOUCHES_PER_WEEK,
-            }
-          : null,
-      )
-    } catch (e: unknown) {
-      setFollowUpActivities([])
-      setFollowUpLimits(null)
-      setFollowUpError(e instanceof Error ? e.message : 'Failed to load')
-    } finally {
-      setFollowUpLoading(false)
-    }
-  }, [])
-
-  const handleSubmitFollowUp = async () => {
-    if (!isEditing) return
-    setFollowUpSubmitting(true)
-    setFollowUpError(null)
-    try {
-      const res = await fetch(`/api/customers/${isEditing}/follow-up-activities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: followUpTopic,
-          channel: followUpChannel,
-          outcome: followUpOutcome.trim() || null,
-          notes: followUpNotes.trim() || undefined,
-          occurred_at: followUpOccurredAt.trim() || undefined,
-          counts_toward_quota: followUpCountsQuota,
-          idempotency_key:
-            typeof crypto !== 'undefined' && 'randomUUID' in crypto
-              ? crypto.randomUUID()
-              : `fu-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-        }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Failed to save')
-      pushToast('success', 'Follow-up ditambah.')
-      setFollowUpNotes('')
-      setFollowUpOutcome('')
-      setFollowUpOccurredAt('')
-      await fetchFollowUpActivities(isEditing)
-      if (editingCustomer && isEditing) {
-        saveFollowUpResume({
-          customerId: isEditing,
-          saveName:
-            editingCustomer.save_name ||
-            editingCustomer.name ||
-            String(editingCustomer.pg_code || 'Customer'),
-          accountStatusFilter,
-          page,
-          viewMode,
-        })
-        setResumeCheckpoint(loadFollowUpResume())
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to save'
-      setFollowUpError(msg)
-      pushToast('error', msg)
-    } finally {
-      setFollowUpSubmitting(false)
-    }
-  }
-
-  const handleEdit = (customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => {
-    setAnalyzeAiError(null)
-    setAnalyzeAiNotice(null)
-    setCustomerModalTab(opts?.initialTab ?? 'details')
+  const handleEdit = (customer: Customer, opts?: { initialTab?: CustomerEditModalTab }) => {
+    setIsCreating(false)
+    setEditModalInitialTab(opts?.initialTab ?? 'details')
     setIsEditing(customer.id)
-    setEditingCustomer({
-      ...customer,
-      segment_attributes:
-        customer.segment_attributes && typeof customer.segment_attributes === 'object'
-          ? { ...customer.segment_attributes }
-          : {},
-    })
-    setChatHistory([])
-    setChatHistoryError(null)
-    setFollowUpTopic('general_check_in')
-    setFollowUpChannel('call')
-    setFollowUpOutcome('')
-    setFollowUpNotes('')
-    setFollowUpOccurredAt('')
-    setFollowUpCountsQuota(true)
-    void fetchCustomerLabels(customer.id)
-    void fetchCrmTagAssignments(customer.id)
-    void fetchCustomerProfileImage(customer.id)
-    void fetchCustomerChatHistory(customer.id)
-    void fetchFollowUpActivities(customer.id)
-    saveFollowUpResume({
-      customerId: customer.id,
-      saveName: customer.save_name || customer.name || customer.pg_code || 'Customer',
-      accountStatusFilter,
-      page,
-      viewMode,
-    })
-    setResumeCheckpoint(loadFollowUpResume())
   }
 
   handleEditRef.current = handleEdit
@@ -1264,7 +979,7 @@ function CustomersPage() {
         if (res.ok && data?.id) {
           handleEditRef.current(data as Customer)
         }
-      } finally {
+    } finally {
         urlOpenDoneRef.current = oid
       }
     }
@@ -1291,96 +1006,6 @@ function CustomersPage() {
       })
     }
   }, [followUpQueueOpen, followUpQueueLoading, followUpQueueNextId, followUpQueueRows])
-
-  const handleSaveEdit = async () => {
-    if (!editingCustomer || !isEditing) return
-
-    setIsPostingCustomer(true)
-    setError(null)
-    try {
-      const response = await fetch(`/api/customers/${isEditing}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editingCustomer),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to update customer')
-      }
-
-      if (isEditing) {
-        const crmRes = await fetch(`/api/customers/${isEditing}/crm-tags`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ tag_ids: crmSelectedTagIds }),
-        })
-        const crmJson = await crmRes.json()
-        if (!crmRes.ok) {
-          throw new Error(crmJson.error || 'Failed to save CRM tags')
-        }
-      }
-
-      const displayName = editingCustomer.save_name || editingCustomer.name || 'Customer'
-      pushToast('success', `${displayName} saved successfully.`)
-
-      setIsEditing(null)
-      setEditingCustomer(null)
-      setCrmSelectedTagIds([])
-      setCustomerModalTab('details')
-      fetchCustomers()
-    } catch (err: any) {
-      const msg = err.message || 'Failed to update customer'
-      setError(msg)
-      pushToast('error', msg)
-    } finally {
-      setIsPostingCustomer(false)
-    }
-  }
-
-  const handleCreate = async () => {
-    if (!editingCustomer) return
-
-    setIsPostingCustomer(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/customers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customers: [editingCustomer],
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to create customer')
-      }
-
-      const displayName = editingCustomer.save_name || editingCustomer.name || 'Customer'
-      pushToast('success', `${displayName} created successfully.`)
-
-      setIsCreating(false)
-      setEditingCustomer(null)
-      setCustomerModalTab('details')
-      fetchCustomers()
-    } catch (err: any) {
-      const msg = err.message || 'Failed to create customer'
-      setError(msg)
-      pushToast('error', msg)
-      setIsCreating(false)
-    } finally {
-      setIsPostingCustomer(false)
-    }
-  }
 
   const handleExport = async () => {
     try {
@@ -1691,8 +1316,17 @@ function CustomersPage() {
           </div>
         </div>
 
+        <AnimatePresence mode="wait">
         {managementTab === 'workspace' && (
-        <>
+        <motion.div
+          key="customer-mgmt-workspace"
+          role="tabpanel"
+          aria-label="Workspace"
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -24 }}
+          transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
         {resumeCheckpoint && (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1701,7 +1335,7 @@ function CustomersPage() {
                   Checkpoint follow-up
                 </p>
                 <p className="mt-1 text-sm text-amber-950">
-                  Terakhir dibuka: <strong className="break-words">{resumeCheckpoint.saveName}</strong>
+                  Checkpoint: <strong className="break-words">{resumeCheckpoint.saveName}</strong>
                   {resumeCheckpoint.accountStatusFilter ? (
                     <span className="text-amber-900/90">
                       {' '}
@@ -1710,8 +1344,8 @@ function CustomersPage() {
                   ) : null}
                 </p>
                 <p className="mt-0.5 text-[11px] leading-snug text-amber-800/90">
-                  Tekan &quot;Sambung&quot; atau simpan pautan sebagai bookmark untuk teruskan senarai (contoh: 10 panggilan
-                  free account).
+                  Dikemas kini apabila anda simpan log follow-up dengan saluran <strong>Panggilan</strong>. Tekan
+                  &quot;Sambung&quot; atau simpan pautan sebagai bookmark.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 shrink-0">
@@ -1747,6 +1381,12 @@ function CustomersPage() {
                   onClick={() => {
                     clearFollowUpResume()
                     setResumeCheckpoint(null)
+                    if (user) {
+                      void fetch('/api/me/follow-up-bookmark', {
+                        method: 'DELETE',
+                        credentials: 'same-origin',
+                      }).catch(() => {})
+                    }
                     pushToast('success', 'Checkpoint dikosongkan.')
                   }}
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
@@ -1803,7 +1443,7 @@ function CustomersPage() {
             <div
               id="customers-filters-grid"
               className={`${mobileFiltersOpen ? 'block' : 'max-md:hidden'} ${filtersAccordionOpen ? 'md:block' : 'md:hidden'}`}
-            >
+          >
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             {/* Search */}
             <div className="md:col-span-2 flex gap-2">
@@ -1857,7 +1497,7 @@ function CustomersPage() {
             {/* Age Filter */}
             <select
               value={agePresetFilter}
-              onChange={(e) => {
+                  onChange={(e) => {
                 const v = e.target.value as '' | '0-18' | '19-26' | '27-45' | '46-above'
                 setAgePresetFilter(v)
                 if (v === '') {
@@ -2055,18 +1695,15 @@ function CustomersPage() {
               Clear
             </button>
           </div>
-            </div>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => {
-                setAnalyzeAiError(null)
-                setAnalyzeAiNotice(null)
-                setCustomerModalTab('details')
-                setEditingCustomer({})
+                setIsEditing(null)
+                setEditModalInitialTab('details')
                 setIsCreating(true)
-                setCrmSelectedTagIds([])
               }}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
@@ -2178,1031 +1815,35 @@ function CustomersPage() {
           </div>
         )}
 
-        {/* Create/Edit Modal */}
-        {(isCreating || isEditing) && editingCustomer && (
-          // {/* // on mobile and below screen size add padding 0 */}
-
-          <div
-            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center ${followUpQueueOpen ? 'z-[110]' : 'z-50'} ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
-            onClick={() => {
-              if (isPostingCustomer || followUpSubmitting) return
-              setChatHistoryDialogOpen(false)
-              setIsCreating(false)
-              setIsEditing(null)
-              setEditingCustomer(null)
-              setCustomerLabels([])
-              setLabelsError(null)
-              setProfileImageUrl(null)
-              setProfileImageError(null)
-              setCrmSelectedTagIds([])
-              setAnalyzeAiError(null)
-              setAnalyzeAiNotice(null)
-              setChatHistory([])
-              setChatHistoryError(null)
-              setCustomerModalTab('details')
-            }}
-          >
-            <div
-              className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-
-              {/* // on mobile and below screen size add padding-bottom 2rem */}
-              <div className={`p-6 ${window.innerWidth < 768 ? 'pb-24' : 'pb-6'}`}>
-                <div className="mb-4 flex items-center gap-3 justify-between">
-
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    {isCreating ? 'Create Customer' : 'Edit Customer'}
-                  </h2>
-
-                  <button
-                    type="button"
-                    disabled={isPostingCustomer || followUpSubmitting}
-                    onClick={() => {
-                      if (isPostingCustomer || followUpSubmitting) return
-                      setChatHistoryDialogOpen(false)
+        <CustomerEditModalShell
+          open={Boolean(isCreating || isEditing)}
+          isCreating={isCreating}
+          customerId={isEditing}
+          initialCustomer={isCreating ? {} : null}
+          initialTab={editModalInitialTab}
+          overlayZIndexClassName={followUpQueueOpen ? 'z-[1300]' : undefined}
+          followUpResumeContext={
+            isEditing
+              ? {
+                  accountStatusFilter: accountStatusFilter || '',
+                  page,
+                  viewMode,
+                }
+              : null
+          }
+          onResumeSynced={(stored) => {
+            setResumeCheckpoint(stored)
+          }}
+          onClose={() => {
                       setIsCreating(false)
                       setIsEditing(null)
-                      setEditingCustomer(null)
-                      setCustomerLabels([])
-                      setLabelsError(null)
-                      setProfileImageUrl(null)
-                      setProfileImageError(null)
-                      setCrmSelectedTagIds([])
-                      setAnalyzeAiError(null)
-                      setAnalyzeAiNotice(null)
-                      setChatHistory([])
-                      setChatHistoryError(null)
-                      setCustomerModalTab('details')
-                    }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-                    aria-label="Close modal"
-                    title="Close"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+            setEditModalInitialTab('details')
+          }}
+          onSaved={() => {
+            void fetchCustomers()
+          }}
+        />
 
-                </div>
-
-                <div
-                  role="tablist"
-                  aria-label="Customer sections"
-                  className={`mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${isCreating ? 'grid-cols-2' : 'grid-cols-3'}`}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={customerModalTab === 'details'}
-                    onClick={() => setCustomerModalTab('details')}
-                    className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
-                      customerModalTab === 'details'
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Details
-                  </button>
-                  {!isCreating && (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={customerModalTab === 'follow_up'}
-                      onClick={() => setCustomerModalTab('follow_up')}
-                      className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
-                        customerModalTab === 'follow_up'
-                          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Follow-up
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={customerModalTab === 'tags'}
-                    onClick={() => setCustomerModalTab('tags')}
-                    className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
-                      customerModalTab === 'tags'
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Tags
-                  </button>
-                </div>
-
-                {customerModalTab === 'details' && (
-                  <div role="tabpanel" aria-label="Details">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="h-14 w-14 rounded-full bg-slate-100 border border-slate-200 overflow-hidden shrink-0">
-                    {isCreating ? (
-                      <div className="h-full w-full flex items-center justify-center text-slate-400">
-                        <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M5.121 17.804A9 9 0 1118.879 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      </div>
-                    ) : profileImageLoading ? (
-                      <div className="h-full w-full flex items-center justify-center text-slate-400">
-                        <svg
-                          className="animate-spin h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      </div>
-                    ) : profileImageUrl ? (
-                      <img
-                        src={profileImageUrl}
-                        alt="Customer WhatsApp profile"
-                        className="h-full w-full object-cover"
-                        onError={() => {
-                          setProfileImageUrl(null)
-                          setProfileImageError('Profile image is unavailable')
-                        }}
-                      />
-                    ) : (
-                      <div className="h-full w-full flex items-center justify-center text-slate-400">
-                        <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M5.121 17.804A9 9 0 1118.879 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-700">WhatsApp profile image</p>
-                    <p className="text-xs text-slate-500">
-                      {isCreating
-                        ? 'Available after customer is created.'
-                        : profileImageError
-                          ? profileImageError
-                          : profileImageUrl
-                            ? 'Loaded from WAHA contact profile.'
-                            : 'No profile image found.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Account Status</label>
-                  <div
-                    className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
-                    aria-live="polite"
-                  >
-                    {getAccountStatusLabel(editingCustomer)}
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Last Purchase Date: {editingCustomer.original_data?.['Last Purchase Date'] || '-'}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.name || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={editingCustomer.email || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, email: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                    <input
-                      type="tel"
-                      value={editingCustomer.phone || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Date of Birth</label>
-                    <input
-                      type="date"
-                      value={editingCustomer.dob || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Gender</label>
-                    <select
-                      value={editingCustomer.gender || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, gender: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select...</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Ethnicity</label>
-                    <select
-                      value={editingCustomer.ethnicity || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, ethnicity: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Select...</option>
-                      <option value="Malay">Malay</option>
-                      <option value="Chinese">Chinese</option>
-                      <option value="Indian">Indian</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="customer-location" className="block text-sm font-medium text-slate-700 mb-1">
-                      Location
-                    </label>
-                    <CustomerLocationCombobox
-                      id="customer-location"
-                      value={editingCustomer.location || ''}
-                      onChange={(location) => setEditingCustomer({ ...editingCustomer, location })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">Locality / town (Malaysia). Type to search or enter any text.</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">PG Code</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.pg_code || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, pg_code: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Sender Name</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.sender_name || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, sender_name: e.target.value })}
-                      placeholder="e.g. Pn Haszelina, Tn Azamuddin"
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Save Name</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.save_name || ''}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, save_name: e.target.value })}
-                      placeholder="e.g. PG00113237 - Pn Haszelina"
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!editingCustomer.is_married}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_married: e.target.checked })}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Married</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!editingCustomer.is_friend}
-                      onChange={(e) => setEditingCustomer({ ...editingCustomer, is_friend: e.target.checked })}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Friend</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={parseProfileVerified(editingCustomer.original_data) === true}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            'Profile Verified': e.target.checked ? 'Yes' : 'No',
-                          },
-                        })
-                      }
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Profile verified</span>
-                  </label>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Rank</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Rank'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            Rank: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Branch'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            Branch: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Empire Size</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Empire Size'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            'Empire Size': e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Parent Name</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Parent Name'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            'Parent Name': e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Date Register</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Date Register'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            'Date Register': e.target.value,
-                          },
-                        })
-                      }
-                      placeholder="YYYY-MM-DD HH:mm:ss"
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Total Frontline</label>
-                    <input
-                      type="text"
-                      value={editingCustomer.original_data?.['Total Frontline'] || ''}
-                      onChange={(e) =>
-                        setEditingCustomer({
-                          ...editingCustomer,
-                          original_data: {
-                            ...(editingCustomer.original_data || {}),
-                            'Total Frontline': e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-
-                </div>
-                  </div>
-                )}
-
-                {customerModalTab === 'follow_up' && !isCreating && isEditing && (
-                  <div role="tabpanel" aria-label="Follow-up" className="min-h-[200px] space-y-4">
-                    <p className="text-xs text-slate-600">
-                      Log setiap sentuhan (panggilan / WhatsApp). Topik yang sama ada <strong>cooldown</strong> supaya
-                      pelanggan tidak rasa spam. Maksimum{' '}
-                      <strong>{followUpLimits?.maxTouchesPerWeek ?? DEFAULT_MAX_TOUCHES_PER_WEEK}</strong> sentuhan
-                      dikira dalam quota (7 hari).
-                    </p>
-                    {followUpLimits && (
-                      <p className="text-xs font-medium text-slate-800">
-                        Sentuhan minggu ini (ikut quota):{' '}
-                        <strong>
-                          {followUpLimits.touchesLast7Days} / {followUpLimits.maxTouchesPerWeek}
-                        </strong>
-                      </p>
-                    )}
-                    {followUpError && (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-                        {followUpError}
-                      </div>
-                    )}
-
-                    <div className="rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-800">Sejarah</p>
-                        <button
-                          type="button"
-                          onClick={() => isEditing && void fetchFollowUpActivities(isEditing)}
-                          disabled={followUpLoading}
-                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                        >
-                          {followUpLoading ? 'Memuatkan…' : 'Muat semula'}
-                        </button>
-                      </div>
-                      <div
-                        className="max-h-[min(42vh,320px)] min-h-[72px] overflow-y-auto overscroll-contain rounded-lg border border-slate-100 bg-slate-50/80 p-2"
-                        role="region"
-                        aria-label="Sejarah follow-up"
-                      >
-                        {followUpLoading ? (
-                          <p className="px-1 py-2 text-xs text-slate-500">Memuatkan log…</p>
-                        ) : followUpActivities.length === 0 ? (
-                          <p className="px-1 py-2 text-xs text-slate-500">
-                            Tiada log lagi. Tambah sentuhan pertama di bawah.
-                          </p>
-                        ) : (
-                          <ul className="space-y-2 pr-1">
-                            {followUpActivities.map((a) => (
-                              <li
-                                key={a.id}
-                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-sm"
-                              >
-                                <div className="flex flex-wrap items-baseline justify-between gap-1">
-                                  <span className="font-semibold text-slate-900">{getTopicLabel(a.topic)}</span>
-                                  <span className="text-[10px] text-slate-500">
-                                    {new Date(a.occurred_at).toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}
-                                  </span>
-                                </div>
-                                <p className="mt-0.5 text-[11px] text-slate-600">
-                                  {getChannelLabel(a.channel as FollowUpChannel)}
-                                  {a.outcome ? ` · ${a.outcome}` : ''}
-                                  {!a.counts_toward_quota ? ' · tidak kira quota' : ''}
-                                </p>
-                                {a.notes ? (
-                                  <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-700">{a.notes}</p>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-                      <p className="text-sm font-semibold text-slate-800">Tambah log</p>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Topik</label>
-                          <select
-                            value={followUpTopic}
-                            onChange={(e) => setFollowUpTopic(e.target.value)}
-                            disabled={followUpSubmitting}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                          >
-                            {FOLLOW_UP_TOPICS.map((t) => (
-                              <option key={t.key} value={t.key}>
-                                {t.labelMs}
-                              </option>
-                            ))}
-                          </select>
-                          {followUpTopicHint && (
-                            <p className="mt-1 text-[11px] leading-snug text-amber-800">{followUpTopicHint}</p>
-                          )}
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Saluran</label>
-                          <select
-                            value={followUpChannel}
-                            onChange={(e) => setFollowUpChannel(e.target.value as FollowUpChannel)}
-                            disabled={followUpSubmitting}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                          >
-                            {FOLLOW_UP_CHANNELS.map((c) => (
-                              <option key={c} value={c}>
-                                {getChannelLabel(c)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Outcome (pilihan)</label>
-                          <select
-                            value={followUpOutcome}
-                            onChange={(e) => setFollowUpOutcome(e.target.value)}
-                            disabled={followUpSubmitting}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                          >
-                            <option value="">—</option>
-                            {FOLLOW_UP_OUTCOMES.map((o) => (
-                              <option key={o} value={o}>
-                                {o}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Tarikh / masa (kosong = sekarang)</label>
-                          <input
-                            type="datetime-local"
-                            value={followUpOccurredAt}
-                            onChange={(e) => setFollowUpOccurredAt(e.target.value)}
-                            disabled={followUpSubmitting}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                          />
-                        </div>
-                      </div>
-                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={followUpCountsQuota}
-                          onChange={(e) => setFollowUpCountsQuota(e.target.checked)}
-                          disabled={followUpSubmitting}
-                          className="h-4 w-4 rounded border-slate-400 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
-                        />
-                        Kira dalam quota mingguan (nyahaktifkan untuk log dalaman / ujian)
-                      </label>
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600">Nota</label>
-                        <textarea
-                          value={followUpNotes}
-                          onChange={(e) => setFollowUpNotes(e.target.value)}
-                          rows={3}
-                          disabled={followUpSubmitting}
-                          placeholder="Ringkasan sembang, janji seterusnya, dll."
-                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleSubmitFollowUp()}
-                        disabled={followUpSubmitting}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {followUpSubmitting ? (
-                          <>
-                            <svg
-                              className="h-4 w-4 shrink-0 animate-spin"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              aria-hidden
-                            >
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                              />
-                            </svg>
-                            Menyimpan…
-                          </>
-                        ) : (
-                          'Simpan log'
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {customerModalTab === 'tags' && (
-                  <div
-                    role="tabpanel"
-                    aria-label="Tags"
-                    className="min-h-[200px] space-y-4"
-                  >
-                    <div className="mb-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="block text-sm font-medium text-slate-700">WhatsApp labels</label>
-                        {!isCreating && isEditing && (
-                          <button
-                            type="button"
-                            onClick={() => void fetchCustomerLabels(isEditing)}
-                            disabled={labelsLoading}
-                            className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                          >
-                            {labelsLoading ? 'Refreshing...' : 'Refresh labels'}
-                          </button>
-                        )}
-                      </div>
-                      <div className="mt-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 min-h-[42px]">
-                        {isCreating ? (
-                          <span className="text-xs text-slate-500">
-                            Labels are available after the customer is created.
-                          </span>
-                        ) : labelsLoading ? (
-                          <span className="text-xs text-slate-500">Loading labels...</span>
-                        ) : labelsError ? (
-                          <span className="text-xs text-red-600 whitespace-pre-wrap break-words">{labelsError}</span>
-                        ) : customerLabels.length === 0 ? (
-                          <span className="text-xs text-slate-500">No labels found on WhatsApp.</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {customerLabels.map((label, idx) => {
-                              const labelId = String(label.id ?? `${label.name || 'label'}-${idx}`)
-                              const hasHex =
-                                typeof label.colorHex === 'string' &&
-                                /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/.test(label.colorHex)
-                              const bgColor = hasHex ? `${label.colorHex}22` : '#e2e8f0'
-                              const borderColor = hasHex ? label.colorHex : '#cbd5e1'
-                              return (
-                                <span
-                                  key={labelId}
-                                  className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium text-slate-800"
-                                  style={{ backgroundColor: bgColor, borderColor }}
-                                  title={`Label ID: ${label.id ?? '-'}`}
-                                >
-                                  {label.name || `Label ${label.id ?? ''}`}
-                                </span>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">Chat history</p>
-                          <p className="text-xs text-slate-500">Latest WhatsApp conversation with this customer.</p>
-                        </div>
-                        {!isCreating && isEditing && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleOpenFullChatHistory()}
-                              disabled={chatHistoryDialogLoading}
-                              className="px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-60 transition-colors"
-                            >
-                              View all messages
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void fetchCustomerChatHistory(isEditing)}
-                              disabled={chatHistoryLoading}
-                              className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
-                            >
-                              {chatHistoryLoading ? 'Refreshing...' : 'Refresh chat'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {isCreating ? (
-                        <span className="text-xs text-slate-500">
-                          Save the new customer first, then open them again to view chat history.
-                        </span>
-                      ) : chatHistoryLoading ? (
-                        <span className="text-xs text-slate-500">Loading chat history...</span>
-                      ) : chatHistoryError ? (
-                        <span className="text-xs text-red-600 whitespace-pre-wrap break-words">{chatHistoryError}</span>
-                      ) : chatHistory.length === 0 ? (
-                        <span className="text-xs text-slate-500">No readable chat messages found.</span>
-                      ) : (
-                        <div className="max-h-[260px] space-y-2 overflow-y-auto pr-1">
-                          {chatHistory.map((m) => (
-                            <div
-                              key={m.id}
-                              className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}
-                            >
-                              <div
-                                className={`max-w-[92%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
-                                  m.fromMe
-                                    ? 'bg-blue-600 text-white rounded-br-md'
-                                    : 'bg-white text-slate-800 border border-slate-200 rounded-bl-md'
-                                }`}
-                              >
-                                <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                                {typeof m.timestamp === 'number' && Number.isFinite(m.timestamp) && (
-                                  <p
-                                    className={`mt-1 text-[10px] ${
-                                      m.fromMe ? 'text-blue-100' : 'text-slate-400'
-                                    }`}
-                                  >
-                                    {new Date(m.timestamp).toLocaleString()}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {isCreating ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
-                        <p className="text-sm font-medium text-slate-800">CRM tags</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Save the new customer first, then open them again to assign CRM tags from the catalog.
-                        </p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <label className="block text-sm font-medium text-slate-700">CRM tags</label>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              Segmentation labels from admin catalog. Single-choice categories replace the previous pick
-                              in that group.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleAnalyzeAi()}
-                            disabled={
-                              analyzeAiLoading ||
-                              tagCatalogLoading ||
-                              crmTagsLoading ||
-                              !tagCatalog ||
-                              tagCatalog.categories.length === 0
-                            }
-                            className="shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {analyzeAiLoading ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <svg
-                                  className="h-3.5 w-3.5 animate-spin"
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                  />
-                                  <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                  />
-                                </svg>
-                                Analyzing…
-                              </span>
-                            ) : (
-                              'Analyze AI'
-                            )}
-                          </button>
-                        </div>
-                        {analyzeAiError && (
-                          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-                            {analyzeAiError}
-                          </div>
-                        )}
-                        {analyzeAiNotice && !analyzeAiError && (
-                          <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                            {analyzeAiNotice}
-                          </div>
-                        )}
-                        <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3">
-                          {tagCatalogLoading || crmTagsLoading ? (
-                            <span className="text-xs text-slate-500">Loading tags…</span>
-                          ) : !tagCatalog || tagCatalog.categories.length === 0 ? (
-                            <span className="text-xs text-slate-500">
-                              No tag catalog yet. Ask an admin to add categories and tags in Admin → Settings.
-                            </span>
-                          ) : (
-                            <div className="max-h-[min(55vh,420px)] space-y-4 overflow-y-auto pr-1">
-                              {tagCatalog.categories.map((cat) => {
-                                const tagsInCat = tagCatalog.tags.filter((t) => t.category_id === cat.id)
-                                if (tagsInCat.length === 0) return null
-                                return (
-                                  <div key={cat.id}>
-                                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                      {cat.name}
-                                    </p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {tagsInCat.map((t) => {
-                                        const selected = crmSelectedTagIds.includes(t.id)
-                                        return (
-                                          <button
-                                            key={t.id}
-                                            type="button"
-                                            onClick={() => toggleCrmTag(t.id, cat)}
-                                            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                                              selected
-                                                ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/30'
-                                                : 'bg-white text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100'
-                                            }`}
-                                          >
-                                            {t.label}
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    type="button"
-                    disabled={isPostingCustomer || followUpSubmitting}
-                    onClick={() => {
-                      if (isPostingCustomer || followUpSubmitting) return
-                      setChatHistoryDialogOpen(false)
-                      setIsCreating(false)
-                      setIsEditing(null)
-                      setEditingCustomer(null)
-                      setCustomerLabels([])
-                      setLabelsError(null)
-                      setProfileImageUrl(null)
-                      setProfileImageError(null)
-                      setCrmSelectedTagIds([])
-                      setAnalyzeAiError(null)
-                      setAnalyzeAiNotice(null)
-                      setChatHistory([])
-                      setChatHistoryError(null)
-                      setCustomerModalTab('details')
-                    }}
-                    className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isPostingCustomer || followUpSubmitting}
-                    onClick={isCreating ? handleCreate : handleSaveEdit}
-                    className="inline-flex min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {isPostingCustomer ? (
-                      <>
-                        <svg
-                          className="h-4 w-4 shrink-0 animate-spin"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          aria-hidden
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          />
-                        </svg>
-                        {isCreating ? 'Creating…' : 'Saving…'}
-                      </>
-                    ) : (
-                      <span>{isCreating ? 'Create' : 'Save'}</span>
-                    )}
-                  </button>
-                </div>
-
-                {chatHistoryDialogOpen && !isCreating && (
-                  <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
-                    onClick={() => setChatHistoryDialogOpen(false)}
-                  >
-                    <div
-                      className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-900">Full chat history</h3>
-                          <p className="text-xs text-slate-500">Entire conversation between user and customer.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isEditing && (
-                            <button
-                              type="button"
-                              onClick={() => void fetchCustomerChatHistory(isEditing, 200, true)}
-                              disabled={chatHistoryDialogLoading}
-                              className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                            >
-                              {chatHistoryDialogLoading ? 'Refreshing...' : 'Refresh'}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setChatHistoryDialogOpen(false)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Close full chat history"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="max-h-[70vh] overflow-y-auto p-4">
-                        {chatHistoryDialogLoading ? (
-                          <p className="text-xs text-slate-500">Loading full chat history...</p>
-                        ) : chatHistoryError ? (
-                          <p className="text-xs text-red-600 whitespace-pre-wrap break-words">{chatHistoryError}</p>
-                        ) : chatHistory.length === 0 ? (
-                          <p className="text-xs text-slate-500">No readable chat messages found.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {chatHistory.map((m) => (
-                              <div key={`${m.id}-full`} className={`flex ${m.fromMe ? 'justify-end' : 'justify-start'}`}>
-                                <div
-                                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-xs leading-relaxed shadow-sm ${
-                                    m.fromMe
-                                      ? 'bg-blue-600 text-white rounded-br-md'
-                                      : 'bg-slate-50 text-slate-800 border border-slate-200 rounded-bl-md'
-                                  }`}
-                                >
-                                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                                  {typeof m.timestamp === 'number' && Number.isFinite(m.timestamp) && (
-                                    <p className={`mt-1 text-[10px] ${m.fromMe ? 'text-blue-100' : 'text-slate-400'}`}>
-                                      {new Date(m.timestamp).toLocaleString()}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Account status counts (all customers in your database) */}
         <div className="mb-6">
@@ -3247,7 +1888,7 @@ function CustomersPage() {
                   sub: 'Recent Buyer, not this month',
                   className: 'border-red-200 bg-red-50/80 text-red-900',
                 },
-                 {
+                {
                   key: 'freeze' as const,
                   label: 'Freeze',
                   sub: 'No Sales within 3-11 months',
@@ -3276,7 +1917,7 @@ function CustomersPage() {
               const selected = accountStatusFilter === key
               return (
                 <button
-                  key={key}
+                key={key}
                   type="button"
                   onClick={() => {
                     setAccountStatusFilter((prev) => (prev === key ? '' : key))
@@ -3289,10 +1930,10 @@ function CustomersPage() {
                       ? 'ring-2 ring-blue-600 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 shadow-md scale-[1.01]'
                       : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.99]'
                   }`}
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">{statusCounts[key]}</p>
-                  <p className="mt-0.5 text-[10px] opacity-80 leading-tight">{sub}</p>
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums">{statusCounts[key]}</p>
+                <p className="mt-0.5 text-[10px] opacity-80 leading-tight">{sub}</p>
                 </button>
               )
             })}
@@ -3676,11 +2317,20 @@ function CustomersPage() {
             </div>
           ) : null}
         </div>
-        </>
+        </motion.div>
         )}
 
         {managementTab === 'sales-journey' && (
-          <div className="space-y-6">
+          <motion.div
+            key="customer-mgmt-sales-journey"
+            role="tabpanel"
+            aria-label="Sales journey"
+            className="space-y-6"
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }}
+            transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          >
             <div
               role="tablist"
               aria-label="Sales journey views"
@@ -3753,7 +2403,7 @@ function CustomersPage() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                         />
                       </svg>
-                      <p className="mt-3 text-sm text-slate-300">Loading journey overview…</p>
+                      <p className="mt-3 text-sm text-slate-900">Loading journey overview…</p>
                     </div>
                   </div>
                 ) : (
@@ -4032,8 +2682,9 @@ function CustomersPage() {
                 </div>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </main>
     </div>
   )

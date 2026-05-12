@@ -1,9 +1,11 @@
 'use client'
 
 import { useAuth } from '@/app/contexts/auth-context'
+import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   isBroadcastScheduledTitle,
   SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
@@ -14,6 +16,7 @@ import {
   SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
   normalizedScheduledTitle,
 } from '@/app/lib/scheduled-automation-titles'
+import type { AutomationAudiencePreview } from '@/app/lib/automation-audience-preview'
 
 interface ScheduledMessage {
   id: string
@@ -63,6 +66,60 @@ const DEFAULT_AUTOMATION_TEMPLATES = {
 // The worker detects this marker and strips it before rendering the template.
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
 
+function localDateKeyFromIso(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function shiftDateKey(dateKey: string, deltaDays: number): string {
+  const [y, mo, d] = dateKey.split('-').map(Number)
+  const dt = new Date(y, mo - 1, d)
+  dt.setDate(dt.getDate() + deltaDays)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+function todayLocalDateKey(): string {
+  return localDateKeyFromIso(new Date().toISOString())
+}
+
+function scheduleKindMeta(title: string | null): { bar: string; shortLabel: string } {
+  const t = normalizedScheduledTitle(title)
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_BIRTHDAY)) {
+    return { bar: 'bg-pink-500', shortLabel: 'Birthday' }
+  }
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_INACTIVE_FOLLOWUP)) {
+    return { bar: 'bg-orange-500', shortLabel: 'Inactive follow-up' }
+  }
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_FREE_FOLLOWUP)) {
+    return { bar: 'bg-violet-500', shortLabel: 'Free account' }
+  }
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP)) {
+    return { bar: 'bg-sky-500', shortLabel: 'Profile unverified' }
+  }
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP)) {
+    return { bar: 'bg-teal-500', shortLabel: 'No autodebit' }
+  }
+  if (t === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)) {
+    return { bar: 'bg-amber-500', shortLabel: 'Gold poster (group)' }
+  }
+  return { bar: 'bg-slate-500', shortLabel: 'One-off / other' }
+}
+
+function buildMonthGridCells(year: number, monthIndex: number): (number | null)[] {
+  const first = new Date(year, monthIndex, 1)
+  const startPad = first.getDay()
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+  const cells: (number | null)[] = []
+  for (let i = 0; i < startPad; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+  return cells
+}
+
 const getDefaultScheduleTimePlus3Minutes = (): string => {
   const d = new Date(Date.now() + 3 * 60 * 1000)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -82,8 +139,158 @@ type AutomationTitleType =
   | 'gap'
   | 'customer'
 
+type ScheduleAudienceSectionProps = {
+  preview: AutomationAudiencePreview | null
+  loading: boolean
+  error: string | null
+  onOpenCustomer: (customerId: string) => void
+}
+
+const AUDIENCE_BUCKET_META: Array<{
+  key: 'birthday' | 'free_followup' | 'active_profile_unverified' | 'active_verified_no_autodebit'
+  label: string
+  hint: string
+}> = [
+  { key: 'birthday', label: 'Birthday wishes', hint: 'Customers with birthday on this date.' },
+  { key: 'free_followup', label: 'Free account follow-up', hint: 'Free accounts whose registration anniversary matches this date (not yet sent).' },
+  { key: 'active_profile_unverified', label: 'Profile unverified', hint: 'Active, purchased this month, profile not verified (not yet sent).' },
+  { key: 'active_verified_no_autodebit', label: 'No autodebit', hint: 'Active, verified, no direct debit, purchased this month (not yet sent).' },
+]
+
+function ScheduleAudienceSection({ preview, loading, error, onOpenCustomer }: ScheduleAudienceSectionProps) {
+  const audienceMotionTransition = { type: 'tween' as const, duration: 0.24, ease: [0.22, 1, 0.36, 1] as const }
+
+  if (!loading && !error && !preview) {
+    return null
+  }
+
+  return (
+    <div className="mt-4">
+      <AnimatePresence mode="wait">
+        {loading ? (
+          <motion.div
+            key="schedule-audience-loading"
+            className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={audienceMotionTransition}
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <span className="sr-only">Loading recipient preview</span>
+            <div className="h-3 w-52 max-w-[85%] rounded bg-slate-200/90 animate-pulse" />
+            <div className="space-y-2">
+              <div className="h-3 w-full max-w-lg rounded bg-slate-200/80 animate-pulse" />
+              <div className="h-3 w-full max-w-md rounded bg-slate-200/70 animate-pulse" />
+            </div>
+            {AUDIENCE_BUCKET_META.map(({ key }) => (
+              <div key={key} className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="h-4 w-44 max-w-[70%] rounded bg-slate-200/90 animate-pulse" />
+                  <div className="h-3 w-14 shrink-0 rounded bg-slate-200/80 animate-pulse" />
+                </div>
+                <div className="mt-2 h-3 w-full max-w-xl rounded bg-slate-200/70 animate-pulse" />
+                <div className="mt-2 space-y-1.5">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-7 w-full rounded-lg bg-slate-200/60 animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        ) : error ? (
+          <motion.p
+            key="schedule-audience-error"
+            className="text-sm text-red-600"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={audienceMotionTransition}
+          >
+            {error}
+          </motion.p>
+        ) : preview ? (
+          <motion.div
+            key="schedule-audience-preview"
+            className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={audienceMotionTransition}
+          >
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recipient preview (this date)</h4>
+            <p className="text-xs text-slate-500">
+              Estimates who would match automation rules if a run happened on this calendar day. One-to-one schedules are
+              listed above only.
+            </p>
+            {AUDIENCE_BUCKET_META.map(({ key, label, hint }) => {
+              const bucket = preview[key]
+              return (
+                <div key={key} className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900">{label}</p>
+                    <p className="text-xs font-medium text-slate-600">{bucket.total} total</p>
+                  </div>
+                  {bucket.error ? <p className="mt-1 text-xs text-amber-800">{bucket.error}</p> : null}
+                  <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p>
+                  {bucket.sample.length > 0 ? (
+                    <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-xs text-slate-700">
+                      {bucket.sample.map((r) => {
+                        const profilePath = `/customers?openCustomer=${encodeURIComponent(r.id)}`
+                        const label = r.save_name || r.name || r.pg_code || r.id.slice(0, 8)
+                        return (
+                          <li key={r.id} className="truncate">
+                            <button
+                              type="button"
+                              onClick={() => onOpenCustomer(r.id)}
+                              className="group flex w-full flex-col items-start gap-0.5 rounded-lg px-2 py-1 text-left transition hover:bg-slate-100/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                            >
+                              <span className="font-medium text-slate-900 underline underline-offset-2">{label}</span>
+                              {/* <span className="font-mono text-[11px] text-blue-600 underline decoration-blue-200 underline-offset-2 group-hover:text-blue-800">
+                          {profilePath}
+                        </span> */}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : bucket.total === 0 && !bucket.error ? (
+                    <p className="mt-2 text-xs text-slate-500">No matching customers.</p>
+                  ) : null}
+                  {bucket.total > bucket.sample.length ? (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Showing first {bucket.sample.length} of {bucket.total}.
+                    </p>
+                  ) : null}
+                </div>
+              )
+            })}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+const CALENDAR_MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const
+
 export default function AutomatedMessagesPage() {
   const { user, loading } = useAuth()
+  const { openCustomerById } = useCustomerEditModal()
   const router = useRouter()
   const [items, setItems] = useState<ScheduledMessage[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -107,11 +314,33 @@ export default function AutomatedMessagesPage() {
   const [defaultTemplates, setDefaultTemplates] = useState(DEFAULT_AUTOMATION_TEMPLATES)
   const [titleType, setTitleType] = useState<AutomationTitleType>('birthday')
   const [activeTab, setActiveTab] = useState<'personal' | 'group'>('personal')
+  const [scheduleCalendarOpen, setScheduleCalendarOpen] = useState(false)
+  const [scheduleViewMode, setScheduleViewMode] = useState<'day' | 'month' | 'year'>('month')
+  const [scheduleCalendarMonth, setScheduleCalendarMonth] = useState(() => {
+    const d = new Date()
+    d.setDate(1)
+    d.setHours(12, 0, 0, 0)
+    return d
+  })
+  const [scheduleCalendarSelectedKey, setScheduleCalendarSelectedKey] = useState<string | null>(null)
+  const [audiencePreview, setAudiencePreview] = useState<AutomationAudiencePreview | null>(null)
+  const [audiencePreviewLoading, setAudiencePreviewLoading] = useState(false)
+  const [audiencePreviewError, setAudiencePreviewError] = useState<string | null>(null)
   const [wahaSessions, setWahaSessions] = useState<Array<{ name: string; status?: string }>>([])
   const [wahaGroups, setWahaGroups] = useState<Array<{ id: string; name: string }>>([])
   const [groupSearch, setGroupSearch] = useState('')
   const [isGroupsLoading, setIsGroupsLoading] = useState(false)
   const [posterPreviewTick, setPosterPreviewTick] = useState(Date.now())
+
+  /** Tailwind `md` (768px): tablet + desktop — horizontal sheet; below = mobile slide-up */
+  const [scheduleCalendarWideLayout, setScheduleCalendarWideLayout] = useState(false)
+  useLayoutEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const sync = () => setScheduleCalendarWideLayout(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
 
   // Prevent duplicated broadcast automations:
   // If there's already a pending + enabled scheduled message with the same title,
@@ -138,6 +367,100 @@ export default function AutomatedMessagesPage() {
     const isGold = normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
     return activeTab === 'group' ? isGold : !isGold
   })
+
+  const pendingScheduleItems = useMemo(
+    () => items.filter((i) => i.status === 'pending'),
+    [items]
+  )
+
+  const pendingByLocalDay = useMemo(() => {
+    const map = new Map<string, ScheduledMessage[]>()
+    for (const item of pendingScheduleItems) {
+      const isGold =
+        normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
+      if (activeTab === 'group' ? !isGold : isGold) continue
+      const k = localDateKeyFromIso(item.scheduled_at)
+      if (!k) continue
+      const arr = map.get(k) ?? []
+      arr.push(item)
+      map.set(k, arr)
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    }
+    return map
+  }, [pendingScheduleItems, activeTab])
+
+  const yearMonthScheduleCounts = useMemo(() => {
+    const y = scheduleCalendarMonth.getFullYear()
+    const counts = Array.from({ length: 12 }, () => 0)
+    for (const [k, arr] of pendingByLocalDay.entries()) {
+      if (!k.startsWith(`${y}-`)) continue
+      const monthIndex = Number(k.slice(5, 7)) - 1
+      if (monthIndex >= 0 && monthIndex < 12) counts[monthIndex] += arr.length
+    }
+    return counts
+  }, [pendingByLocalDay, scheduleCalendarMonth])
+
+  const scheduleCalendarCells = useMemo(() => {
+    const y = scheduleCalendarMonth.getFullYear()
+    const m = scheduleCalendarMonth.getMonth()
+    return buildMonthGridCells(y, m)
+  }, [scheduleCalendarMonth])
+
+  useEffect(() => {
+    if (!scheduleCalendarOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setScheduleCalendarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [scheduleCalendarOpen])
+
+  const audienceFetchKey = useMemo(() => {
+    if (!scheduleCalendarOpen) return null
+    if (scheduleViewMode === 'day') return scheduleCalendarSelectedKey || todayLocalDateKey()
+    return scheduleCalendarSelectedKey
+  }, [scheduleCalendarOpen, scheduleViewMode, scheduleCalendarSelectedKey])
+
+  useEffect(() => {
+    if (!audienceFetchKey) {
+      setAudiencePreview(null)
+      setAudiencePreviewError(null)
+      setAudiencePreviewLoading(false)
+      return
+    }
+    let cancelled = false
+    setAudiencePreviewLoading(true)
+    setAudiencePreviewError(null)
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/automated-messages/audience-preview?date=${encodeURIComponent(audienceFetchKey)}`,
+          { cache: 'no-store', credentials: 'same-origin' }
+        )
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(json.error || 'Failed to load audience preview')
+        if (!cancelled) setAudiencePreview(json as AutomationAudiencePreview)
+      } catch (e: unknown) {
+        if (!cancelled) setAudiencePreviewError(e instanceof Error ? e.message : 'Preview failed')
+      } finally {
+        if (!cancelled) setAudiencePreviewLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [audienceFetchKey])
+
+  useEffect(() => {
+    if (!scheduleCalendarOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [scheduleCalendarOpen])
 
   const parseGoldPosterConfig = (raw: string): GoldPosterConfig | null => {
     try {
@@ -567,17 +890,43 @@ export default function AutomatedMessagesPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <h1 className="text-xl font-semibold text-slate-900">Automated WhatsApp Messages</h1>
-            <button
-              onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              {activeTab === 'group' ? 'Schedule poster' : 'Schedule message'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="View schedule on calendar"
+                onClick={() => {
+                  const d = new Date()
+                  d.setDate(1)
+                  d.setHours(12, 0, 0, 0)
+                  setScheduleCalendarMonth(d)
+                  setScheduleViewMode('month')
+                  setScheduleCalendarSelectedKey(todayLocalDateKey())
+                  setScheduleCalendarWideLayout(window.matchMedia('(min-width: 768px)').matches)
+                  setScheduleCalendarOpen(true)
+                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {activeTab === 'group' ? 'Schedule poster' : 'Schedule message'}
+              </button>
+            </div>
           </div>
           <div className="mb-4 inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
             <button
@@ -740,13 +1089,46 @@ export default function AutomatedMessagesPage() {
       </main>
 
       {/* Create / Edit Modal */}
-      {(isCreating || editing) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <AnimatePresence>
+        {(isCreating || editing) && (
+          <motion.div
+            key="automated-messages-form"
+            role="presentation"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="automated-message-form-title"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl"
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <div className="p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">
-                {editing ? 'Edit scheduled message' : 'Schedule message'}
-              </h2>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <h2 id="automated-message-form-title" className="text-xl font-semibold text-slate-900 pr-2">
+                  {editing ? 'Edit scheduled message' : 'Schedule message'}
+                </h2>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={closeModal}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
 
               <div className="space-y-4">
                 <div>
@@ -1138,9 +1520,432 @@ export default function AutomatedMessagesPage() {
                 </button>
               </div>
             </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {scheduleCalendarOpen && (
+          <motion.div
+            key="schedule-calendar-fullscreen"
+            className="fixed inset-0 z-[60] flex flex-col bg-slate-50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="schedule-calendar-title"
+            initial={
+              scheduleCalendarWideLayout
+                ? { x: '100vw', y: 0, opacity: 1 }
+                : { x: 0, y: '100%', opacity: 1 }
+            }
+            animate={{ x: 0, y: 0, opacity: 1 }}
+            exit={
+              scheduleCalendarWideLayout
+                ? { x: '100vw', y: 0, opacity: 1 }
+                : { x: 0, y: '100%', opacity: 1 }
+            }
+            transition={{ type: 'tween', duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          >
+          <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="min-w-0">
+              <h2 id="schedule-calendar-title" className="text-lg font-semibold text-slate-900">
+                Schedule calendar
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Pending <strong>{activeTab === 'group' ? 'group' : 'personal'}</strong> automations · local dates
+              </p>
+            </div>
+            <div
+              className="flex rounded-xl border border-slate-200 bg-slate-50 p-1"
+              role="tablist"
+              aria-label="Calendar view"
+            >
+              {(['day', 'month', 'year'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={scheduleViewMode === mode}
+                  onClick={() => {
+                    setScheduleViewMode(mode)
+                    if (mode === 'day' && !scheduleCalendarSelectedKey) {
+                      setScheduleCalendarSelectedKey(todayLocalDateKey())
+                    }
+                  }}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                    scheduleViewMode === mode
+                      ? 'bg-white text-slate-900 shadow'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              aria-label="Close calendar"
+              onClick={() => setScheduleCalendarOpen(false)}
+              className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </header>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {scheduleViewMode === 'year' && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
+                <div className="mx-auto mb-4 flex w-full max-w-4xl items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleCalendarMonth((d) => new Date(d.getFullYear() - 1, d.getMonth(), 1))
+                      setScheduleCalendarSelectedKey(null)
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    ← {scheduleCalendarMonth.getFullYear() - 1}
+                  </button>
+                  <p className="text-base font-semibold text-slate-900">{scheduleCalendarMonth.getFullYear()}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScheduleCalendarMonth((d) => new Date(d.getFullYear() + 1, d.getMonth(), 1))
+                      setScheduleCalendarSelectedKey(null)
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    {scheduleCalendarMonth.getFullYear() + 1} →
+                  </button>
+                </div>
+                <div className="mx-auto grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {CALENDAR_MONTH_NAMES.map((name, mi) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        setScheduleCalendarMonth(new Date(scheduleCalendarMonth.getFullYear(), mi, 1))
+                        setScheduleViewMode('month')
+                        setScheduleCalendarSelectedKey(null)
+                      }}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
+                    >
+                      <p className="text-sm font-semibold text-slate-900">{name}</p>
+                      <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900">
+                        {yearMonthScheduleCounts[mi]}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">pending runs</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {scheduleViewMode === 'month' && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
+                  <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScheduleCalendarMonth((d) => {
+                          const x = new Date(d)
+                          x.setMonth(x.getMonth() - 1)
+                          return x
+                        })
+                        setScheduleCalendarSelectedKey(null)
+                      }}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      ←
+                    </button>
+                    <p className="text-center text-sm font-semibold text-slate-900">
+                      {scheduleCalendarMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScheduleCalendarMonth((d) => {
+                          const x = new Date(d)
+                          x.setMonth(x.getMonth() + 1)
+                          return x
+                        })
+                        setScheduleCalendarSelectedKey(null)
+                      }}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((wd) => (
+                        <div key={wd} className="bg-slate-50 py-2">
+                          {wd}
+                        </div>
+                      ))}
+                      {scheduleCalendarCells.map((day, idx) => {
+                        const y = scheduleCalendarMonth.getFullYear()
+                        const m = scheduleCalendarMonth.getMonth()
+                        const dateKey =
+                          day != null
+                            ? `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                            : null
+                        const dayItems = dateKey ? pendingByLocalDay.get(dateKey) ?? [] : []
+                        const isSelected = dateKey != null && scheduleCalendarSelectedKey === dateKey
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            disabled={day == null}
+                            onClick={() => {
+                              if (dateKey) setScheduleCalendarSelectedKey(dateKey)
+                            }}
+                            className={`min-h-[4.5rem] bg-white p-1.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:cursor-default disabled:bg-slate-50/80 sm:min-h-[5.5rem] ${
+                              isSelected ? 'ring-2 ring-inset ring-blue-500' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            {day != null ? (
+                              <>
+                                <span className="block text-sm font-semibold text-slate-900">{day}</span>
+                                <div className="mt-1 flex flex-wrap gap-0.5">
+                                  {dayItems.slice(0, 4).map((it) => (
+                                    <span
+                                      key={it.id}
+                                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${scheduleKindMeta(it.title).bar}`}
+                                      title={it.title || 'Scheduled'}
+                                    />
+                                  ))}
+                                  {dayItems.length > 4 ? (
+                                    <span className="text-[10px] font-medium text-slate-500">+{dayItems.length - 4}</span>
+                                  ) : null}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="sr-only">empty</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-pink-500" /> Birthday
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-orange-500" /> Inactive
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-violet-500" /> Free account
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-sky-500" /> Profile unverified
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-teal-500" /> No autodebit
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-amber-500" /> Gold poster
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-slate-500" /> Other
+                      </span>
+                    </div>
+
+                    {scheduleCalendarSelectedKey ? (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          {new Date(scheduleCalendarSelectedKey + 'T12:00:00').toLocaleDateString(undefined, {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </h3>
+                        {(pendingByLocalDay.get(scheduleCalendarSelectedKey) ?? []).length === 0 ? (
+                          <p className="mt-2 text-sm text-slate-600">No pending schedules on this day.</p>
+                        ) : (
+                          <ul className="mt-3 space-y-3">
+                            {(pendingByLocalDay.get(scheduleCalendarSelectedKey) ?? []).map((it) => {
+                              const meta = scheduleKindMeta(it.title)
+                              const msgPreview = it.message.startsWith(WARMUP_MESSAGE_MARKER)
+                                ? it.message.slice(WARMUP_MESSAGE_MARKER.length)
+                                : it.message
+                              return (
+                                <li
+                                  key={it.id}
+                                  className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3"
+                                >
+                                  <span className={`mt-0.5 h-8 w-1 shrink-0 rounded-full ${meta.bar}`} aria-hidden />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-slate-900">{it.title || 'Untitled'}</p>
+                                    <p className="text-xs text-slate-500">
+                                      {meta.shortLabel}
+                                      {it.is_enable === false ? (
+                                        <span className="ml-2 font-semibold text-amber-700">· Disabled</span>
+                                      ) : null}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-600">
+                                      {new Date(it.scheduled_at).toLocaleString(undefined, {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                      {normalizedScheduledTitle(it.title) !==
+                                        normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) &&
+                                      it.phone ? (
+                                        <span className="ml-2 font-mono">{it.phone}</span>
+                                      ) : null}
+                                    </p>
+                                    <p className="mt-1 line-clamp-2 text-xs text-slate-600">{msgPreview}</p>
+                                  </div>
+                                  <div className="flex shrink-0 flex-col gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        openEdit(it)
+                                        setScheduleCalendarOpen(false)
+                                      }}
+                                      className="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                        <ScheduleAudienceSection
+                          preview={audiencePreview}
+                          loading={audiencePreviewLoading}
+                          error={audiencePreviewError}
+                          onOpenCustomer={(id) => openCustomerById(id)}
+                        />
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-center text-sm text-slate-500">Select a day for details and recipient preview.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {scheduleViewMode === 'day' && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 lg:w-52 lg:flex-col lg:items-stretch lg:justify-start lg:gap-3 lg:border-b-0 lg:border-r">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScheduleCalendarSelectedKey(
+                        shiftDateKey(scheduleCalendarSelectedKey || todayLocalDateKey(), -1)
+                      )
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    ← Prev day
+                  </button>
+                  <p className="text-center text-sm font-semibold text-slate-900 lg:text-left">
+                    {new Date((scheduleCalendarSelectedKey || todayLocalDateKey()) + 'T12:00:00').toLocaleDateString(
+                      undefined,
+                      { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScheduleCalendarSelectedKey(
+                        shiftDateKey(scheduleCalendarSelectedKey || todayLocalDateKey(), 1)
+                      )
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Next day →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleCalendarSelectedKey(todayLocalDateKey())}
+                    className="hidden rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow hover:bg-blue-700 lg:block"
+                  >
+                    Today
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <div className="mx-auto max-w-3xl">
+                    <button
+                      type="button"
+                      onClick={() => setScheduleCalendarSelectedKey(todayLocalDateKey())}
+                      className="mb-3 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-blue-700 lg:hidden"
+                    >
+                      Jump to today
+                    </button>
+                    {(pendingByLocalDay.get(scheduleCalendarSelectedKey || todayLocalDateKey()) ?? []).length ===
+                    0 ? (
+                      <p className="text-sm text-slate-600">No pending schedules on this day.</p>
+                    ) : (
+                      <ul className="space-y-3">
+                        {(pendingByLocalDay.get(scheduleCalendarSelectedKey || todayLocalDateKey()) ?? []).map(
+                          (it) => {
+                            const meta = scheduleKindMeta(it.title)
+                            const msgPreview = it.message.startsWith(WARMUP_MESSAGE_MARKER)
+                              ? it.message.slice(WARMUP_MESSAGE_MARKER.length)
+                              : it.message
+                            return (
+                              <li
+                                key={it.id}
+                                className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                              >
+                                <span className={`mt-0.5 h-8 w-1 shrink-0 rounded-full ${meta.bar}`} aria-hidden />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-slate-900">{it.title || 'Untitled'}</p>
+                                  <p className="text-xs text-slate-500">{meta.shortLabel}</p>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    {new Date(it.scheduled_at).toLocaleString(undefined, {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                    {normalizedScheduledTitle(it.title) !==
+                                      normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER) &&
+                                    it.phone ? (
+                                      <span className="ml-2 font-mono">{it.phone}</span>
+                                    ) : null}
+                                  </p>
+                                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{msgPreview}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openEdit(it)
+                                    setScheduleCalendarOpen(false)
+                                  }}
+                                  className="shrink-0 self-start rounded-lg px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                                >
+                                  Edit
+                                </button>
+                              </li>
+                            )
+                          }
+                        )}
+                      </ul>
+                    )}
+                    <ScheduleAudienceSection
+                      preview={audiencePreview}
+                      loading={audiencePreviewLoading}
+                      error={audiencePreviewError}
+                      onOpenCustomer={(id) => openCustomerById(id)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

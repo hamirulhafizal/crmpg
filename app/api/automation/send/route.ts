@@ -19,6 +19,7 @@ import {
   SCHEDULED_TITLE_GOLD_PRICE_POSTER,
 } from '@/app/lib/scheduled-automation-titles'
 import { fetchPublicGoldBuybackSnapshot } from '@/app/lib/public-gold-prices'
+import { utcMonthBoundsFromYearMonth0 } from '@/app/lib/automation-month-bounds'
 
 const BATCH_SIZE = 20
 const WARMUP_MESSAGE_MARKER = '__WARMUP_ENABLED__\n'
@@ -136,6 +137,48 @@ const supabaseAdmin = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+type FollowupCampaignKind = 'free' | 'active_profile_unverified' | 'active_verified_no_autodebit'
+
+const FOLLOWUP_SEND_LOG_ATTEMPTS = 4
+const FOLLOWUP_SEND_LOG_BASE_DELAY_MS = 300
+
+/**
+ * Write followup_campaign_sends after WhatsApp/email delivery. Retries transient failures;
+ * unique violation means another worker (or retry) already logged — treat as OK.
+ */
+async function persistFollowupCampaignSend(
+  userId: string,
+  customerId: string,
+  kind: FollowupCampaignKind,
+  scheduledMessageId: string
+): Promise<{ inserted: boolean; duplicate: boolean; errorMessage?: string }> {
+  const payload = {
+    user_id: userId,
+    customer_id: customerId,
+    kind,
+    scheduled_message_id: scheduledMessageId,
+  }
+  let lastMessage: string | undefined
+  for (let attempt = 1; attempt <= FOLLOWUP_SEND_LOG_ATTEMPTS; attempt++) {
+    const { error } = await supabaseAdmin.from('followup_campaign_sends').insert(payload)
+    if (!error) {
+      return { inserted: true, duplicate: false }
+    }
+    lastMessage = error.message
+    if (error.code === '23505') {
+      return { inserted: false, duplicate: true }
+    }
+    if (attempt < FOLLOWUP_SEND_LOG_ATTEMPTS) {
+      await sleep(FOLLOWUP_SEND_LOG_BASE_DELAY_MS * attempt)
+    }
+  }
+  console.error(
+    '[followup] followup_campaign_sends insert failed after retries (message may already be delivered):',
+    { userId, customerId, kind, scheduledMessageId, lastMessage }
+  )
+  return { inserted: false, duplicate: false, errorMessage: lastMessage }
+}
 
 // Basic customer type for template rendering
 interface Customer {
@@ -1113,6 +1156,33 @@ export async function GET(request: Request) {
                   (sentRows || []).map((r: { customer_id: string }) => r.customer_id)
                 )
 
+                const ty = localTzNow.getUTCFullYear()
+                const tm0 = localTzNow.getUTCMonth()
+                const { startIso: followupMonthStartIso, endExclusiveIso: followupMonthEndIso } =
+                  utcMonthBoundsFromYearMonth0(ty, tm0)
+
+                const { data: followupActRows, error: followupActErr } = await supabaseAdmin
+                  .from('customer_follow_up_activities')
+                  .select('customer_id, topic')
+                  .eq('user_id', row.user_id)
+                  .in('channel', ['whatsapp_manual', 'whatsapp_automation'])
+                  .gte('occurred_at', followupMonthStartIso)
+                  .lt('occurred_at', followupMonthEndIso)
+                  .in('topic', ['profile_update', 'reactivate_from_free', 'direct_debit_education'])
+
+                const freeActivityTouched = new Set<string>()
+                const puActivityTouched = new Set<string>()
+                const adActivityTouched = new Set<string>()
+                if (!followupActErr && followupActRows) {
+                  for (const r of followupActRows as { customer_id: string; topic: string }[]) {
+                    if (r.topic === 'reactivate_from_free') freeActivityTouched.add(r.customer_id)
+                    else if (r.topic === 'profile_update') puActivityTouched.add(r.customer_id)
+                    else if (r.topic === 'direct_debit_education') adActivityTouched.add(r.customer_id)
+                  }
+                } else if (followupActErr) {
+                  console.error('Error loading follow-up activities for automation dedupe:', followupActErr)
+                }
+
                 const { data: allCustomers, error: custError } = await supabaseAdmin
                   .from('customers')
                   .select('*')
@@ -1126,7 +1196,13 @@ export async function GET(request: Request) {
                 }
 
                 const candidates = (allCustomers || []).filter((c: Customer) => {
-                  if (alreadySent.has(c.id)) return false
+                  if (kind === 'free') {
+                    if (alreadySent.has(c.id) || freeActivityTouched.has(c.id)) return false
+                  } else if (kind === 'active_profile_unverified') {
+                    if (alreadySent.has(c.id) || puActivityTouched.has(c.id)) return false
+                  } else {
+                    if (alreadySent.has(c.id) || adActivityTouched.has(c.id)) return false
+                  }
                   const status = getAccountStatusKey(c)
                   if (kind === 'active_profile_unverified') {
                     if (status !== 'active') return false
@@ -1248,17 +1324,47 @@ export async function GET(request: Request) {
                     }
 
                     if (delivered) {
-                      const { error: insErr } = await supabaseAdmin.from('followup_campaign_sends').insert({
-                        user_id: row.user_id,
-                        customer_id: customer.id,
-                        kind,
-                        scheduled_message_id: row.id,
-                      })
-                      if (insErr) {
-                        console.error('Error recording follow-up send:', insErr)
-                        localFailed++
-                      } else {
+                      const persist = await persistFollowupCampaignSend(
+                        row.user_id,
+                        customer.id,
+                        kind as FollowupCampaignKind,
+                        row.id
+                      )
+                      const campaignLogOk = persist.inserted || persist.duplicate
+                      if (campaignLogOk) {
                         localSent++
+                      } else {
+                        localFailed++
+                      }
+
+                      const followupTopicByKind: Record<FollowupCampaignKind, string> = {
+                        free: 'reactivate_from_free',
+                        active_profile_unverified: 'profile_update',
+                        active_verified_no_autodebit: 'direct_debit_education',
+                      }
+                      const topic = followupTopicByKind[kind as FollowupCampaignKind]
+                      const idempotencyKey = `automation-followup-${kind}-${customer.id}-${ty}-${String(tm0 + 1).padStart(2, '0')}`
+                      const { error: actLogErr } = await supabaseAdmin.from('customer_follow_up_activities').insert({
+                        customer_id: customer.id,
+                        created_by: row.user_id,
+                        topic,
+                        channel: 'whatsapp_automation',
+                        outcome: 'delivered',
+                        notes: campaignLogOk
+                          ? 'Log automatik selepas kempen penyampaian.'
+                          : 'Log sandaran: mesej dihantar tetapi followup_campaign_sends gagal selepas beberapa cubaan — semak DB.',
+                        occurred_at: new Date().toISOString(),
+                        counts_toward_quota: false,
+                        idempotency_key: idempotencyKey,
+                        metadata: {
+                          source: 'followup_campaign',
+                          scheduled_message_id: row.id,
+                          kind,
+                          ...(campaignLogOk ? {} : { followup_campaign_send_log_failed: true }),
+                        },
+                      })
+                      if (actLogErr && actLogErr.code !== '23505') {
+                        console.error('Error recording follow-up activity (automation):', actLogErr)
                       }
                     } else {
                       localFailed++
