@@ -1,8 +1,8 @@
 'use client'
 
 import { useAuth } from '@/app/contexts/auth-context'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
@@ -19,6 +19,24 @@ import {
   getBusinessRankBucketLabel,
   type BusinessRankBucket,
 } from '@/app/lib/customer-account-status'
+import {
+  FOLLOW_UP_CHANNELS,
+  FOLLOW_UP_OUTCOMES,
+  FOLLOW_UP_TOPICS,
+  DEFAULT_MAX_TOUCHES_PER_WEEK,
+  getChannelLabel,
+  getTopicCooldownDays,
+  getTopicLabel,
+  type FollowUpActivityRow,
+  type FollowUpChannel,
+} from '@/app/lib/customer-follow-up-activities'
+import {
+  loadFollowUpResume,
+  saveFollowUpResume,
+  clearFollowUpResume,
+  buildFollowUpResumeUrl,
+  type StoredFollowUpResume,
+} from '@/app/lib/follow-up-resume'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -52,6 +70,35 @@ const ACCOUNT_STATUS_ROW_CLASSES: Record<AccountStatusKey, string> = {
 
 const AGE_FILTER_MIN = 0
 const AGE_FILTER_MAX = 100
+
+/** Valid `accountStatus` query param for bookmark / resume URLs */
+const ACCOUNT_STATUS_QUERY = new Set<string>([
+  'temporary',
+  'freeze',
+  'active',
+  'free',
+  'inactive',
+  'unknown',
+])
+
+function accountStatusQueueTitle(status: AccountStatusKey): string {
+  switch (status) {
+    case 'active':
+      return 'Active'
+    case 'inactive':
+      return 'Inactive'
+    case 'free':
+      return 'Free account'
+    case 'freeze':
+      return 'Freeze'
+    case 'temporary':
+      return 'Temporary'
+    case 'unknown':
+      return 'Unknown'
+    default:
+      return status
+  }
+}
 
 const runConfetti = () => {
   if (typeof window === 'undefined') return
@@ -263,9 +310,13 @@ const formatOriginalDate = (value: unknown): string => {
   return `${dd}/${mm}/${yyyy}`
 }
 
-export default function CustomersPage() {
+function CustomersPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname() || '/customers'
+  const searchParams = useSearchParams()
+  const openCustomerParam = searchParams.get('openCustomer')
+  const accountStatusParam = searchParams.get('accountStatus')
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -294,7 +345,7 @@ export default function CustomersPage() {
   const [crmSelectedTagIds, setCrmSelectedTagIds] = useState<string[]>([])
   const [crmTagsLoading, setCrmTagsLoading] = useState(false)
   const [tagFilter, setTagFilter] = useState('')
-  const [customerModalTab, setCustomerModalTab] = useState<'details' | 'tags'>('details')
+  const [customerModalTab, setCustomerModalTab] = useState<'details' | 'follow_up' | 'tags'>('details')
   const [analyzeAiLoading, setAnalyzeAiLoading] = useState(false)
   const [analyzeAiError, setAnalyzeAiError] = useState<string | null>(null)
   const [analyzeAiNotice, setAnalyzeAiNotice] = useState<string | null>(null)
@@ -303,6 +354,31 @@ export default function CustomersPage() {
   const [chatHistoryError, setChatHistoryError] = useState<string | null>(null)
   const [chatHistoryDialogOpen, setChatHistoryDialogOpen] = useState(false)
   const [chatHistoryDialogLoading, setChatHistoryDialogLoading] = useState(false)
+
+  const [followUpActivities, setFollowUpActivities] = useState<FollowUpActivityRow[]>([])
+  const [followUpLimits, setFollowUpLimits] = useState<{
+    touchesLast7Days: number
+    maxTouchesPerWeek: number
+  } | null>(null)
+  const [followUpLoading, setFollowUpLoading] = useState(false)
+  const [followUpSubmitting, setFollowUpSubmitting] = useState(false)
+  const [followUpError, setFollowUpError] = useState<string | null>(null)
+  const [followUpTopic, setFollowUpTopic] = useState('general_check_in')
+  const [followUpChannel, setFollowUpChannel] = useState<FollowUpChannel>('call')
+  const [followUpOutcome, setFollowUpOutcome] = useState('')
+  const [followUpNotes, setFollowUpNotes] = useState('')
+  const [followUpOccurredAt, setFollowUpOccurredAt] = useState('')
+  const [followUpCountsQuota, setFollowUpCountsQuota] = useState(true)
+
+  const [resumeCheckpoint, setResumeCheckpoint] = useState<StoredFollowUpResume | null>(null)
+
+  /** Full-screen follow-up queue (e.g. all FREE) + highlight next call after checkpoint */
+  const [followUpQueueOpen, setFollowUpQueueOpen] = useState(false)
+  const [followUpQueueRows, setFollowUpQueueRows] = useState<Customer[]>([])
+  const [followUpQueueLoading, setFollowUpQueueLoading] = useState(false)
+  const [followUpQueueError, setFollowUpQueueError] = useState<string | null>(null)
+  const [followUpQueueNextId, setFollowUpQueueNextId] = useState<string | null>(null)
+  const [followUpQueueAccountStatus, setFollowUpQueueAccountStatus] = useState<AccountStatusKey>('free')
 
   const [toasts, setToasts] = useState<Array<{ id: number; type: 'success' | 'error'; text: string }>>([])
 
@@ -356,6 +432,53 @@ export default function CustomersPage() {
   const [sortBy, setSortBy] = useState('updated_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
+  const openFollowUpQueueDialog = useCallback(async () => {
+    if (!resumeCheckpoint) return
+    const status: AccountStatusKey =
+      resumeCheckpoint.accountStatusFilter &&
+      ACCOUNT_STATUS_QUERY.has(resumeCheckpoint.accountStatusFilter)
+        ? (resumeCheckpoint.accountStatusFilter as AccountStatusKey)
+        : 'free'
+
+    setFollowUpQueueAccountStatus(status)
+    setFollowUpQueueOpen(true)
+    setFollowUpQueueLoading(true)
+    setFollowUpQueueError(null)
+    setFollowUpQueueRows([])
+    setFollowUpQueueNextId(null)
+
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '100000',
+        sortBy,
+        sortOrder,
+        accountStatus: status,
+      })
+      const res = await fetch(`/api/customers?${params}`, { cache: 'no-store', credentials: 'same-origin' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Gagal memuatkan senarai')
+
+      const list = Array.isArray(json.data) ? (json.data as Customer[]) : []
+      setFollowUpQueueRows(list)
+
+      const lastId = resumeCheckpoint.customerId
+      const idx = list.findIndex((c) => c.id === lastId)
+      let nextId: string | null = null
+      if (list.length === 0) nextId = null
+      else if (idx < 0) nextId = list[0].id
+      else if (idx + 1 < list.length) nextId = list[idx + 1].id
+      else nextId = null
+      setFollowUpQueueNextId(nextId)
+    } catch (e: unknown) {
+      setFollowUpQueueError(e instanceof Error ? e.message : 'Gagal memuatkan')
+      setFollowUpQueueRows([])
+      setFollowUpQueueNextId(null)
+    } finally {
+      setFollowUpQueueLoading(false)
+    }
+  }, [resumeCheckpoint, sortBy, sortOrder])
+
   const [statusCounts, setStatusCounts] = useState<Record<AccountStatusKey, number>>(EMPTY_STATUS_COUNTS)
   const [statsLoading, setStatsLoading] = useState(false)
 
@@ -375,12 +498,44 @@ export default function CustomersPage() {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [isImporting, setIsImporting] = useState(false)
   const isMountedRef = useRef(true)
+  const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => void>(
+    () => {}
+  )
+  const urlOpenDoneRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    setResumeCheckpoint(loadFollowUpResume())
+  }, [])
+
+  useEffect(() => {
+    urlOpenDoneRef.current = null
+  }, [openCustomerParam])
+
+  useEffect(() => {
+    if (isCreating && customerModalTab === 'follow_up') {
+      setCustomerModalTab('details')
+    }
+  }, [isCreating, customerModalTab])
+
+  useEffect(() => {
+    if (!isEditing && !isCreating) {
+      setFollowUpActivities([])
+      setFollowUpLimits(null)
+      setFollowUpError(null)
+      setFollowUpTopic('general_check_in')
+      setFollowUpChannel('call')
+      setFollowUpOutcome('')
+      setFollowUpNotes('')
+      setFollowUpOccurredAt('')
+      setFollowUpCountsQuota(true)
+    }
+  }, [isEditing, isCreating])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -704,6 +859,16 @@ export default function CustomersPage() {
     })
   }, [salesJourneyRows, salesJourneySearch, salesJourneyStageFilter])
 
+  const followUpTopicHint = useMemo(() => {
+    const last = followUpActivities.find((a) => a.topic === followUpTopic)
+    if (!last) return null
+    const cd = getTopicCooldownDays(followUpTopic)
+    const lastMs = new Date(last.occurred_at).getTime()
+    if (!Number.isFinite(lastMs)) return null
+    const next = new Date(lastMs + cd * 24 * 60 * 60 * 1000)
+    return `Log terakhir topik ini: ${new Date(last.occurred_at).toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}. Cooldown ${cd} hari — log seterusnya selepas ${next.toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}.`
+  }, [followUpActivities, followUpTopic])
+
   const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob' | 'age') => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
@@ -952,10 +1117,88 @@ export default function CustomersPage() {
     await fetchCustomerChatHistory(isEditing, 500, true)
   }
 
-  const handleEdit = (customer: Customer) => {
+  const fetchFollowUpActivities = useCallback(async (customerId: string) => {
+    setFollowUpLoading(true)
+    setFollowUpError(null)
+    setFollowUpActivities([])
+    setFollowUpLimits(null)
+    try {
+      const res = await fetch(`/api/customers/${customerId}/follow-up-activities`, { cache: 'no-store' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to load follow-up log')
+      setFollowUpActivities(Array.isArray(json.data) ? json.data : [])
+      setFollowUpLimits(
+        json.limits && typeof json.limits === 'object'
+          ? {
+              touchesLast7Days: Number(json.limits.touchesLast7Days) || 0,
+              maxTouchesPerWeek:
+                Number(json.limits.maxTouchesPerWeek) || DEFAULT_MAX_TOUCHES_PER_WEEK,
+            }
+          : null,
+      )
+    } catch (e: unknown) {
+      setFollowUpActivities([])
+      setFollowUpLimits(null)
+      setFollowUpError(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setFollowUpLoading(false)
+    }
+  }, [])
+
+  const handleSubmitFollowUp = async () => {
+    if (!isEditing) return
+    setFollowUpSubmitting(true)
+    setFollowUpError(null)
+    try {
+      const res = await fetch(`/api/customers/${isEditing}/follow-up-activities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: followUpTopic,
+          channel: followUpChannel,
+          outcome: followUpOutcome.trim() || null,
+          notes: followUpNotes.trim() || undefined,
+          occurred_at: followUpOccurredAt.trim() || undefined,
+          counts_toward_quota: followUpCountsQuota,
+          idempotency_key:
+            typeof crypto !== 'undefined' && 'randomUUID' in crypto
+              ? crypto.randomUUID()
+              : `fu-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Failed to save')
+      pushToast('success', 'Follow-up ditambah.')
+      setFollowUpNotes('')
+      setFollowUpOutcome('')
+      setFollowUpOccurredAt('')
+      await fetchFollowUpActivities(isEditing)
+      if (editingCustomer && isEditing) {
+        saveFollowUpResume({
+          customerId: isEditing,
+          saveName:
+            editingCustomer.save_name ||
+            editingCustomer.name ||
+            String(editingCustomer.pg_code || 'Customer'),
+          accountStatusFilter,
+          page,
+          viewMode,
+        })
+        setResumeCheckpoint(loadFollowUpResume())
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to save'
+      setFollowUpError(msg)
+      pushToast('error', msg)
+    } finally {
+      setFollowUpSubmitting(false)
+    }
+  }
+
+  const handleEdit = (customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => {
     setAnalyzeAiError(null)
     setAnalyzeAiNotice(null)
-    setCustomerModalTab('details')
+    setCustomerModalTab(opts?.initialTab ?? 'details')
     setIsEditing(customer.id)
     setEditingCustomer({
       ...customer,
@@ -966,11 +1209,88 @@ export default function CustomersPage() {
     })
     setChatHistory([])
     setChatHistoryError(null)
+    setFollowUpTopic('general_check_in')
+    setFollowUpChannel('call')
+    setFollowUpOutcome('')
+    setFollowUpNotes('')
+    setFollowUpOccurredAt('')
+    setFollowUpCountsQuota(true)
     void fetchCustomerLabels(customer.id)
     void fetchCrmTagAssignments(customer.id)
     void fetchCustomerProfileImage(customer.id)
     void fetchCustomerChatHistory(customer.id)
+    void fetchFollowUpActivities(customer.id)
+    saveFollowUpResume({
+      customerId: customer.id,
+      saveName: customer.save_name || customer.name || customer.pg_code || 'Customer',
+      accountStatusFilter,
+      page,
+      viewMode,
+    })
+    setResumeCheckpoint(loadFollowUpResume())
   }
+
+  handleEditRef.current = handleEdit
+
+  useEffect(() => {
+    if (!user || loading || managementTab !== 'workspace') return
+    if (!openCustomerParam) return
+    const ac = accountStatusParam || ''
+    if (ac && ACCOUNT_STATUS_QUERY.has(ac)) {
+      setAccountStatusFilter(ac as AccountStatusKey)
+      setPage(1)
+    }
+  }, [user, loading, managementTab, openCustomerParam, accountStatusParam])
+
+  useEffect(() => {
+    if (!user || loading || managementTab !== 'workspace') return
+    const oid = openCustomerParam
+    if (!oid || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(oid)) {
+      return
+    }
+    if (urlOpenDoneRef.current === oid) return
+    if (isLoading) return
+
+    const run = async () => {
+      const found = customers.find((c) => c.id === oid)
+      if (found) {
+        handleEditRef.current(found)
+        urlOpenDoneRef.current = oid
+        return
+      }
+      try {
+        const res = await fetch(`/api/customers/${oid}`, { cache: 'no-store', credentials: 'same-origin' })
+        const data = await res.json().catch(() => null)
+        if (res.ok && data?.id) {
+          handleEditRef.current(data as Customer)
+        }
+      } finally {
+        urlOpenDoneRef.current = oid
+      }
+    }
+    void run()
+  }, [user, loading, managementTab, isLoading, customers, openCustomerParam])
+
+  useEffect(() => {
+    if (!followUpQueueOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [followUpQueueOpen])
+
+  useLayoutEffect(() => {
+    if (!followUpQueueOpen || followUpQueueLoading) return
+    const id = followUpQueueNextId
+    if (!id) return
+    const el = document.getElementById(`follow-up-queue-row-${id}`)
+    if (el) {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+    }
+  }, [followUpQueueOpen, followUpQueueLoading, followUpQueueNextId, followUpQueueRows])
 
   const handleSaveEdit = async () => {
     if (!editingCustomer || !isEditing) return
@@ -1144,6 +1464,161 @@ export default function CustomersPage() {
           </div>
         ))}
       </div>
+
+      {followUpQueueOpen && (
+        <div
+          className="fixed inset-0 z-[95] flex flex-col bg-white"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="follow-up-queue-title"
+        >
+          <header className="flex shrink-0 flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 id="follow-up-queue-title" className="text-lg font-semibold text-slate-900">
+                Senarai follow-up — {accountStatusQueueTitle(followUpQueueAccountStatus)}
+              </h2>
+              <p className="text-xs text-slate-600">
+                Isihan sama seperti jadual utama: <strong>{sortBy}</strong> ({sortOrder}). Baris hijau ={' '}
+                <strong>seterusnya untuk dihubungi</strong>. Baris kuning = terakhir dibuka (checkpoint).
+              </p>
+              <p className="text-[11px] leading-snug text-slate-500">
+                Senarai ini kekal dibuka di belakang: klik baris untuk buka pelanggan (tab Follow-up). Tutup borang
+                pelanggan untuk kembali ke senarai dan pilih seterusnya — hanya tekan &quot;Tutup&quot; di atas untuk
+                keluar sepenuhnya.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFollowUpQueueOpen(false)}
+              className="shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-100"
+            >
+              Tutup
+            </button>
+          </header>
+
+          {followUpQueueLoading && (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-8 w-8 animate-spin text-blue-600"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <p className="mt-3 text-sm text-slate-600">Memuatkan senarai…</p>
+              </div>
+            </div>
+          )}
+
+          {!followUpQueueLoading && followUpQueueError && (
+            <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {followUpQueueError}
+            </div>
+          )}
+
+          {!followUpQueueLoading && !followUpQueueError && (
+            <>
+              {(() => {
+                const ckIdx = resumeCheckpoint
+                  ? followUpQueueRows.findIndex((c) => c.id === resumeCheckpoint.customerId)
+                  : -1
+                const atEnd =
+                  followUpQueueRows.length > 0 &&
+                  followUpQueueNextId === null &&
+                  ckIdx >= 0 &&
+                  ckIdx === followUpQueueRows.length - 1
+                const notInList =
+                  followUpQueueRows.length > 0 &&
+                  ckIdx < 0 &&
+                  resumeCheckpoint != null
+                return (
+                  <>
+                    {atEnd && (
+                      <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                        Anda sudah di <strong>pelanggan terakhir</strong> dalam senarai (ikut susunan semasa). Tiada
+                        &quot;seterusnya&quot; automatik — pilih baris lain atau tukar penapis / isihan di jadual utama.
+                      </div>
+                    )}
+                    {notInList && (
+                      <div className="mx-4 mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+                        Checkpoint tidak dijumpai dalam senarai ini — disyorkan bermula dengan pelanggan pertama
+                        (diserlahkan hijau).
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+              <div className="min-h-0 flex-1 overflow-auto">
+                {followUpQueueRows.length === 0 ? (
+                  <p className="p-6 text-sm text-slate-600">Tiada rekod untuk penapis ini.</p>
+                ) : (
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-100">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold text-slate-700">Save name</th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">PG code</th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">Name</th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">Phone</th>
+                        <th className="px-3 py-2 font-semibold text-slate-700">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {followUpQueueRows.map((c) => {
+                        const isNext = followUpQueueNextId === c.id
+                        const isCheckpoint = resumeCheckpoint?.customerId === c.id
+                        return (
+                          <tr
+                            key={c.id}
+                            id={isNext ? `follow-up-queue-row-${c.id}` : undefined}
+                            onClick={() => {
+                              handleEdit(c, { initialTab: 'follow_up' })
+                            }}
+                            className={`cursor-pointer transition-colors ${
+                              isNext
+                                ? 'bg-emerald-50 ring-2 ring-inset ring-emerald-500'
+                                : isCheckpoint
+                                  ? 'bg-amber-50/90'
+                                  : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <td className="px-3 py-2 font-medium text-slate-900">{c.save_name || '—'}</td>
+                            <td className="px-3 py-2 text-slate-800">{c.pg_code || '—'}</td>
+                            <td className="px-3 py-2 text-slate-800">{c.name || '—'}</td>
+                            <td className="px-3 py-2 text-slate-800">{c.phone || '—'}</td>
+                            <td className="px-3 py-2 text-xs text-slate-600">
+                              {isNext ? (
+                                <span className="font-semibold text-emerald-800">Seterusnya</span>
+                              ) : isCheckpoint ? (
+                                <span className="font-medium text-amber-900">Terakhir dibuka</span>
+                              ) : (
+                                getAccountStatusLabel(c)
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {!followUpQueueLoading && followUpQueueRows.length > 0 && (
+                <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2 text-center text-xs text-slate-600">
+                  {followUpQueueRows.length} pelanggan · ketik baris untuk buka borang edit
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <GoogleContactsIntegration
         onConnectionChange={handleConnectionChange}
         onImportResult={handleImportResult}
@@ -1218,6 +1693,70 @@ export default function CustomersPage() {
 
         {managementTab === 'workspace' && (
         <>
+        {resumeCheckpoint && (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/90">
+                  Checkpoint follow-up
+                </p>
+                <p className="mt-1 text-sm text-amber-950">
+                  Terakhir dibuka: <strong className="break-words">{resumeCheckpoint.saveName}</strong>
+                  {resumeCheckpoint.accountStatusFilter ? (
+                    <span className="text-amber-900/90">
+                      {' '}
+                      · penapis: <strong>{resumeCheckpoint.accountStatusFilter}</strong>
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-snug text-amber-800/90">
+                  Tekan &quot;Sambung&quot; atau simpan pautan sebagai bookmark untuk teruskan senarai (contoh: 10 panggilan
+                  free account).
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void openFollowUpQueueDialog()}
+                  className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700"
+                >
+                  Sambung
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const href = buildFollowUpResumeUrl({
+                      origin: window.location.origin,
+                      pathname,
+                      customerId: resumeCheckpoint.customerId,
+                      accountStatusFilter: resumeCheckpoint.accountStatusFilter,
+                    })
+                    try {
+                      await navigator.clipboard.writeText(href)
+                      pushToast('success', 'Pautan disalin — simpan sebagai bookmark.')
+                    } catch {
+                      pushToast('error', 'Gagal salin pautan.')
+                    }
+                  }}
+                  className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100/80"
+                >
+                  Salin pautan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearFollowUpResume()
+                    setResumeCheckpoint(null)
+                    pushToast('success', 'Checkpoint dikosongkan.')
+                  }}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Kosongkan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           <button
@@ -1644,9 +2183,9 @@ export default function CustomersPage() {
           // {/* // on mobile and below screen size add padding 0 */}
 
           <div
-            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
+            className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center ${followUpQueueOpen ? 'z-[110]' : 'z-50'} ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
             onClick={() => {
-              if (isPostingCustomer) return
+              if (isPostingCustomer || followUpSubmitting) return
               setChatHistoryDialogOpen(false)
               setIsCreating(false)
               setIsEditing(null)
@@ -1678,9 +2217,9 @@ export default function CustomersPage() {
 
                   <button
                     type="button"
-                    disabled={isPostingCustomer}
+                    disabled={isPostingCustomer || followUpSubmitting}
                     onClick={() => {
-                      if (isPostingCustomer) return
+                      if (isPostingCustomer || followUpSubmitting) return
                       setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
@@ -1710,14 +2249,14 @@ export default function CustomersPage() {
                 <div
                   role="tablist"
                   aria-label="Customer sections"
-                  className="mb-4 flex rounded-xl border border-slate-200 bg-slate-100/90 p-1"
+                  className={`mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${isCreating ? 'grid-cols-2' : 'grid-cols-3'}`}
                 >
                   <button
                     type="button"
                     role="tab"
                     aria-selected={customerModalTab === 'details'}
                     onClick={() => setCustomerModalTab('details')}
-                    className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                    className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                       customerModalTab === 'details'
                         ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
                         : 'text-slate-600 hover:text-slate-900'
@@ -1725,12 +2264,27 @@ export default function CustomersPage() {
                   >
                     Details
                   </button>
+                  {!isCreating && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={customerModalTab === 'follow_up'}
+                      onClick={() => setCustomerModalTab('follow_up')}
+                      className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
+                        customerModalTab === 'follow_up'
+                          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Follow-up
+                    </button>
+                  )}
                   <button
                     type="button"
                     role="tab"
                     aria-selected={customerModalTab === 'tags'}
                     onClick={() => setCustomerModalTab('tags')}
-                    className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                    className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                       customerModalTab === 'tags'
                         ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
                         : 'text-slate-600 hover:text-slate-900'
@@ -2083,6 +2637,195 @@ export default function CustomersPage() {
                   </div>
                 )}
 
+                {customerModalTab === 'follow_up' && !isCreating && isEditing && (
+                  <div role="tabpanel" aria-label="Follow-up" className="min-h-[200px] space-y-4">
+                    <p className="text-xs text-slate-600">
+                      Log setiap sentuhan (panggilan / WhatsApp). Topik yang sama ada <strong>cooldown</strong> supaya
+                      pelanggan tidak rasa spam. Maksimum{' '}
+                      <strong>{followUpLimits?.maxTouchesPerWeek ?? DEFAULT_MAX_TOUCHES_PER_WEEK}</strong> sentuhan
+                      dikira dalam quota (7 hari).
+                    </p>
+                    {followUpLimits && (
+                      <p className="text-xs font-medium text-slate-800">
+                        Sentuhan minggu ini (ikut quota):{' '}
+                        <strong>
+                          {followUpLimits.touchesLast7Days} / {followUpLimits.maxTouchesPerWeek}
+                        </strong>
+                      </p>
+                    )}
+                    {followUpError && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                        {followUpError}
+                      </div>
+                    )}
+
+                    <div className="rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-800">Sejarah</p>
+                        <button
+                          type="button"
+                          onClick={() => isEditing && void fetchFollowUpActivities(isEditing)}
+                          disabled={followUpLoading}
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {followUpLoading ? 'Memuatkan…' : 'Muat semula'}
+                        </button>
+                      </div>
+                      <div
+                        className="max-h-[min(42vh,320px)] min-h-[72px] overflow-y-auto overscroll-contain rounded-lg border border-slate-100 bg-slate-50/80 p-2"
+                        role="region"
+                        aria-label="Sejarah follow-up"
+                      >
+                        {followUpLoading ? (
+                          <p className="px-1 py-2 text-xs text-slate-500">Memuatkan log…</p>
+                        ) : followUpActivities.length === 0 ? (
+                          <p className="px-1 py-2 text-xs text-slate-500">
+                            Tiada log lagi. Tambah sentuhan pertama di bawah.
+                          </p>
+                        ) : (
+                          <ul className="space-y-2 pr-1">
+                            {followUpActivities.map((a) => (
+                              <li
+                                key={a.id}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-sm"
+                              >
+                                <div className="flex flex-wrap items-baseline justify-between gap-1">
+                                  <span className="font-semibold text-slate-900">{getTopicLabel(a.topic)}</span>
+                                  <span className="text-[10px] text-slate-500">
+                                    {new Date(a.occurred_at).toLocaleString('ms-MY', { timeZone: 'Asia/Kuala_Lumpur' })}
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 text-[11px] text-slate-600">
+                                  {getChannelLabel(a.channel as FollowUpChannel)}
+                                  {a.outcome ? ` · ${a.outcome}` : ''}
+                                  {!a.counts_toward_quota ? ' · tidak kira quota' : ''}
+                                </p>
+                                {a.notes ? (
+                                  <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-700">{a.notes}</p>
+                                ) : null}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+                      <p className="text-sm font-semibold text-slate-800">Tambah log</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Topik</label>
+                          <select
+                            value={followUpTopic}
+                            onChange={(e) => setFollowUpTopic(e.target.value)}
+                            disabled={followUpSubmitting}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                          >
+                            {FOLLOW_UP_TOPICS.map((t) => (
+                              <option key={t.key} value={t.key}>
+                                {t.labelMs}
+                              </option>
+                            ))}
+                          </select>
+                          {followUpTopicHint && (
+                            <p className="mt-1 text-[11px] leading-snug text-amber-800">{followUpTopicHint}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Saluran</label>
+                          <select
+                            value={followUpChannel}
+                            onChange={(e) => setFollowUpChannel(e.target.value as FollowUpChannel)}
+                            disabled={followUpSubmitting}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                          >
+                            {FOLLOW_UP_CHANNELS.map((c) => (
+                              <option key={c} value={c}>
+                                {getChannelLabel(c)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Outcome (pilihan)</label>
+                          <select
+                            value={followUpOutcome}
+                            onChange={(e) => setFollowUpOutcome(e.target.value)}
+                            disabled={followUpSubmitting}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                          >
+                            <option value="">—</option>
+                            {FOLLOW_UP_OUTCOMES.map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Tarikh / masa (kosong = sekarang)</label>
+                          <input
+                            type="datetime-local"
+                            value={followUpOccurredAt}
+                            onChange={(e) => setFollowUpOccurredAt(e.target.value)}
+                            disabled={followUpSubmitting}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                          />
+                        </div>
+                      </div>
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={followUpCountsQuota}
+                          onChange={(e) => setFollowUpCountsQuota(e.target.checked)}
+                          disabled={followUpSubmitting}
+                          className="h-4 w-4 rounded border-slate-400 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
+                        />
+                        Kira dalam quota mingguan (nyahaktifkan untuk log dalaman / ujian)
+                      </label>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Nota</label>
+                        <textarea
+                          value={followUpNotes}
+                          onChange={(e) => setFollowUpNotes(e.target.value)}
+                          rows={3}
+                          disabled={followUpSubmitting}
+                          placeholder="Ringkasan sembang, janji seterusnya, dll."
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitFollowUp()}
+                        disabled={followUpSubmitting}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {followUpSubmitting ? (
+                          <>
+                            <svg
+                              className="h-4 w-4 shrink-0 animate-spin"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            Menyimpan…
+                          </>
+                        ) : (
+                          'Simpan log'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {customerModalTab === 'tags' && (
                   <div
                     role="tabpanel"
@@ -2326,9 +3069,9 @@ export default function CustomersPage() {
                 <div className="flex justify-end gap-3 mt-6">
                   <button
                     type="button"
-                    disabled={isPostingCustomer}
+                    disabled={isPostingCustomer || followUpSubmitting}
                     onClick={() => {
-                      if (isPostingCustomer) return
+                      if (isPostingCustomer || followUpSubmitting) return
                       setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
@@ -2350,7 +3093,7 @@ export default function CustomersPage() {
                   </button>
                   <button
                     type="button"
-                    disabled={isPostingCustomer}
+                    disabled={isPostingCustomer || followUpSubmitting}
                     onClick={isCreating ? handleCreate : handleSaveEdit}
                     className="inline-flex min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
@@ -3296,4 +4039,17 @@ export default function CustomersPage() {
   )
 }
 
+export default function CustomersPageWithSuspense() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <p className="text-slate-600">Loading…</p>
+        </div>
+      }
+    >
+      <CustomersPage />
+    </Suspense>
+  )
+}
 
