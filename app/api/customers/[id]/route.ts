@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 // GET /api/customers/[id] - Get single customer
 export async function GET(
@@ -101,6 +102,14 @@ export async function PUT(
       }
       updateData.segment_attributes =
         body.segment_attributes === null ? {} : body.segment_attributes
+    }
+    if (body.sales_journey_stage !== undefined) {
+      const parsed = parseSalesJourneyStage(body.sales_journey_stage)
+      if (body.sales_journey_stage !== null && String(body.sales_journey_stage).trim() !== '' && !parsed) {
+        return NextResponse.json({ error: 'Invalid sales_journey_stage' }, { status: 400 })
+      }
+      updateData.sales_journey_stage = parsed ?? 'prospect'
+      updateData.sales_journey_updated_at = new Date().toISOString()
     }
     // Backwards compatibility: if legacy `is_profile_verified` is sent,
     // store it under `original_data["Profile Verified"]` instead.

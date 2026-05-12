@@ -232,6 +232,8 @@ export function parseFlexibleDateToUtcMs(value: string): number | null {
  *   sejak last beli, iaitu antara ~90 hari dan 1 tahun). Tiada rekod beli lama + daftar 2020+ → freeze.
  * - **Inactive / Active**: dalam ~3 bulan terakhir ada tarikh beli: tiada belian bulan semasa MY
  *   atau bukan pembeli bulanan → inactive; pembeli bulanan + bulan semasa → active.
+ * - **Auto debit**: jika otherwise **inactive** (bukan beli bulan semasa / bukan dalam 30 hari)
+ *   tetapi `Direct Debit Subscription` = yes → **active** (pelanggan masih “hidup” melalui langganan).
  */
 export function getAccountStatusKey(input: unknown): AccountStatusKey {
   const row = toAccountStatusInput(input)
@@ -246,7 +248,6 @@ export function getAccountStatusKey(input: unknown): AccountStatusKey {
   if (legacyFree) return 'free'
 
   const lastMs = getLastPurchaseMsFromRow(row)
-  const monthly = row.is_monthly_buyer === true
 
   if (lastMs == null) {
     const regMs = getRegistrationMsForFreeze(row)
@@ -262,14 +263,17 @@ export function getAccountStatusKey(input: unknown): AccountStatusKey {
   // Freeze: lebih 3 bulan tak beli tetapi masih dalam tempoh ≤ 12 bulan dari last beli.
   if (isMoreThanThreeMonthsSinceLastPurchase(lastMs, now)) return 'freeze'
 
+  const autoDebitActive = parseDirectDebitSubscriptionFromOriginalData(row.original_data) === true
+
   // Dalam ~3 bulan terakhir ada belian: Inactive / Active (bulan semasa Malaysia).
-  if (!isLastPurchaseInCurrentMalaysiaMonth(lastMs, now)) return 'inactive'
+  if (!isLastPurchaseInCurrentMalaysiaMonth(lastMs, now)) {
+    return autoDebitActive ? 'active' : 'inactive'
+  }
 
   // check if last purchase is within 1 month of now
   if (lastMs > now - 30 * 24 * 60 * 60 * 1000) return 'active'
-  // if (monthly) return 'active'
 
-  return 'inactive'
+  return autoDebitActive ? 'active' : 'inactive'
 }
 
 /** UI labels for the customers table and edit form. */
@@ -414,7 +418,30 @@ export function isProfileVerifiedYes(originalData: unknown): boolean {
   return normalized === 'yes' || normalized === 'y' || normalized === 'true' || normalized === '1'
 }
 
+/** `Direct Debit Subscription` from `original_data` — `true` / `false` / unknown. */
+export function parseDirectDebitSubscriptionFromOriginalData(originalData: unknown): boolean | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data['Direct Debit Subscription']
+  if (raw === undefined || raw === null || raw === '') return null
+  if (raw === true) return true
+  if (raw === false) return false
+  if (typeof raw === 'string') {
+    const v = raw.trim().toLowerCase()
+    if (['true', 'yes', 'y', '1', 'active', 'subscribed'].includes(v)) return true
+    if (['false', 'no', 'n', '0', 'inactive', 'none'].includes(v)) return false
+  }
+  if (typeof raw === 'number') {
+    if (raw === 1) return true
+    if (raw === 0) return false
+  }
+  return null
+}
+
 export function isDirectDebitSubscriptionNo(originalData: unknown): boolean {
+  const yes = parseDirectDebitSubscriptionFromOriginalData(originalData)
+  if (yes === true) return false
+  if (yes === false) return true
   const data = normalizeCustomerOriginalData(originalData)
   const raw = data?.['Direct Debit Subscription']
   if (raw === undefined || raw === null || raw === '') return true
@@ -427,4 +454,88 @@ export function isDirectDebitSubscriptionNo(originalData: unknown): boolean {
     normalized === 'inactive' ||
     normalized === 'none'
   )
+}
+
+/** Simplified sales-journey stage for reporting (derived from `getAccountStatusKey`). */
+export type SalesJourneyStageKey =
+  | 'prospect'
+  | 'active_buyer'
+  | 'warming'
+  | 'at_risk'
+  | 'dormant'
+  | 'unknown'
+
+export const SALES_JOURNEY_STAGE_ORDER: SalesJourneyStageKey[] = [
+  'prospect',
+  'warming',
+  'active_buyer',
+  'at_risk',
+  'dormant',
+  'unknown',
+]
+
+export function getSalesJourneyStageKey(row: unknown): SalesJourneyStageKey {
+  const key = getAccountStatusKey(row)
+  switch (key) {
+    case 'temporary':
+      return 'prospect'
+    case 'active':
+      return 'active_buyer'
+    case 'inactive':
+      return 'warming'
+    case 'freeze':
+      return 'at_risk'
+    case 'free':
+      return 'dormant'
+    case 'unknown':
+    default:
+      return 'unknown'
+  }
+}
+
+export function getSalesJourneyStageLabel(stage: SalesJourneyStageKey): string {
+  switch (stage) {
+    case 'prospect':
+      return 'Prospect (no PG)'
+    case 'active_buyer':
+      return 'Active buyer'
+    case 'warming':
+      return 'Engaged'
+    case 'at_risk':
+      return 'At risk'
+    case 'dormant':
+      return 'Dormant'
+    case 'unknown':
+    default:
+      return 'Needs data'
+  }
+}
+
+/** Normalised PG business rank from `original_data.Rank` (free text). */
+export type BusinessRankBucket = 'customer' | 'dealer' | 'priority_dealer' | 'master_dealer' | 'other'
+
+export function getBusinessRankBucket(originalData: unknown): BusinessRankBucket {
+  const data = normalizeCustomerOriginalData(originalData)
+  const r = String(data?.['Rank'] ?? '').trim().toLowerCase()
+  if (!r) return 'other'
+  if (r.includes('master')) return 'master_dealer'
+  if (r.includes('priority')) return 'priority_dealer'
+  if (r.includes('dealer')) return 'dealer'
+  if (r.includes('customer')) return 'customer'
+  return 'other'
+}
+
+export function getBusinessRankBucketLabel(bucket: BusinessRankBucket): string {
+  switch (bucket) {
+    case 'customer':
+      return 'Customer'
+    case 'dealer':
+      return 'Dealer'
+    case 'priority_dealer':
+      return 'Priority dealer'
+    case 'master_dealer':
+      return 'Master dealer'
+    default:
+      return 'Other / unset'
+  }
 }

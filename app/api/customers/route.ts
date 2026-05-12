@@ -7,7 +7,9 @@ import {
   normalizeCustomerOriginalData,
   getRegistrationUtcMonthDate,
   getRegistrationUtcYmd,
+  parseDirectDebitSubscriptionFromOriginalData,
 } from '@/app/lib/customer-account-status'
+import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | null {
   const data = normalizeCustomerOriginalData(originalData)
@@ -20,25 +22,6 @@ function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | 
     const v = raw.trim().toLowerCase()
     if (['true', 'yes', 'y', '1'].includes(v)) return true
     if (['false', 'no', 'n', '0'].includes(v)) return false
-  }
-  if (typeof raw === 'number') {
-    if (raw === 1) return true
-    if (raw === 0) return false
-  }
-  return null
-}
-
-function parseDirectDebitFromOriginalData(originalData: unknown): boolean | null {
-  const data = normalizeCustomerOriginalData(originalData)
-  if (!data) return null
-  const raw = data['Direct Debit Subscription']
-  if (raw === undefined || raw === null || raw === '') return null
-  if (raw === true) return true
-  if (raw === false) return false
-  if (typeof raw === 'string') {
-    const v = raw.trim().toLowerCase()
-    if (['true', 'yes', 'y', '1', 'active', 'subscribed'].includes(v)) return true
-    if (['false', 'no', 'n', '0', 'inactive', 'none'].includes(v)) return false
   }
   if (typeof raw === 'number') {
     if (raw === 1) return true
@@ -125,6 +108,7 @@ export async function GET(request: Request) {
     }
 
     const tagId = (searchParams.get('tagId') || '').trim()
+    const salesJourney = parseSalesJourneyStage(searchParams.get('salesJourney'))
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const isComputedDateSort =
@@ -174,6 +158,9 @@ export async function GET(request: Request) {
     }
     if (ageMax != null) {
       query = query.lte('age', ageMax)
+    }
+    if (salesJourney) {
+      query = query.eq('sales_journey_stage', salesJourney)
     }
 
     // Apply sorting
@@ -233,6 +220,9 @@ export async function GET(request: Request) {
         }
         if (ageMax != null) {
           batchQuery = batchQuery.lte('age', ageMax)
+        }
+        if (salesJourney) {
+          batchQuery = batchQuery.eq('sales_journey_stage', salesJourney)
         }
         if (birthday === 'today' || birthday === 'month') {
           batchQuery = batchQuery.not('dob', 'is', null)
@@ -357,7 +347,7 @@ export async function GET(request: Request) {
       if (directDebit === 'yes' || directDebit === 'no') {
         const wanted = directDebit === 'yes'
         filtered = filtered.filter((c: any) => {
-          return parseDirectDebitFromOriginalData(c?.original_data) === wanted
+          return parseDirectDebitSubscriptionFromOriginalData(c?.original_data) === wanted
         })
       }
 
@@ -533,6 +523,8 @@ export async function POST(request: Request) {
         'sender_name', 'save_name', 'pg_code', 'row_number',
         'is_married',
         'is_friend',
+        'sales_journey_stage',
+        'sales_journey_updated_at',
         // legacy (column removed): we normalize into original_data["Profile Verified"]
         'is_profile_verified'
       ]
@@ -590,6 +582,12 @@ export async function POST(request: Request) {
           !Array.isArray(customer.segment_attributes)
             ? customer.segment_attributes
             : {},
+        ...(parseSalesJourneyStage(customer.sales_journey_stage)
+          ? {
+              sales_journey_stage: parseSalesJourneyStage(customer.sales_journey_stage)!,
+              sales_journey_updated_at: new Date().toISOString(),
+            }
+          : {}),
       }
     })
 

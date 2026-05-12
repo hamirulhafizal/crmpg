@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
@@ -11,6 +11,13 @@ import {
   getAccountStatusLabel,
   formatLastPurchaseDisplayForUi,
   type AccountStatusKey,
+  getSalesJourneyStageKey,
+  getSalesJourneyStageLabel,
+  SALES_JOURNEY_STAGE_ORDER,
+  type SalesJourneyStageKey,
+  getBusinessRankBucket,
+  getBusinessRankBucketLabel,
+  type BusinessRankBucket,
 } from '@/app/lib/customer-account-status'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
@@ -20,6 +27,27 @@ const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   free: 0,
   inactive: 0,
   unknown: 0,
+}
+
+/** Rank buckets in overview funnel + cards (pipeline order). */
+const RANK_OVERVIEW_BUCKETS: BusinessRankBucket[] = [
+  'customer',
+  'dealer',
+  'priority_dealer',
+  'master_dealer',
+  'other',
+]
+
+const RANK_FUNNEL_SEGMENT_FILLS = ['#cbd5e1', '#a5b4fc', '#818cf8', '#6366f1', '#4338ca'] as const
+
+/** Table row tint + left accent — aligns with Account status summary cards. */
+const ACCOUNT_STATUS_ROW_CLASSES: Record<AccountStatusKey, string> = {
+  active: 'bg-green-50/80 hover:bg-green-100/80 border-l-4 border-l-green-500',
+  inactive: 'bg-red-50/80 hover:bg-red-100/80 border-l-4 border-l-red-500',
+  free: 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500',
+  freeze: 'bg-orange-50/80 hover:bg-orange-100/80 border-l-4 border-l-orange-500',
+  temporary: 'bg-violet-50/80 hover:bg-violet-100/80 border-l-4 border-l-violet-500',
+  unknown: 'bg-slate-50 hover:bg-slate-100/80 border-l-4 border-l-slate-400',
 }
 
 const AGE_FILTER_MIN = 0
@@ -254,6 +282,8 @@ export default function CustomersPage() {
   const [profileImageLoading, setProfileImageLoading] = useState(false)
   const [profileImageError, setProfileImageError] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  /** Desktop (md+): filter grid collapsed by default to save vertical space. */
+  const [filtersAccordionOpen, setFiltersAccordionOpen] = useState(false)
 
   const [tagCatalog, setTagCatalog] = useState<{
     categories: TagCategoryDto[]
@@ -275,6 +305,15 @@ export default function CustomersPage() {
 
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
+
+  /** Top-level page: daily workspace vs sales-journey reporting. */
+  const [managementTab, setManagementTab] = useState<'workspace' | 'sales-journey'>('workspace')
+  const [salesJourneySubTab, setSalesJourneySubTab] = useState<'overview' | 'directory'>('overview')
+  const [salesJourneyRows, setSalesJourneyRows] = useState<Customer[]>([])
+  const [salesJourneyLoading, setSalesJourneyLoading] = useState(false)
+  const [salesJourneyError, setSalesJourneyError] = useState<string | null>(null)
+  const [salesJourneySearch, setSalesJourneySearch] = useState('')
+  const [salesJourneyStageFilter, setSalesJourneyStageFilter] = useState<SalesJourneyStageKey | ''>('')
 
   // Pagination
   const [page, setPage] = useState(1)
@@ -589,6 +628,70 @@ export default function CustomersPage() {
       setIsLoading(false)
     }
   }
+
+  const fetchSalesJourneySnapshot = useCallback(async () => {
+    if (!user) return
+    setSalesJourneyLoading(true)
+    setSalesJourneyError(null)
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '100000',
+        sortBy: 'updated_at',
+        sortOrder: 'desc',
+      })
+      const response = await fetch(`/api/customers?${params}`, { cache: 'no-store' })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Failed to load sales journey data')
+      setSalesJourneyRows(Array.isArray(result.data) ? result.data : [])
+    } catch (err: unknown) {
+      setSalesJourneyError(err instanceof Error ? err.message : 'Failed to load')
+      setSalesJourneyRows([])
+    } finally {
+      setSalesJourneyLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (user && managementTab === 'sales-journey') {
+      void fetchSalesJourneySnapshot()
+    }
+  }, [user, managementTab, fetchSalesJourneySnapshot])
+
+  const salesJourneyStats = useMemo(() => {
+    const stages: Record<SalesJourneyStageKey, number> = {
+      prospect: 0,
+      active_buyer: 0,
+      warming: 0,
+      at_risk: 0,
+      dormant: 0,
+      unknown: 0,
+    }
+    const ranks: Record<BusinessRankBucket, number> = {
+      customer: 0,
+      dealer: 0,
+      priority_dealer: 0,
+      master_dealer: 0,
+      other: 0,
+    }
+    for (const c of salesJourneyRows) {
+      stages[getSalesJourneyStageKey(c)] += 1
+      ranks[getBusinessRankBucket(c.original_data)] += 1
+    }
+    return { stages, ranks, total: salesJourneyRows.length }
+  }, [salesJourneyRows])
+
+  const salesJourneyFilteredRows = useMemo(() => {
+    const q = salesJourneySearch.trim().toLowerCase()
+    return salesJourneyRows.filter((c) => {
+      if (salesJourneyStageFilter && getSalesJourneyStageKey(c) !== salesJourneyStageFilter) return false
+      if (!q) return true
+      const hay = [c.name, c.pg_code, c.email, c.phone, c.save_name]
+        .map((x) => String(x || '').toLowerCase())
+        .join(' ')
+      return hay.includes(q)
+    })
+  }, [salesJourneyRows, salesJourneySearch, salesJourneyStageFilter])
 
   const toggleSort = (field: 'updated_at' | 'register_date' | 'last_purchase_date' | 'pg_code' | 'dob' | 'age') => {
     if (sortBy === field) {
@@ -1035,6 +1138,44 @@ export default function CustomersPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-lg font-semibold text-slate-300">Customer management</h1>
+          <div
+            role="tablist"
+            aria-label="Customer management sections"
+            className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm sm:w-auto"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={managementTab === 'workspace'}
+              onClick={() => setManagementTab('workspace')}
+              className={`min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none sm:min-h-0 ${
+                managementTab === 'workspace'
+                  ? 'bg-slate-900 text-white shadow'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              Workspace
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={managementTab === 'sales-journey'}
+              onClick={() => setManagementTab('sales-journey')}
+              className={`min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none sm:min-h-0 ${
+                managementTab === 'sales-journey'
+                  ? 'bg-slate-900 text-white shadow'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              Sales journey
+            </button>
+          </div>
+        </div>
+
+        {managementTab === 'workspace' && (
+        <>
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           <button
@@ -1059,6 +1200,29 @@ export default function CustomersPage() {
             id="customers-filters-actions-panel"
             className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block`}
           >
+            <button
+              type="button"
+              onClick={() => setFiltersAccordionOpen((prev) => !prev)}
+              className="mb-4 hidden w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 md:flex"
+              aria-expanded={filtersAccordionOpen}
+              aria-controls="customers-filters-grid"
+            >
+              <span>Filters</span>
+              <svg
+                className={`h-5 w-5 shrink-0 text-slate-600 transition-transform ${filtersAccordionOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div
+              id="customers-filters-grid"
+              className={`${mobileFiltersOpen ? 'block' : 'max-md:hidden'} ${filtersAccordionOpen ? 'md:block' : 'md:hidden'}`}
+            >
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
             {/* Search */}
             <div className="md:col-span-2 flex gap-2">
@@ -1310,6 +1474,7 @@ export default function CustomersPage() {
               Clear
             </button>
           </div>
+            </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
@@ -2253,26 +2418,26 @@ export default function CustomersPage() {
                 {
                   key: 'active' as const,
                   label: 'Active',
-                  sub: 'Monthly buyer',
+                  sub: 'Buyer this month',
                   className: 'border-green-200 bg-green-50/80 text-green-900',
                 },
                 {
                   key: 'inactive' as const,
                   label: 'Inactive',
-                  sub: 'Recent, not monthly',
+                  sub: 'Recent Buyer, not this month',
                   className: 'border-red-200 bg-red-50/80 text-red-900',
+                },
+                 {
+                  key: 'freeze' as const,
+                  label: 'Freeze',
+                  sub: 'No Sales within 3-11 months',
+                  className: 'border-orange-200 bg-orange-50/80 text-orange-950',
                 },
                 {
                   key: 'free' as const,
                   label: 'Free',
-                  sub: '> 12 mo. no buy',
+                  sub: 'No Sales within a year',
                   className: 'border-amber-200 bg-amber-50/80 text-amber-950',
-                },
-                {
-                  key: 'freeze' as const,
-                  label: 'Freeze',
-                  sub: '3–12 mo. no buy',
-                  className: 'border-orange-200 bg-orange-50/80 text-orange-950',
                 },
                 {
                   key: 'temporary' as const,
@@ -2287,19 +2452,34 @@ export default function CustomersPage() {
                   className: 'border-slate-200 bg-slate-50 text-slate-800',
                 },
               ] as const
-            ).map(({ key, label, sub, className }) => (
-              <div
-                key={key}
-                className={`rounded-2xl border px-4 py-3 shadow-sm transition-transform duration-200 hover:scale-[1.02] ${className}`}
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
-                <p className="mt-1 text-2xl font-bold tabular-nums">{statusCounts[key]}</p>
-                <p className="mt-0.5 text-[10px] opacity-80 leading-tight">{sub}</p>
-              </div>
-            ))}
+            ).map(({ key, label, sub, className }) => {
+              const selected = accountStatusFilter === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setAccountStatusFilter((prev) => (prev === key ? '' : key))
+                    setPage(1)
+                  }}
+                  title={selected ? `Clear ${label} filter` : `Show only ${label} customers`}
+                  aria-pressed={selected}
+                  className={`rounded-2xl border px-4 py-3 shadow-sm text-left w-full transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${className} ${
+                    selected
+                      ? 'ring-2 ring-blue-600 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 shadow-md scale-[1.01]'
+                      : 'hover:scale-[1.02] hover:shadow-md active:scale-[0.99]'
+                  }`}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{statusCounts[key]}</p>
+                  <p className="mt-0.5 text-[10px] opacity-80 leading-tight">{sub}</p>
+                </button>
+              )
+            })}
           </div>
           <p className="mt-3 text-xs text-slate-500 dark:text-white">
-            Counts reflect all saved customers. They refresh after create, edit, or delete.
+            Click a card to filter the table (click again to clear). Counts reflect all saved customers; they refresh
+            after create, edit, or delete.
           </p>
         </div>
 
@@ -2463,7 +2643,7 @@ export default function CustomersPage() {
                       <tr
                         key={customer.id}
                         onClick={() => handleEdit(customer)}
-                        className="cursor-pointer hover:bg-slate-50 transition-colors"
+                        className={`cursor-pointer transition-colors ${ACCOUNT_STATUS_ROW_CLASSES[accountKey]}`}
                       >
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
@@ -2676,6 +2856,364 @@ export default function CustomersPage() {
             </div>
           ) : null}
         </div>
+        </>
+        )}
+
+        {managementTab === 'sales-journey' && (
+          <div className="space-y-6">
+            <div
+              role="tablist"
+              aria-label="Sales journey views"
+              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm sm:w-auto">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesJourneySubTab === 'overview'}
+                  onClick={() => setSalesJourneySubTab('overview')}
+                  className={`min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none sm:min-h-0 ${
+                    salesJourneySubTab === 'overview'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Report overview
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesJourneySubTab === 'directory'}
+                  onClick={() => setSalesJourneySubTab('directory')}
+                  className={`min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none sm:min-h-0 ${
+                    salesJourneySubTab === 'directory'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Journey directory
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchSalesJourneySnapshot()}
+                disabled={salesJourneyLoading}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                {salesJourneyLoading ? 'Refreshing…' : 'Refresh data'}
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Journey stages are derived from account status (PG code + purchase behaviour). Rank comes from
+              the <strong>Rank</strong> field. Overview loads up to all saved customers for your account.
+            </p>
+
+            {salesJourneyError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {salesJourneyError}
+              </div>
+            )}
+
+            {salesJourneySubTab === 'overview' && (
+              <div className="space-y-8">
+                {salesJourneyLoading && salesJourneyRows.length === 0 ? (
+                  <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white py-16">
+                    <div className="text-center">
+                      <svg
+                        className="mx-auto h-8 w-8 animate-spin text-blue-600"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      <p className="mt-3 text-sm text-slate-300">Loading journey overview…</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <section>
+                      <h2 className="mb-3 text-sm font-semibold text-slate-300">Pipeline (journey stage)</h2>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {SALES_JOURNEY_STAGE_ORDER.map((stage) => {
+                          const n = salesJourneyStats.stages[stage]
+                          const pct =
+                            salesJourneyStats.total > 0 ? Math.round((100 * n) / salesJourneyStats.total) : 0
+                          return (
+                            <div
+                              key={stage}
+                              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                            >
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {getSalesJourneyStageLabel(stage)}
+                              </p>
+                              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{n}</p>
+                              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-blue-500 transition-all"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <p className="mt-1 text-xs text-slate-900">{pct}% of total</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <p className="mt-2 text-xs text-slate-300">
+                        Total contacts in snapshot: <strong>{salesJourneyStats.total}</strong>
+                      </p>
+                    </section>
+
+                    <section>
+                      <h2 className="mb-1 text-sm font-semibold text-slate-300">By rank (from Rank field)</h2>
+                      <p className="mb-4 text-xs text-slate-300">
+                        Funnel width follows each tier’s count (widest = largest bucket). Tiers link Customer →
+                        Dealer → Priority → Master → Other.
+                      </p>
+
+                      <div className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-indigo-50/30 p-4 shadow-inner sm:p-6">
+                        {(() => {
+                          const totalRank = salesJourneyStats.total
+                          const counts = RANK_OVERVIEW_BUCKETS.map((b) => salesJourneyStats.ranks[b])
+                          const maxC = Math.max(...counts, 1)
+                          const VW = 420
+                          const VH = 216
+                          const cx = VW / 2
+                          const padX = 32
+                          const maxHalf = cx - padX
+                          const minH0 = 5
+                          const minH1 = 14
+                          const halfW = (n: number) => {
+                            if (n <= 0) return minH0
+                            return minH1 + (maxHalf - minH1) * (n / maxC)
+                          }
+                          const steps = RANK_OVERVIEW_BUCKETS.length
+                          const yTop = 10
+                          const yBot = VH - 6
+                          const segH = (yBot - yTop) / steps
+                          const ys = Array.from({ length: steps + 1 }, (_, j) => yTop + j * segH)
+
+                          const polys: { d: string; fill: string; i: number }[] = []
+                          for (let i = 0; i < steps; i++) {
+                            const yt = ys[i]
+                            const yb = ys[i + 1]
+                            const ht = halfW(counts[i])
+                            const hb =
+                              i < steps - 1
+                                ? halfW(counts[i + 1])
+                                : Math.max(minH0, halfW(counts[i]) * 0.28)
+                            const fill = RANK_FUNNEL_SEGMENT_FILLS[i] ?? '#64748b'
+                            const d = `M ${cx - ht} ${yt} L ${cx + ht} ${yt} L ${cx + hb} ${yb} L ${cx - hb} ${yb} Z`
+                            polys.push({ d, fill, i })
+                          }
+
+                          return (
+                            <svg
+                              viewBox={`0 0 ${VW} ${VH + 2}`}
+                              className="mx-auto h-auto w-full max-w-lg overflow-visible"
+                              role="img"
+                              aria-label="Business rank funnel: tier width reflects customer counts in each rank bucket."
+                            >
+                              {polys.map(({ d, fill, i }) => (
+                                <path
+                                  key={i}
+                                  d={d}
+                                  fill={fill}
+                                  fillOpacity={0.92}
+                                  stroke="white"
+                                  strokeWidth={1.25}
+                                  strokeOpacity={0.55}
+                                />
+                              ))}
+                              {RANK_OVERVIEW_BUCKETS.map((bucket, i) => {
+                                const n = salesJourneyStats.ranks[bucket]
+                                const pct = totalRank > 0 ? Math.round((100 * n) / totalRank) : 0
+                                const ym = ys[i] + segH / 2
+                                const dark = i >= 3
+                                const fill = dark ? '#f8fafc' : '#0f172a'
+                                return (
+                                  <g key={bucket} className="pointer-events-none select-none">
+                                    <text
+                                      x={cx}
+                                      y={ym - 2}
+                                      textAnchor="middle"
+                                      dominantBaseline="middle"
+                                      fill={fill}
+                                      fontSize={n > 9999 ? 11 : 13}
+                                      fontWeight={700}
+                                      style={{ fontFamily: 'system-ui, sans-serif' }}
+                                    >
+                                      {n.toLocaleString()}
+                                    </text>
+                                    <text
+                                      x={cx}
+                                      y={ym + 12}
+                                      textAnchor="middle"
+                                      dominantBaseline="middle"
+                                      fill={fill}
+                                      fontSize={10}
+                                      fontWeight={600}
+                                      opacity={0.88}
+                                      style={{ fontFamily: 'system-ui, sans-serif' }}
+                                    >
+                                      {pct}%
+                                    </text>
+                                  </g>
+                                )
+                              })}
+                            </svg>
+                          )
+                        })()}
+                      </div>
+
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Breakdown</h3>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        {RANK_OVERVIEW_BUCKETS.map((bucket) => {
+                          const n = salesJourneyStats.ranks[bucket]
+                          const pct =
+                            salesJourneyStats.total > 0 ? Math.round((100 * n) / salesJourneyStats.total) : 0
+                          return (
+                            <div
+                              key={bucket}
+                              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                            >
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                {getBusinessRankBucketLabel(bucket)}
+                              </p>
+                              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{n}</p>
+                              <p className="mt-1 text-xs text-slate-500">{pct}%</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  </>
+                )}
+              </div>
+            )}
+
+            {salesJourneySubTab === 'directory' && (
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-xl">
+                <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1">
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Search</label>
+                    <input
+                      type="search"
+                      value={salesJourneySearch}
+                      onChange={(e) => setSalesJourneySearch(e.target.value)}
+                      placeholder="Name, save name, PG code, email, phone…"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="sm:w-56">
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Journey stage</label>
+                    <select
+                      value={salesJourneyStageFilter}
+                      onChange={(e) =>
+                        setSalesJourneyStageFilter((e.target.value || '') as SalesJourneyStageKey | '')
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All stages</option>
+                      {SALES_JOURNEY_STAGE_ORDER.map((s) => (
+                        <option key={s} value={s}>
+                          {getSalesJourneyStageLabel(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Name
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          PG code
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Rank (raw)
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Rank (group)
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Account status
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Journey stage
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-700">
+                          Last purchase
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {salesJourneyLoading && salesJourneyRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                            Loading…
+                          </td>
+                        </tr>
+                      ) : salesJourneyFilteredRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                            No rows match your filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        salesJourneyFilteredRows.map((row) => {
+                          const stage = getSalesJourneyStageKey(row)
+                          const rankBucket = getBusinessRankBucket(row.original_data)
+                          const rawRank =
+                            row.original_data &&
+                            typeof row.original_data === 'object' &&
+                            !Array.isArray(row.original_data)
+                              ? String((row.original_data as Record<string, unknown>)['Rank'] ?? '')
+                              : ''
+                          return (
+                            <tr
+                              key={row.id}
+                              className="cursor-pointer hover:bg-slate-50"
+                              onClick={() => handleEdit(row)}
+                            >
+                              <td className="px-4 py-2 text-sm font-medium text-slate-900">
+                                {row.name || row.save_name || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-slate-700">{row.pg_code || '—'}</td>
+                              <td className="max-w-[140px] truncate px-4 py-2 text-sm text-slate-600" title={rawRank}>
+                                {rawRank.trim() || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-slate-700">
+                                {getBusinessRankBucketLabel(rankBucket)}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-slate-700">{getAccountStatusLabel(row)}</td>
+                              <td className="px-4 py-2 text-sm text-slate-800">{getSalesJourneyStageLabel(stage)}</td>
+                              <td className="px-4 py-2 text-sm text-slate-600">
+                                {formatLastPurchaseDisplayForUi(row)}
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+                  Showing {salesJourneyFilteredRows.length} of {salesJourneyRows.length} loaded rows
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   )
