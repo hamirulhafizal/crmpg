@@ -273,6 +273,7 @@ export default function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isPostingCustomer, setIsPostingCustomer] = useState(false)
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null)
   const [customerLabels, setCustomerLabels] = useState<CustomerLabel[]>([])
@@ -302,6 +303,16 @@ export default function CustomersPage() {
   const [chatHistoryError, setChatHistoryError] = useState<string | null>(null)
   const [chatHistoryDialogOpen, setChatHistoryDialogOpen] = useState(false)
   const [chatHistoryDialogLoading, setChatHistoryDialogLoading] = useState(false)
+
+  const [toasts, setToasts] = useState<Array<{ id: number; type: 'success' | 'error'; text: string }>>([])
+
+  const pushToast = useCallback((type: 'success' | 'error', text: string) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000)
+    setToasts((prev) => [...prev, { id, type, text }])
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id))
+    }, 4500)
+  }, [])
 
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
@@ -575,7 +586,7 @@ export default function CustomersPage() {
   const fetchCustomers = async () => {
     setIsLoading(true)
     setError(null)
-    setCustomers([])
+    // Do not clear `customers` here — empty list + isLoading triggers the full-page spinner.
 
     try {
       // Birthday filtering must evaluate against the full customer list, not only
@@ -964,6 +975,8 @@ export default function CustomersPage() {
   const handleSaveEdit = async () => {
     if (!editingCustomer || !isEditing) return
 
+    setIsPostingCustomer(true)
+    setError(null)
     try {
       const response = await fetch(`/api/customers/${isEditing}`, {
         method: 'PUT',
@@ -993,20 +1006,28 @@ export default function CustomersPage() {
         }
       }
 
+      const displayName = editingCustomer.save_name || editingCustomer.name || 'Customer'
+      pushToast('success', `${displayName} saved successfully.`)
+
       setIsEditing(null)
       setEditingCustomer(null)
       setCrmSelectedTagIds([])
       setCustomerModalTab('details')
       fetchCustomers()
     } catch (err: any) {
-      setError(err.message || 'Failed to update customer')
+      const msg = err.message || 'Failed to update customer'
+      setError(msg)
+      pushToast('error', msg)
+    } finally {
+      setIsPostingCustomer(false)
     }
   }
 
   const handleCreate = async () => {
     if (!editingCustomer) return
 
-    setIsCreating(true)
+    setIsPostingCustomer(true)
+    setError(null)
     try {
       const response = await fetch('/api/customers', {
         method: 'POST',
@@ -1024,13 +1045,20 @@ export default function CustomersPage() {
         throw new Error(result.error || 'Failed to create customer')
       }
 
+      const displayName = editingCustomer.save_name || editingCustomer.name || 'Customer'
+      pushToast('success', `${displayName} created successfully.`)
+
       setIsCreating(false)
       setEditingCustomer(null)
       setCustomerModalTab('details')
       fetchCustomers()
     } catch (err: any) {
-      setError(err.message || 'Failed to create customer')
+      const msg = err.message || 'Failed to create customer'
+      setError(msg)
+      pushToast('error', msg)
       setIsCreating(false)
+    } finally {
+      setIsPostingCustomer(false)
     }
   }
 
@@ -1102,6 +1130,20 @@ export default function CustomersPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="pointer-events-none fixed right-4 top-4 z-[100] space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto min-w-[260px] max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg ${
+              toast.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-red-200 bg-red-50 text-red-900'
+            }`}
+          >
+            {toast.text}
+          </div>
+        ))}
+      </div>
       <GoogleContactsIntegration
         onConnectionChange={handleConnectionChange}
         onImportResult={handleImportResult}
@@ -1604,6 +1646,7 @@ export default function CustomersPage() {
           <div
             className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${window.innerWidth < 768 ? 'p-0' : 'p-4'}`}
             onClick={() => {
+              if (isPostingCustomer) return
               setChatHistoryDialogOpen(false)
               setIsCreating(false)
               setIsEditing(null)
@@ -1635,7 +1678,9 @@ export default function CustomersPage() {
 
                   <button
                     type="button"
+                    disabled={isPostingCustomer}
                     onClick={() => {
+                      if (isPostingCustomer) return
                       setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
@@ -1651,7 +1696,7 @@ export default function CustomersPage() {
                       setChatHistoryError(null)
                       setCustomerModalTab('details')
                     }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
                     aria-label="Close modal"
                     title="Close"
                   >
@@ -2280,7 +2325,10 @@ export default function CustomersPage() {
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button
+                    type="button"
+                    disabled={isPostingCustomer}
                     onClick={() => {
+                      if (isPostingCustomer) return
                       setChatHistoryDialogOpen(false)
                       setIsCreating(false)
                       setIsEditing(null)
@@ -2296,15 +2344,44 @@ export default function CustomersPage() {
                       setChatHistoryError(null)
                       setCustomerModalTab('details')
                     }}
-                    className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium"
+                    className="px-4 py-2 text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
+                    disabled={isPostingCustomer}
                     onClick={isCreating ? handleCreate : handleSaveEdit}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                    className="inline-flex min-w-[7.5rem] items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {isCreating ? 'Create' : 'Save'}
+                    {isPostingCustomer ? (
+                      <>
+                        <svg
+                          className="h-4 w-4 shrink-0 animate-spin"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          aria-hidden
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        {isCreating ? 'Creating…' : 'Saving…'}
+                      </>
+                    ) : (
+                      <span>{isCreating ? 'Create' : 'Save'}</span>
+                    )}
                   </button>
                 </div>
 
