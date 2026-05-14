@@ -395,7 +395,13 @@ async function processDueEnrollmentRows(
         // Next step time comes only from that step's delay_days + send_time (campaign timezone).
         // Do not apply campaign.cooldown_days here — it defaulted to 30d and overrode e.g. "delay 1d"
         // so step 2 was scheduled a month later instead of the next day.
-        nextSend = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
+        let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
+        const sentMs = new Date(sentAt).getTime()
+        // Same-day step with send_time already passed (e.g. default 10:00 after an evening send) → next calendar slot.
+        if (computed.getTime() <= sentMs) {
+          computed = computeSendAt(new Date(sentAt), following.delay_days + 1, following.send_time, tz)
+        }
+        nextSend = computed
       }
 
       await supabase

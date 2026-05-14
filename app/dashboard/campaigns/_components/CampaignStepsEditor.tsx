@@ -27,7 +27,7 @@ export function CampaignStepsEditor({
       ...steps,
       {
         step_order: order,
-        delay_days: steps.length === 0 ? 0 : 1,
+        delay_days: 0,
         send_time: '10:00',
         message_template: 'Hello {{name}}, …',
       },
@@ -74,6 +74,10 @@ export function CampaignStepsEditor({
                 value={step.delay_days}
                 onChange={(e) => update(i, { delay_days: Number(e.target.value) })}
               />
+              <span className="font-normal text-slate-500">
+                0 = same calendar day at send time (must be after the previous send). 1 = next day, etc. Stored as{' '}
+                <code className="rounded bg-slate-100 px-1">campaign_steps.delay_days</code>.
+              </span>
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
               Send time (local)
