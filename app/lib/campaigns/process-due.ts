@@ -350,6 +350,9 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     .select('*')
     .eq('status', 'active')
 
+  console.log('cronDebugEnabled', "masuk 3=---->", campaigns)
+
+
   let active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
 
   if (opts?.campaignIdOnly) {

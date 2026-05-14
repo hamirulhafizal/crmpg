@@ -20,6 +20,9 @@ function cronDebugEnabled(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
+
+  console.log('cronDebugEnabled', "masuk 1=---->")
+
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -27,6 +30,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const campaignIdOnly = url.searchParams.get('campaign_id')?.trim() || undefined
     const debug = cronDebugEnabled(request)
+
+  console.log('cronDebugEnabled', "masuk 2=---->")
+
 
     const { summary, debug: debugLines } = await processDueCampaignMessages({
       debug,
