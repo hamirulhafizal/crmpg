@@ -119,7 +119,11 @@ async function syncEnrollmentsForCampaign(
       .eq('user_id', campaign.user_id)
       .range(offset, offset + CUSTOMER_PAGE - 1)
 
-    if (error) break
+    if (error) {
+      cronLog(debugLines, `enrollment sync customers query error campaign=${campaign.id}: ${error.message}`)
+      console.warn(`[campaign-cron] customers fetch failed campaign=${campaign.id}`, error.message)
+      break
+    }
     const rows = batch ?? []
     if (rows.length === 0) break
 
@@ -129,7 +133,10 @@ async function syncEnrollmentsForCampaign(
       if (!customerMatchesFilters(c, filters)) continue
 
       const enrollMoment = new Date()
-      const nextSend = computeSendAt(enrollMoment, first.delay_days, first.send_time, tz)
+      let nextSend = computeSendAt(enrollMoment, first.delay_days, first.send_time, tz)
+      if (nextSend.getTime() < enrollMoment.getTime()) {
+        nextSend = enrollMoment
+      }
 
       const { error: insErr } = await supabase.from('campaign_enrollments').insert({
         campaign_id: campaign.id,
@@ -350,14 +357,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     .select('*')
     .eq('status', 'active')
 
-  console.log('cronDebugEnabled', "masuk 3=---->", campaigns)
-
-
   let active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
-
-
-  console.log('cronDebugEnabled', "masuk 4=---->", active)
-  console.log('opts?.campaignIdOnly', opts?.campaignIdOnly)
 
   if (opts?.campaignIdOnly) {
     const narrowed = active.filter((c) => c.id === opts.campaignIdOnly)
@@ -391,12 +391,15 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
   }
 
-  const isoNow = now.toISOString()
-  const dayStart = startOfUtcDay(now)
+  // Use a fresh instant after enrollment sync so rows inserted above with next_send_at ≈ "now"
+  // are not excluded by `lte` against an older `now` captured at the start of this run.
+  const dueAsOf = new Date()
+  const isoDue = dueAsOf.toISOString()
+  const dayStart = startOfUtcDay(dueAsOf)
 
   const { data: dueRows, error: dueErr } = await fetchActiveDueEnrollmentsMerged<DueEnrollmentRow>(supabase, {
     select: enrollmentDueSelect,
-    isoNow,
+    isoNow: isoDue,
     limit: SEND_BATCH,
     campaignId: opts?.campaignIdOnly,
   })
@@ -405,8 +408,8 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     throw dueErr
   }
 
-  cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s)`)
-  await processDueEnrollmentRows(supabase, (dueRows ?? []) as DueEnrollmentRow[], now, dayStart, summary, debugLines)
+  cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s) (as_of=${isoDue})`)
+  await processDueEnrollmentRows(supabase, (dueRows ?? []) as DueEnrollmentRow[], dueAsOf, dayStart, summary, debugLines)
 
   cronLog(
     debugLines,

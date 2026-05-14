@@ -77,6 +77,9 @@ export function buildTemplateVariableMap(c: Record<string, unknown>): Record<str
       ? formatLastPurchaseForTemplate(c) || new Date(lastAt).toLocaleDateString()
       : ''
 
+  // `renderCampaignTemplate` lowercases keys; support `{{SenderName}}` → sendername.
+  vars.sendername = vars.sender_name
+
   return vars
 }
 
