@@ -284,7 +284,10 @@ export function CampaignEditor(props: {
             />
           </label>
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Cooldown between touches (days)</span>
+            <span className="text-sm font-medium text-slate-700">Cooldown (days, stored on campaign)</span>
+            <span className="mt-0.5 block text-xs font-normal text-slate-500">
+              Jarak antara langkah ikut &quot;delay&quot; setiap langkah di bawah — bukan nilai ini.
+            </span>
             <input
               type="number"
               min={0}

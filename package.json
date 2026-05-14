@@ -9,7 +9,8 @@
     "lint": "next lint",
     "postinstall": "node scripts/install-playwright-chromium.mjs",
     "update-avatars-from-dealers-json": "node scripts/update-profile-avatars-from-dealers-json.mjs",
-    "env:pull": "vercel env pull .env --yes"
+    "env:pull": "vercel env pull .env --yes",
+    "campaign:reset-test": "node scripts/reset-campaign-for-test.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^148.0.0",

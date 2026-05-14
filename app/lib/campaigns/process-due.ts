@@ -392,11 +392,10 @@ async function processDueEnrollmentRows(
       const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
       let nextSend: Date | null = null
       if (following) {
-        let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
-        const cooldownMs = campaign.cooldown_days * 24 * 60 * 60 * 1000
-        const minNext = new Date(new Date(sentAt).getTime() + cooldownMs)
-        if (computed < minNext) computed = minNext
-        nextSend = computed
+        // Next step time comes only from that step's delay_days + send_time (campaign timezone).
+        // Do not apply campaign.cooldown_days here — it defaulted to 30d and overrode e.g. "delay 1d"
+        // so step 2 was scheduled a month later instead of the next day.
+        nextSend = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
       }
 
       await supabase
