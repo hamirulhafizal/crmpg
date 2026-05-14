@@ -4,8 +4,7 @@ import { formatLastPurchaseForTemplate } from '@/app/lib/customer-account-status
  * Scalar / JSON columns on `public.customers` that can be used in
  * `{{column_name}}` placeholders (excluding `id` and `user_id`).
  *
- * When adding columns here, also update the `customer:customers (...)` select in
- * `app/lib/campaigns/process-due.ts` (due-send query).
+ * Due-send loads `customer:customers (*)` so all present columns are available to templates.
  */
 export const CUSTOMER_MESSAGE_TEMPLATE_COLUMNS = [
   'name',

@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
-import { enrollmentNextSendDueOr } from '@/app/lib/campaigns/postgrest-filters'
+import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import { computeSendAt } from '@/app/lib/campaigns/schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
@@ -152,39 +152,11 @@ async function syncEnrollmentsForCampaign(
   }
 }
 
+/** `customers(*)` avoids PostgREST 400 when prod schema is missing columns we list explicitly. */
 const enrollmentDueSelect = `
       *,
       campaign:campaigns (*),
-      customer:customers (
-        id,
-        name,
-        dob,
-        email,
-        phone,
-        location,
-        gender,
-        ethnicity,
-        age,
-        prefix,
-        first_name,
-        sender_name,
-        save_name,
-        pg_code,
-        row_number,
-        last_purchase_at,
-        is_monthly_buyer,
-        is_married,
-        is_friend,
-        segment_attributes,
-        original_data,
-        last_synced_at,
-        phone_e164,
-        email_normalized,
-        sales_journey_stage,
-        sales_journey_updated_at,
-        created_at,
-        updated_at
-      )
+      customer:customers (*)
     `
 
 type DueEnrollmentRow = {
@@ -357,7 +329,6 @@ async function processDueEnrollmentRows(
 }
 
 export async function processDueCampaignMessages(opts?: ProcessDueOptions): Promise<ProcessDueResult> {
-  console.log('processDueCampaignMessages', "masuk 2=---->")
   const debugLines = opts?.debug ? [] : undefined
   const supabase = createServiceRoleClient()
   const summary: ProcessSummary = {
@@ -416,18 +387,12 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   const isoNow = now.toISOString()
   const dayStart = startOfUtcDay(now)
 
-  let dueBuilder = supabase
-    .from('campaign_enrollments')
-    .select(enrollmentDueSelect)
-    .eq('status', 'active')
-    .or(enrollmentNextSendDueOr(isoNow))
-    .limit(SEND_BATCH)
-
-  if (opts?.campaignIdOnly) {
-    dueBuilder = dueBuilder.eq('campaign_id', opts.campaignIdOnly)
-  }
-
-  const { data: dueRows, error: dueErr } = await dueBuilder
+  const { data: dueRows, error: dueErr } = await fetchActiveDueEnrollmentsMerged<DueEnrollmentRow>(supabase, {
+    select: enrollmentDueSelect,
+    isoNow,
+    limit: SEND_BATCH,
+    campaignId: opts?.campaignIdOnly,
+  })
   if (dueErr) {
     cronLog(debugLines, `due query error: ${dueErr.message}`)
     throw dueErr

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { enrollmentNextSendDueOr } from '@/app/lib/campaigns/postgrest-filters'
+import { countActiveDueEnrollments, fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 
@@ -140,32 +140,36 @@ export async function computeDueAudiencePreview(
   campaignId: string,
   isoNow: string
 ): Promise<{ due_total: number; sample: AudienceDueSample[] }> {
-  const { count, error: cErr } = await supabase
-    .from('campaign_enrollments')
-    .select('id', { count: 'exact', head: true })
-    .eq('campaign_id', campaignId)
-    .eq('status', 'active')
-    .or(enrollmentNextSendDueOr(isoNow))
-
+  const { count, error: cErr } = await countActiveDueEnrollments(supabase, { isoNow, campaignId })
   if (cErr) throw cErr
 
-  const { data: rows, error } = await supabase
-    .from('campaign_enrollments')
-    .select(
-      `
+  const previewSelect = `
       id,
       last_step_sent,
       next_send_at,
       customer:customers ( id, save_name, name, phone, pg_code )
     `
-    )
-    .eq('campaign_id', campaignId)
-    .eq('status', 'active')
-    .or(enrollmentNextSendDueOr(isoNow))
-    .order('next_send_at', { ascending: true, nullsFirst: true })
-    .limit(40)
+
+  const { data: merged, error } = await fetchActiveDueEnrollmentsMerged<Record<string, unknown>>(supabase, {
+    select: previewSelect,
+    isoNow,
+    limit: 80,
+    campaignId,
+  })
 
   if (error) throw error
+
+  const rows = (merged ?? [])
+    .slice()
+    .sort((a, b) => {
+      const na = a.next_send_at as string | null | undefined
+      const nb = b.next_send_at as string | null | undefined
+      if (na == null && nb != null) return -1
+      if (na != null && nb == null) return 1
+      if (na == null && nb == null) return 0
+      return String(na).localeCompare(String(nb))
+    })
+    .slice(0, 40)
 
   const sample: AudienceDueSample[] = (rows ?? []).map((r: Record<string, unknown>) => {
     const cust = r.customer as CustomerForAudience | CustomerForAudience[] | null
