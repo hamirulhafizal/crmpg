@@ -1,13 +1,45 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CampaignAudienceFilters, CampaignStatus, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
 import { CampaignStepsEditor, type StepDraft } from '@/app/dashboard/campaigns/_components/CampaignStepsEditor'
 
 function sendTimeFromDb(s: string): string {
   return s.length >= 5 ? s.slice(0, 5) : '10:00'
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** Value for `<input type="datetime-local" />` (local wall time, no timezone suffix). */
+function formatDateTimeLocalValue(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+
+/** DB ISO string → local datetime-local value (slice(0,16) on UTC ISO is wrong for this input). */
+function isoToDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso || typeof iso !== 'string') return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return formatDateTimeLocalValue(d)
+}
+
+function localNowPlusMinutes(minutes: number): string {
+  const d = new Date()
+  d.setMinutes(d.getMinutes() + minutes)
+  return formatDateTimeLocalValue(d)
+}
+
+/** datetime-local string is interpreted as local time; returns UTC ISO for the API. */
+function datetimeLocalToIsoUtc(value: string): string | null {
+  const v = value.trim()
+  if (!v) return null
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
 }
 
 export function CampaignEditor(props: {
@@ -50,8 +82,18 @@ export function CampaignEditor(props: {
   const [filters, setFilters] = useState<CampaignAudienceFilters>(props.initial?.audience_filters ?? {})
   const [dailyLimit, setDailyLimit] = useState(props.initial?.daily_send_limit ?? 100)
   const [cooldownDays, setCooldownDays] = useState(props.initial?.cooldown_days ?? 30)
-  const [startAt, setStartAt] = useState(props.initial?.start_at?.slice(0, 16) ?? '')
-  const [endAt, setEndAt] = useState(props.initial?.end_at?.slice(0, 16) ?? '')
+  const [startAt, setStartAt] = useState(() => {
+    if (props.initial?.start_at) return isoToDatetimeLocalValue(props.initial.start_at)
+    if (props.mode === 'create') return localNowPlusMinutes(3)
+    return ''
+  })
+  const [endAt, setEndAt] = useState(() => isoToDatetimeLocalValue(props.initial?.end_at ?? null))
+
+  useEffect(() => {
+    if (props.mode !== 'edit' || !props.initial) return
+    setStartAt(props.initial.start_at ? isoToDatetimeLocalValue(props.initial.start_at) : '')
+    setEndAt(isoToDatetimeLocalValue(props.initial.end_at ?? null))
+  }, [props.mode, props.initial?.start_at, props.initial?.end_at])
 
   const initialSteps: StepDraft[] = useMemo(() => {
     const ini = props.initial
@@ -79,6 +121,19 @@ export function CampaignEditor(props: {
     setSaving(true)
     setError(null)
     try {
+      const startIso = datetimeLocalToIsoUtc(startAt)
+      const endIso = datetimeLocalToIsoUtc(endAt)
+      if (startAt.trim() && !startIso) {
+        setError('Invalid start date / time')
+        setSaving(false)
+        return
+      }
+      if (endAt.trim() && !endIso) {
+        setError('Invalid end date / time')
+        setSaving(false)
+        return
+      }
+
       const payload = {
         name,
         description,
@@ -89,8 +144,8 @@ export function CampaignEditor(props: {
         audience_filters: filters,
         daily_send_limit: dailyLimit,
         cooldown_days: cooldownDays,
-        start_at: startAt ? new Date(startAt).toISOString() : null,
-        end_at: endAt ? new Date(endAt).toISOString() : null,
+        start_at: startIso,
+        end_at: endIso,
         steps: steps.map((s) => ({
           step_order: s.step_order,
           delay_days: s.delay_days,
@@ -136,8 +191,6 @@ export function CampaignEditor(props: {
       setSaving(false)
     }
   }
-
-  const initial = props.initial
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 pb-16">

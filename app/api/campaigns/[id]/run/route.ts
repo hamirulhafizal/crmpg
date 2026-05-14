@@ -35,6 +35,9 @@ export async function POST(request: Request, ctx: Ctx) {
     }
 
     const { summary, debug: debugLines } = await processDueCampaignMessagesForCampaign(id, { debug })
+
+    console.log('cronDebugEnabled', "masuk 5=---->", summary)
+
     return NextResponse.json({
       ok: true,
       summary,

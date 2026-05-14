@@ -355,6 +355,10 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
 
   let active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
 
+
+  console.log('cronDebugEnabled', "masuk 4=---->", active)
+  console.log('opts?.campaignIdOnly', opts?.campaignIdOnly)
+
   if (opts?.campaignIdOnly) {
     const narrowed = active.filter((c) => c.id === opts.campaignIdOnly)
     if (narrowed.length === 0) {
