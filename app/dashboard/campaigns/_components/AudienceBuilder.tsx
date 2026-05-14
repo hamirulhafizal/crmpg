@@ -244,7 +244,7 @@ function TagCatalogPicker({
           ) : (
             grouped.map((g) => (
               <div key={g.id} className="py-1">
-                <div className="sticky top-0 z-10 bg-grey px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
+                <div className="sticky top-0 z-10 bg-[grey] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
                   {g.name}
                 </div>
                 <ul className="px-1">
