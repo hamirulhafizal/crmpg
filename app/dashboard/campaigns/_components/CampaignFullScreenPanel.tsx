@@ -292,7 +292,7 @@ function ViewPanelInner({
 
   return (
     <>
-      <PanelChrome title={loading ? 'Campaign' : cName || 'Campaign'} subtitle="Details & analytics" onClose={onClose} />
+      <PanelChrome title={'Campaign'} subtitle="Details & analytics" onClose={onClose} />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8">
         {loading ? (
           <CampaignDetailSkeleton />

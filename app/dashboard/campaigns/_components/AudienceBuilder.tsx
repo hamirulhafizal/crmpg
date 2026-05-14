@@ -42,7 +42,6 @@ function TagCatalogPicker({
   const [categories, setCategories] = useState<CategoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [catalogError, setCatalogError] = useState<string | null>(null)
-  const [forbidden, setForbidden] = useState(false)
 
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -51,12 +50,11 @@ function TagCatalogPicker({
   const load = useCallback(async () => {
     setLoading(true)
     setCatalogError(null)
-    setForbidden(false)
     try {
-      const res = await fetch('/api/admin/tag-catalog', { cache: 'no-store' })
+      const res = await fetch('/api/tags', { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
-      if (res.status === 401 || res.status === 403) {
-        setForbidden(true)
+      if (res.status === 401) {
+        setCatalogError('Sign in to load tags.')
         setCategories([])
         return
       }
@@ -172,30 +170,7 @@ function TagCatalogPicker({
     }
   }
 
-  if (forbidden) {
-    const tagSlugs = selectedSlugs.join(', ')
-    return (
-      <div>
-        <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Tag catalog is admin-only. Enter slugs manually, or sign in as an admin to pick from the catalog.
-        </p>
-        <input
-          type="text"
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900"
-          placeholder="inactive, monthly-buyer"
-          value={tagSlugs}
-          onChange={(e) =>
-            onChangeSlugs(
-              e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-            )
-          }
-        />
-      </div>
-    )
-  }
+  const showManualSlugFallback = Boolean(catalogError) || (!loading && flat.length === 0)
 
   return (
     <div ref={wrapRef} className="relative">
@@ -269,7 +244,7 @@ function TagCatalogPicker({
           ) : (
             grouped.map((g) => (
               <div key={g.id} className="py-1">
-                <div className="sticky top-0 z-10 bg-slate-50/95 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur-sm">
+                <div className="sticky top-0 z-10 bg-grey px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
                   {g.name}
                 </div>
                 <ul className="px-1">
@@ -307,6 +282,35 @@ function TagCatalogPicker({
           )}
         </div>
       )}
+
+      {showManualSlugFallback && (
+        <div className="mt-2 space-y-1">
+          {catalogError ? (
+            <p className="text-xs text-slate-600">You can still enter tag slugs that exist on your customers:</p>
+          ) : (
+            <p className="rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+              No tags in the catalog yet. Enter slugs manually (same values as on customer tags):
+            </p>
+          )}
+          <label className="block text-xs font-medium text-slate-600">
+            Tag slugs (comma-separated)
+            <input
+              type="text"
+              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900"
+              placeholder="inactive, monthly-buyer"
+              value={selectedSlugs.join(', ')}
+              onChange={(e) =>
+                onChangeSlugs(
+                  e.target.value
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                )
+              }
+            />
+          </label>
+        </div>
+      )}
     </div>
   )
 }
@@ -336,7 +340,7 @@ export function AudienceBuilder({
           />
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Choose from your CRM catalog (grouped by category). Multiple tags use OR logic.
+          Search and pick tags from your catalog (grouped by category). Multiple tags use OR logic.
         </p>
       </div>
 

@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { CampaignAnalyticsCards } from '@/app/dashboard/campaigns/_components/CampaignAnalyticsCards'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
 import type { AudienceDueSample, AudienceEligibleSample } from '@/app/lib/campaigns/audience-preview'
@@ -30,6 +31,14 @@ function displayCustomerLabel(row: AudienceEligibleSample): string {
   const s = row.save_name?.trim() || row.name?.trim()
   if (s) return s
   return row.pg_code?.trim() ? `PG ${row.pg_code}` : 'Customer'
+}
+
+function ToolbarIcon({ children, className = 'h-5 w-5' }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={`inline-block ${className} shrink-0`} aria-hidden>
+      {children}
+    </span>
+  )
 }
 
 export function CampaignDetailContent(props: {
@@ -72,31 +81,88 @@ export function CampaignDetailContent(props: {
             <button
               type="button"
               onClick={onEdit}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
+              title="Edit campaign"
+              aria-label="Edit campaign"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white p-2.5 text-slate-900 hover:bg-slate-50"
             >
-              Edit
+              <ToolbarIcon>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                  />
+                </svg>
+              </ToolbarIcon>
             </button>
             {onTestRun ? (
               <button
                 type="button"
                 disabled={testRunBusy || c.status !== 'active'}
                 title={
-                  c.status !== 'active'
-                    ? 'Activate the campaign to run a test (sync audience & send due messages).'
-                    : 'Run enrollment sync and send up to 25 due WhatsApp messages now (same logic as cron).'
+                  testRunBusy
+                    ? 'Running test…'
+                    : c.status !== 'active'
+                      ? 'Activate the campaign to run a test (sync audience & send due messages).'
+                      : 'Run enrollment sync and send up to 25 due WhatsApp messages now (same logic as cron).'
                 }
+                aria-label={
+                  testRunBusy
+                    ? 'Running test'
+                    : c.status !== 'active'
+                      ? 'Test run unavailable until campaign is active'
+                      : 'Test run — sync audience and send due messages'
+                }
+                aria-busy={testRunBusy}
                 onClick={() => void onTestRun()}
-                className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-xl border border-violet-300 bg-violet-50 p-2.5 text-violet-900 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {testRunBusy ? 'Running…' : 'Test run'}
+                {testRunBusy ? (
+                  <ToolbarIcon>
+                    <svg
+                      className="animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                      />
+                    </svg>
+                  </ToolbarIcon>
+                ) : (
+                  <ToolbarIcon>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"
+                      />
+                    </svg>
+                  </ToolbarIcon>
+                )}
               </button>
             ) : null}
             <button
               type="button"
               onClick={onRefresh}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              title="Refresh campaign data"
+              aria-label="Refresh campaign data"
+              className="inline-flex items-center justify-center rounded-xl bg-blue-600 p-2.5 text-white hover:bg-blue-700"
             >
-              Refresh
+              <ToolbarIcon>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                  />
+                </svg>
+              </ToolbarIcon>
             </button>
           </div>
         </div>
@@ -305,7 +371,7 @@ export function CampaignDetailContent(props: {
               ) : (
                 payload.recent_logs.map((log) => (
                   <tr key={String(log.id)}>
-                    <td className="py-2 pr-4 font-medium">{String(log.send_status)}</td>
+                    <td className="py-2 pr-4 text-slate-600">{String(log.send_status)}</td>
                     <td className="py-2 pr-4 text-slate-600">
                       {log.sent_at ? new Date(String(log.sent_at)).toLocaleString() : '—'}
                     </td>
