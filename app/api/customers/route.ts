@@ -107,7 +107,15 @@ export async function GET(request: Request) {
       ageMax = tmp
     }
 
-    const tagId = (searchParams.get('tagId') || '').trim()
+    const tagIdLegacy = (searchParams.get('tagId') || '').trim()
+    const tagIdsRaw = (searchParams.get('tagIds') || '').trim()
+    const tagIdsFromParam = tagIdsRaw
+      ? tagIdsRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : []
+    const tagIds = [...new Set([...(tagIdLegacy ? [tagIdLegacy] : []), ...tagIdsFromParam])]
     const salesJourney = parseSalesJourneyStage(searchParams.get('salesJourney'))
     const sortBy = searchParams.get('sortBy') || 'created_at'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
@@ -124,12 +132,12 @@ export async function GET(request: Request) {
       !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
-      !!tagId ||
+      tagIds.length > 0 ||
       ageMin != null ||
       ageMax != null
 
     const selectColumns =
-      tagId.length > 0 ? '*, customer_tags!inner(tag_id)' : '*'
+      tagIds.length > 0 ? '*, customer_tags!inner(tag_id)' : '*'
 
     // Build query
     let query = supabase
@@ -137,8 +145,10 @@ export async function GET(request: Request) {
       .select(selectColumns, { count: 'exact' })
       .eq('user_id', user.id)
 
-    if (tagId.length > 0) {
-      query = query.eq('customer_tags.tag_id', tagId)
+    if (tagIds.length === 1) {
+      query = query.eq('customer_tags.tag_id', tagIds[0])
+    } else if (tagIds.length > 1) {
+      query = query.in('customer_tags.tag_id', tagIds)
     }
 
     // Apply search filter
@@ -200,8 +210,10 @@ export async function GET(request: Request) {
           .select(selectColumns)
           .eq('user_id', user.id)
 
-        if (tagId.length > 0) {
-          batchQuery = batchQuery.eq('customer_tags.tag_id', tagId)
+        if (tagIds.length === 1) {
+          batchQuery = batchQuery.eq('customer_tags.tag_id', tagIds[0])
+        } else if (tagIds.length > 1) {
+          batchQuery = batchQuery.in('customer_tags.tag_id', tagIds)
         }
 
         if (search) {
@@ -254,7 +266,16 @@ export async function GET(request: Request) {
         console.warn('Customers JS filtering reached max fetch loops; results may be truncated')
       }
 
-      let filtered = allRows
+      const dedupeByCustomerId = (rows: any[]) => {
+        const m = new Map<string, any>()
+        for (const row of rows) {
+          const id = row?.id != null ? String(row.id) : ''
+          if (id && !m.has(id)) m.set(id, row)
+        }
+        return Array.from(m.values())
+      }
+
+      let filtered = dedupeByCustomerId(allRows)
 
       if (birthday === 'today' || birthday === 'month') {
         // Match existing birthday automation logic (UTC+8 / Malaysia).

@@ -31,6 +31,7 @@ import {
   storedFollowUpResumeFromApi,
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
+import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -315,7 +316,7 @@ function CustomersPage() {
     tags: TagDto[]
   } | null>(null)
   const [tagCatalogLoading, setTagCatalogLoading] = useState(false)
-  const [tagFilter, setTagFilter] = useState('')
+  const [tagFilterIds, setTagFilterIds] = useState<string[]>([])
   const [resumeCheckpoint, setResumeCheckpoint] = useState<StoredFollowUpResume | null>(null)
 
   /** Full-screen follow-up queue (e.g. all FREE) + highlight next call after checkpoint */
@@ -589,7 +590,7 @@ function CustomersPage() {
     if (user) {
       fetchCustomers()
     }
-  }, [user, page, search, genderFilter, ethnicityFilter, ageMinFilter, ageMaxFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilter, sortBy, sortOrder, viewMode])
+  }, [user, page, search, genderFilter, ethnicityFilter, ageMinFilter, ageMaxFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilterIds, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -623,7 +624,7 @@ function CustomersPage() {
     setAcquisitionSourceFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
-    setTagFilter('')
+    setTagFilterIds([])
     setPage(1)
   }
 
@@ -766,7 +767,7 @@ function CustomersPage() {
       if (acquisitionSourceFilter) params.append('acquisitionSource', acquisitionSourceFilter)
       if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
       if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
-      if (tagFilter) params.append('tagId', tagFilter)
+      if (tagFilterIds.length > 0) params.set('tagIds', tagFilterIds.join(','))
 
       const response = await fetch(`/api/customers?${params}`, {
         cache: 'no-store',
@@ -1650,27 +1651,18 @@ function CustomersPage() {
               <option value="12">Dec</option>
             </select>
 
-            <select
-              value={tagFilter}
-              onChange={(e) => {
-                setTagFilter(e.target.value)
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent md:col-span-2"
-              disabled={!tagCatalog || tagCatalog.tags.length === 0}
-            >
-              <option value="">CRM tag (all)</option>
-              {tagCatalog?.tags.map((t) => {
-                const cat = tagCatalog.categories.find((c) => c.id === t.category_id)
-                const prefix = cat?.name ? `${cat.name}: ` : ''
-                return (
-                  <option key={t.id} value={t.id}>
-                    {prefix}
-                    {t.label}
-                  </option>
-                )
-              })}
-            </select>
+            <div className="md:col-span-2">
+              <CrmTagMultiSelect
+                categories={tagCatalog?.categories ?? []}
+                tags={tagCatalog?.tags ?? []}
+                selectedIds={tagFilterIds}
+                onChange={(ids) => {
+                  setTagFilterIds(ids)
+                  setPage(1)
+                }}
+                disabled={!tagCatalog || tagCatalog.tags.length === 0 || tagCatalogLoading}
+              />
+            </div>
 
             {/* View mode: paginated vs all */}
             <label className="flex items-center gap-2 px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">

@@ -270,7 +270,7 @@ function TagCatalogPicker({
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => addSlug(t.slug)}
                         >
-                          <span className="font-medium">{t.label}</span>
+                          <span className="font-medium text-black">{t.label}</span>
                           <span className="text-xs text-slate-500">{t.slug}</span>
                         </button>
                       </li>
