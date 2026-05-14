@@ -1,6 +1,8 @@
 import { getAccountStatusKey } from '@/app/lib/customer-account-status'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 
+type TagEmbed = { slug?: string } | { slug?: string }[] | null
+
 export type CustomerForAudience = {
   id: string
   phone: string | null
@@ -15,7 +17,8 @@ export type CustomerForAudience = {
   is_friend: boolean | null
   original_data: unknown
   segment_attributes: Record<string, unknown> | null
-  customer_tags?: Array<{ tags: { slug: string } | null }> | null
+  /** PostgREST may return `tags` as an object or a one-element array depending on embed shape. */
+  customer_tags?: Array<{ tag_id?: string; tags?: TagEmbed } | null> | null
 }
 
 function lastPurchaseDaysAgo(row: CustomerForAudience): number | null {
@@ -25,11 +28,33 @@ function lastPurchaseDaysAgo(row: CustomerForAudience): number | null {
   return (Date.now() - ms) / (24 * 60 * 60 * 1000)
 }
 
+function slugFromTagEmbed(tags: TagEmbed | undefined): string | null {
+  if (tags == null) return null
+  if (Array.isArray(tags)) {
+    const row = tags[0]
+    const slug = row && typeof row === 'object' && 'slug' in row ? (row as { slug?: string }).slug : undefined
+    return slug ? String(slug).toLowerCase() : null
+  }
+  if (typeof tags === 'object' && 'slug' in tags && tags.slug) {
+    return String(tags.slug).toLowerCase()
+  }
+  return null
+}
+
 export function customerTagSlugs(c: CustomerForAudience): Set<string> {
   const s = new Set<string>()
   for (const ct of c.customer_tags ?? []) {
-    const slug = ct?.tags?.slug
-    if (slug) s.add(slug.toLowerCase())
+    const slug = slugFromTagEmbed(ct?.tags)
+    if (slug) s.add(slug)
+  }
+  return s
+}
+
+export function customerTagIds(c: CustomerForAudience): Set<string> {
+  const s = new Set<string>()
+  for (const ct of c.customer_tags ?? []) {
+    const id = ct?.tag_id
+    if (id) s.add(String(id))
   }
   return s
 }
@@ -37,14 +62,18 @@ export function customerTagSlugs(c: CustomerForAudience): Set<string> {
 export function customerMatchesFilters(c: CustomerForAudience, filters: CampaignAudienceFilters): boolean {
   if (!c.phone || !String(c.phone).trim()) return false
 
-  const wantTags = (filters.tag_slugs ?? []).map((t) => t.toLowerCase())
-  if (wantTags.length > 0) {
-    const have = customerTagSlugs(c)
-    if (!wantTags.some((t) => have.has(t))) return false
-  }
-
-  if (filters.tag_ids?.length) {
-    // When only tag_ids in JSON without slugs, require client to pass expanded slugs; skip id match here.
+  const wantSlugs = (filters.tag_slugs ?? []).map((t) => String(t).toLowerCase().trim()).filter(Boolean)
+  const wantIds = (filters.tag_ids ?? []).map((id) => String(id).trim()).filter(Boolean)
+  if (wantSlugs.length > 0 || wantIds.length > 0) {
+    const haveSlugs = customerTagSlugs(c)
+    const haveIds = customerTagIds(c)
+    const slugOk = wantSlugs.length === 0 || wantSlugs.some((t) => haveSlugs.has(t))
+    const idOk = wantIds.length === 0 || wantIds.some((tid) => haveIds.has(tid))
+    if (wantSlugs.length > 0 && wantIds.length > 0) {
+      if (!slugOk && !idOk) return false
+    } else if (wantSlugs.length > 0) {
+      if (!slugOk) return false
+    } else if (!idOk) return false
   }
 
   const st = filters.account_status
@@ -66,7 +95,7 @@ export function customerMatchesFilters(c: CustomerForAudience, filters: Campaign
     if (!(c.location || '').toLowerCase().includes(filters.location_contains.trim().toLowerCase())) return false
   }
 
-  if (filters.last_purchase_days_gt != null) {
+  if (filters.last_purchase_days_gt != null && filters.last_purchase_days_gt > 0) {
     const days = lastPurchaseDaysAgo(c)
     if (days == null) return false
     if (days <= filters.last_purchase_days_gt) return false

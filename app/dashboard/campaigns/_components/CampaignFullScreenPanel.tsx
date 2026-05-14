@@ -264,6 +264,7 @@ function ViewPanelInner({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<CampaignDetailPayload | null>(null)
+  const [testRunBusy, setTestRunBusy] = useState(false)
 
   const load = useCallback(async (): Promise<boolean> => {
     setLoading(true)
@@ -306,6 +307,32 @@ function ViewPanelInner({
                 if (ok) pushToast('success', 'Refreshed.')
                 else pushToast('error', 'Could not refresh.')
               })
+            }}
+            testRunBusy={testRunBusy}
+            onTestRun={async () => {
+              setTestRunBusy(true)
+              try {
+                const res = await fetch(`/api/campaigns/${id}/run`, { method: 'POST' })
+                const json = (await res.json()) as {
+                  error?: string
+                  summary?: { enrollments_inserted: number; messages_sent: number; messages_failed: number; messages_attempted: number }
+                }
+                if (!res.ok) throw new Error(json.error || 'Run failed')
+                const s = json.summary
+                if (s) {
+                  pushToast(
+                    'success',
+                    `Test run finished: +${s.enrollments_inserted} enrollments, ${s.messages_sent} sent, ${s.messages_failed} failed (${s.messages_attempted} attempts).`
+                  )
+                } else {
+                  pushToast('success', 'Test run finished.')
+                }
+                await load()
+              } catch (e: unknown) {
+                pushToast('error', e instanceof Error ? e.message : 'Run failed')
+              } finally {
+                setTestRunBusy(false)
+              }
             }}
           />
         )}

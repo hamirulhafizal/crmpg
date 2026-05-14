@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import {
+  computeDueAudiencePreview,
+  computeEligibleAudiencePreview,
+  describeCampaignAudienceFilters,
+  resolveTagIdLabels,
+} from '@/app/lib/campaigns/audience-preview'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -63,6 +69,17 @@ export async function GET(_request: Request, ctx: Ctx) {
       .order('created_at', { ascending: false })
       .limit(25)
 
+    const filters = (campaign.audience_filters || {}) as CampaignAudienceFilters
+    const isoNow = new Date().toISOString()
+
+    const tagIdList = (filters.tag_ids ?? []).map(String).filter(Boolean)
+    const tagIdLabels = tagIdList.length > 0 ? await resolveTagIdLabels(supabase, tagIdList) : undefined
+
+    const [eligible, dueNow] = await Promise.all([
+      computeEligibleAudiencePreview(supabase, user.id, filters),
+      computeDueAudiencePreview(supabase, id, isoNow),
+    ])
+
     return NextResponse.json({
       data: {
         campaign,
@@ -74,6 +91,20 @@ export async function GET(_request: Request, ctx: Ctx) {
           completed: completed ?? 0,
         },
         recent_logs: recentLogs ?? [],
+        audience: {
+          criteria_lines: describeCampaignAudienceFilters(filters, tagIdLabels),
+          filters,
+          generated_at: isoNow,
+          eligible: {
+            matching_total: eligible.matching_total,
+            customers_scanned: eligible.customers_scanned,
+            sample: eligible.sample,
+          },
+          due_now: {
+            total: dueNow.due_total,
+            sample: dueNow.sample,
+          },
+        },
       },
     })
   } catch (e: unknown) {

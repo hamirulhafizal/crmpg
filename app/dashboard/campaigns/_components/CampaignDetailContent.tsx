@@ -2,20 +2,45 @@
 
 import { CampaignAnalyticsCards } from '@/app/dashboard/campaigns/_components/CampaignAnalyticsCards'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
+import type { AudienceDueSample, AudienceEligibleSample } from '@/app/lib/campaigns/audience-preview'
+import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 
 export type CampaignDetailPayload = {
   campaign: Record<string, unknown>
   steps: unknown[]
   stats: { enrolled: number; sent: number; failed: number; completed: number }
   recent_logs: Array<Record<string, unknown>>
+  audience?: {
+    criteria_lines: string[]
+    filters: CampaignAudienceFilters
+    generated_at: string
+    eligible: {
+      matching_total: number
+      customers_scanned: number
+      sample: AudienceEligibleSample[]
+    }
+    due_now: {
+      total: number
+      sample: AudienceDueSample[]
+    }
+  }
+}
+
+function displayCustomerLabel(row: AudienceEligibleSample): string {
+  const s = row.save_name?.trim() || row.name?.trim()
+  if (s) return s
+  return row.pg_code?.trim() ? `PG ${row.pg_code}` : 'Customer'
 }
 
 export function CampaignDetailContent(props: {
   payload: CampaignDetailPayload
   onEdit: () => void
   onRefresh: () => void
+  /** POST /api/campaigns/[id]/run — sync enrollments + send due messages (same as cron, scoped to this campaign). */
+  onTestRun?: () => Promise<void>
+  testRunBusy?: boolean
 }) {
-  const { payload, onEdit, onRefresh } = props
+  const { payload, onEdit, onRefresh, onTestRun, testRunBusy } = props
 
   const c = payload.campaign as {
     name: string
@@ -43,14 +68,29 @@ export function CampaignDetailContent(props: {
             </div>
             {c.description ? <p className="mt-2 text-slate-600">{c.description}</p> : null}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={onEdit}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 text-slate-900"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50"
             >
               Edit
             </button>
+            {onTestRun ? (
+              <button
+                type="button"
+                disabled={testRunBusy || c.status !== 'active'}
+                title={
+                  c.status !== 'active'
+                    ? 'Activate the campaign to run a test (sync audience & send due messages).'
+                    : 'Run enrollment sync and send up to 25 due WhatsApp messages now (same logic as cron).'
+                }
+                onClick={() => void onTestRun()}
+                className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {testRunBusy ? 'Running…' : 'Test run'}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onRefresh}
@@ -67,6 +107,147 @@ export function CampaignDetailContent(props: {
           <span className="font-medium">{c.cooldown_days}d</span>
         </p>
       </div>
+
+      {payload.audience ? (
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-1 text-lg font-semibold text-slate-900">Target audience (rules)</h3>
+            <p className="mb-3 text-xs text-slate-500">
+              Criteria stored on this campaign. Enrollment uses the same rules when the campaign is active.
+            </p>
+            <ul className="list-inside list-disc space-y-1.5 text-sm text-slate-700">
+              {payload.audience.criteria_lines.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-1 text-lg font-semibold text-slate-900">Who matches today (live CRM preview)</h3>
+            <p className="mb-3 text-xs text-slate-500">
+              Customers in your CRM who match these filters right now (with a phone number). Scanned{' '}
+              <span className="font-medium tabular-nums">{payload.audience.eligible.customers_scanned}</span> rows ·{' '}
+              <span className="font-semibold text-slate-800 tabular-nums">{payload.audience.eligible.matching_total}</span>{' '}
+              match · showing up to {payload.audience.eligible.sample.length} sample names.
+            </p>
+            {payload.audience.eligible.matching_total === 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  {payload.audience.eligible.customers_scanned === 0
+                    ? 'No customers were returned for your account — check that customers belong to your user in the CRM.'
+                    : 'No customer currently passes all of these rules.'}
+                </p>
+                {payload.audience.eligible.customers_scanned > 0 ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs leading-relaxed text-amber-950">
+                    <p className="font-semibold text-amber-900">Common reasons for zero matches</p>
+                    <ul className="mt-2 list-inside list-disc space-y-1.5">
+                      <li>
+                        <strong>Phone required</strong> — only rows with a saved phone number are eligible for WhatsApp
+                        campaigns.
+                      </li>
+                      <li>
+                        <strong>CRM tags</strong> — tags like <code className="rounded bg-white/70 px-1">wedding_saving</code>{' '}
+                        must be assigned on the customer via the CRM <strong>Tags</strong> feature (they live in the{' '}
+                        <code className="rounded bg-white/70 px-1">customer_tags</code> table). Free-text or Excel columns
+                        alone are not used here.
+                      </li>
+                      <li>
+                        <strong>Exact slugs</strong> — tag slugs on the campaign must match the catalog (lowercase, same
+                        spelling as in Admin tag settings).
+                      </li>
+                      <li>
+                        <strong>Combined rules</strong> — account status, gender, location, last purchase age, and
+                        segment filters are combined with AND logic together with tags.
+                      </li>
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <table className="w-full min-w-[520px] text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Phone</th>
+                      <th className="px-3 py-2">PG code</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {payload.audience.eligible.sample.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-3 py-2 font-medium text-slate-900">{displayCustomerLabel(row)}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.phone || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600">{row.pg_code || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-6 shadow-sm">
+            <h3 className="mb-1 text-lg font-semibold text-slate-900">Today&apos;s send queue (due now)</h3>
+            <p className="mb-3 text-xs text-slate-600">
+              Active enrollments for this campaign that the cron (or Test run) will pick next: next send time is in the
+              past or not set. Total due:{' '}
+              <span className="font-semibold tabular-nums text-indigo-950">{payload.audience.due_now.total}</span>.
+            </p>
+            {payload.audience.due_now.total === 0 ? (
+              <p className="text-sm text-slate-600">
+                No one is queued for a send right now. Run enrollment (activate + cron / Test run) or wait until the
+                next scheduled send time.
+              </p>
+            ) : payload.audience.due_now.sample.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                {payload.audience.due_now.total} enrollment(s) due; sample list could not be loaded.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white">
+                <table className="w-full min-w-[640px] text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Customer</th>
+                      <th className="px-3 py-2">Phone</th>
+                      <th className="px-3 py-2">Last step</th>
+                      <th className="px-3 py-2">Next send</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {payload.audience.due_now.sample.map((row) => (
+                      <tr key={row.enrollment_id}>
+                        <td className="px-3 py-2 font-medium text-slate-900">
+                          {row.customer ? displayCustomerLabel(row.customer) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{row.customer?.phone || '—'}</td>
+                        <td className="px-3 py-2 tabular-nums text-slate-600">{row.last_step_sent}</td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {row.next_send_at
+                            ? new Date(row.next_send_at).toLocaleString(undefined, {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <p className="text-center text-[11px] text-slate-400">
+            Audience preview at{' '}
+            {new Date(payload.audience.generated_at).toLocaleString(undefined, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })}
+            . Refresh to update.
+          </p>
+        </div>
+      ) : null}
 
       <section>
         <h3 className="mb-3 text-lg font-semibold text-slate-900">Analytics</h3>
@@ -157,6 +338,17 @@ export function CampaignDetailSkeleton() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-24 rounded-2xl border border-slate-100 bg-slate-50/80 animate-pulse" />
         ))}
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 h-6 w-48 rounded bg-slate-200/90 animate-pulse" />
+        <div className="space-y-2">
+          <div className="h-3 w-full max-w-md rounded bg-slate-100 animate-pulse" />
+          <div className="h-3 w-full max-w-sm rounded bg-slate-100 animate-pulse" />
+        </div>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 h-6 w-56 rounded bg-slate-200/90 animate-pulse" />
+        <div className="h-32 rounded-lg bg-slate-100 animate-pulse" />
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 h-6 w-24 rounded bg-slate-200/90 animate-pulse" />

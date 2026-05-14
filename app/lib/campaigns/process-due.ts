@@ -17,6 +17,26 @@ export type ProcessSummary = {
   messages_failed: number
 }
 
+export type ProcessDueOptions = {
+  /** When true, collect `debug` lines (also printed with `console.log`). */
+  debug?: boolean
+  /** Restrict enrollment sync + due-send batch to this campaign (must be active and in window). */
+  campaignIdOnly?: string
+}
+
+export type ProcessDueResult = {
+  summary: ProcessSummary
+  /** Present when `debug` was requested. */
+  debug?: string[]
+}
+
+function cronLog(debugLines: string[] | undefined, message: string) {
+  if (!debugLines) return
+  const line = `[campaign-cron] ${message}`
+  debugLines.push(line)
+  console.log(line)
+}
+
 const CUSTOMER_PAGE = 250
 const SEND_BATCH = 25
 
@@ -62,10 +82,17 @@ async function syncEnrollmentsForCampaign(
   supabase: ReturnType<typeof createServiceRoleClient>,
   campaign: CampaignRow,
   steps: CampaignStepRow[],
-  summary: ProcessSummary
+  summary: ProcessSummary,
+  debugLines?: string[]
 ): Promise<void> {
-  if (steps.length === 0) return
-  if (!['manual', 'enrollment'].includes(campaign.trigger_type)) return
+  if (steps.length === 0) {
+    cronLog(debugLines, `skip enrollment sync: no steps campaign=${campaign.id}`)
+    return
+  }
+  if (!['manual', 'enrollment'].includes(campaign.trigger_type)) {
+    cronLog(debugLines, `skip enrollment sync: trigger=${campaign.trigger_type} campaign=${campaign.id}`)
+    return
+  }
 
   const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
   const filters = (campaign.audience_filters || {}) as CampaignAudienceFilters
@@ -86,7 +113,7 @@ async function syncEnrollmentsForCampaign(
       .from('customers')
       .select(
         `id, phone, name, first_name, pg_code, save_name, gender, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
-         customer_tags ( tags ( slug ) )`
+         customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', campaign.user_id)
       .range(offset, offset + CUSTOMER_PAGE - 1)
@@ -124,45 +151,7 @@ async function syncEnrollmentsForCampaign(
   }
 }
 
-export async function processDueCampaignMessages(): Promise<ProcessSummary> {
-  const supabase = createServiceRoleClient()
-  const summary: ProcessSummary = {
-    campaigns_scanned: 0,
-    enrollments_inserted: 0,
-    messages_attempted: 0,
-    messages_sent: 0,
-    messages_failed: 0,
-  }
-
-  const now = new Date()
-
-  const { data: campaigns } = await supabase
-    .from('campaigns')
-    .select('*')
-    .eq('status', 'active')
-
-  const active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
-  summary.campaigns_scanned = active.length
-
-  for (const c of active) {
-    const { data: stepRows } = await supabase
-      .from('campaign_steps')
-      .select('*')
-      .eq('campaign_id', c.id)
-      .order('step_order', { ascending: true })
-
-    const steps = (stepRows ?? []) as CampaignStepRow[]
-    await syncEnrollmentsForCampaign(supabase, c, steps, summary)
-  }
-
-  const isoNow = now.toISOString()
-  const dayStart = startOfUtcDay(now)
-
-  const { data: dueRows } = await supabase
-    .from('campaign_enrollments')
-    // Keep this customer column list aligned with CUSTOMER_MESSAGE_TEMPLATE_COLUMNS in template.ts (plus `id`).
-    .select(
-      `
+const enrollmentDueSelect = `
       *,
       campaign:campaigns (*),
       customer:customers (
@@ -196,24 +185,44 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
         updated_at
       )
     `
-    )
-    .eq('status', 'active')
-    .or(`next_send_at.is.null,next_send_at.lte.${isoNow}`)
-    .limit(SEND_BATCH)
 
-  const due = dueRows ?? []
+type DueEnrollmentRow = {
+  id: string
+  last_step_sent: number
+  campaign: CampaignRow | CampaignRow[] | null
+  customer: CustomerForAudience | CustomerForAudience[] | null
+}
 
+async function processDueEnrollmentRows(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  due: DueEnrollmentRow[],
+  now: Date,
+  dayStart: Date,
+  summary: ProcessSummary,
+  debugLines?: string[]
+): Promise<void> {
+  cronLog(debugLines, `due batch: ${due.length} enrollment row(s)`)
   for (const row of due) {
-    const rawCamp = row.campaign as CampaignRow | CampaignRow[] | null
+    const rawCamp = row.campaign
     const campaign = (Array.isArray(rawCamp) ? rawCamp[0] : rawCamp) as CampaignRow | null
     const rawCust = row.customer as CustomerForAudience | CustomerForAudience[] | null
     const customer = (Array.isArray(rawCust) ? rawCust[0] : rawCust) as CustomerForAudience | null
     if (!campaign || campaign.status !== 'active' || !campaignInWindow(campaign, now) || !customer?.phone) {
+      cronLog(
+        debugLines,
+        `skip enrollment=${row.id}: campaign=${campaign?.id ?? 'null'} status=${campaign?.status ?? 'n/a'} inWindow=${campaign ? campaignInWindow(campaign, now) : false} phone=${Boolean(customer?.phone)}`
+      )
       continue
     }
 
     const sentToday = await countSentToday(supabase, campaign.id, dayStart)
-    if (sentToday >= campaign.daily_send_limit) continue
+    if (sentToday >= campaign.daily_send_limit) {
+      cronLog(
+        debugLines,
+        `skip enrollment=${row.id}: daily cap campaign=${campaign.id} sentToday=${sentToday} limit=${campaign.daily_send_limit}`
+      )
+      continue
+    }
 
     const { data: stepRows } = await supabase
       .from('campaign_steps')
@@ -224,6 +233,7 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
     const steps = ((stepRows ?? []) as CampaignStepRow[]).filter((s) => s.is_active)
     const nextStep = steps.find((s) => s.step_order > row.last_step_sent)
     if (!nextStep) {
+      cronLog(debugLines, `enrollment=${row.id} campaign=${campaign.id}: no further step → mark completed`)
       await supabase
         .from('campaign_enrollments')
         .update({
@@ -238,6 +248,7 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
     const session = await pickWahaSession(supabase, campaign.user_id)
     if (!session) {
       summary.messages_failed++
+      cronLog(debugLines, `fail enrollment=${row.id} campaign=${campaign.id}: no WAHA session user=${campaign.user_id}`)
       await supabase.from('campaign_message_logs').insert({
         campaign_id: campaign.id,
         campaign_step_id: nextStep.id,
@@ -273,6 +284,7 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
 
     if (logErr || !logInsert?.id) {
       summary.messages_failed++
+      cronLog(debugLines, `fail enrollment=${row.id}: log insert error ${logErr?.message ?? 'unknown'}`)
       continue
     }
 
@@ -303,6 +315,11 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
 
       summary.messages_sent++
 
+      cronLog(
+        debugLines,
+        `sent campaign=${campaign.id} "${campaign.name}" customer=${customer.id} step=${nextStep.step_order} log=${logInsert.id}`
+      )
+
       const following = steps.find((s) => s.step_order > nextStep.step_order)
       const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
       let nextSend: Date | null = null
@@ -326,6 +343,7 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       summary.messages_failed++
+      cronLog(debugLines, `fail send enrollment=${row.id} log=${logInsert.id}: ${msg}`)
       await supabase
         .from('campaign_message_logs')
         .update({
@@ -335,6 +353,125 @@ export async function processDueCampaignMessages(): Promise<ProcessSummary> {
         .eq('id', logInsert.id)
     }
   }
+}
 
-  return summary
+export async function processDueCampaignMessages(opts?: ProcessDueOptions): Promise<ProcessDueResult> {
+  const debugLines = opts?.debug ? [] : undefined
+  const supabase = createServiceRoleClient()
+  const summary: ProcessSummary = {
+    campaigns_scanned: 0,
+    enrollments_inserted: 0,
+    messages_attempted: 0,
+    messages_sent: 0,
+    messages_failed: 0,
+  }
+
+  const now = new Date()
+  cronLog(
+    debugLines,
+    `start at=${now.toISOString()} mode=${opts?.campaignIdOnly ? 'campaign_id_only' : 'global'} campaignIdOnly=${opts?.campaignIdOnly ?? '—'}`
+  )
+
+  const { data: campaigns } = await supabase
+    .from('campaigns')
+    .select('*')
+    .eq('status', 'active')
+
+  let active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
+
+  if (opts?.campaignIdOnly) {
+    const narrowed = active.filter((c) => c.id === opts.campaignIdOnly)
+    if (narrowed.length === 0) {
+      cronLog(
+        debugLines,
+        `campaign_id=${opts.campaignIdOnly} not among ${active.length} in-window active campaign(s); skipping sync and sends`
+      )
+      return { summary, ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}) }
+    }
+    active = narrowed
+    cronLog(debugLines, `scoped to "${active[0]?.name}" (${opts.campaignIdOnly})`)
+  }
+
+  summary.campaigns_scanned = active.length
+  cronLog(
+    debugLines,
+    `active_campaigns=${active.length} → ${active.map((c) => `${c.id.slice(0, 8)}…${c.name}`).join(' | ') || 'none'}`
+  )
+
+  for (const c of active) {
+    const { data: stepRows } = await supabase
+      .from('campaign_steps')
+      .select('*')
+      .eq('campaign_id', c.id)
+      .order('step_order', { ascending: true })
+
+    const steps = (stepRows ?? []) as CampaignStepRow[]
+    const insBefore = summary.enrollments_inserted
+    await syncEnrollmentsForCampaign(supabase, c, steps, summary, debugLines)
+    cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
+  }
+
+  const isoNow = now.toISOString()
+  const dayStart = startOfUtcDay(now)
+
+  let dueBuilder = supabase
+    .from('campaign_enrollments')
+    .select(enrollmentDueSelect)
+    .eq('status', 'active')
+    .or(`next_send_at.is.null,next_send_at.lte.${isoNow}`)
+    .limit(SEND_BATCH)
+
+  if (opts?.campaignIdOnly) {
+    dueBuilder = dueBuilder.eq('campaign_id', opts.campaignIdOnly)
+  }
+
+  const { data: dueRows, error: dueErr } = await dueBuilder
+  if (dueErr) {
+    cronLog(debugLines, `due query error: ${dueErr.message}`)
+    throw dueErr
+  }
+
+  cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s)`)
+  await processDueEnrollmentRows(supabase, (dueRows ?? []) as DueEnrollmentRow[], now, dayStart, summary, debugLines)
+
+  cronLog(
+    debugLines,
+    `done enrollments_inserted_total=${summary.enrollments_inserted} attempted=${summary.messages_attempted} sent=${summary.messages_sent} failed=${summary.messages_failed}`
+  )
+
+  return {
+    summary,
+    ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}),
+  }
+}
+
+/**
+ * Same processing logic as the global cron, but scoped to one campaign (dashboard "Test run").
+ * Validates active + schedule window, then delegates to {@link processDueCampaignMessages} with `campaignIdOnly`.
+ */
+export async function processDueCampaignMessagesForCampaign(
+  campaignId: string,
+  opts?: { debug?: boolean }
+): Promise<ProcessDueResult> {
+  const supabase = createServiceRoleClient()
+  const now = new Date()
+
+  const { data: campaignRow, error: campErr } = await supabase
+    .from('campaigns')
+    .select('*')
+    .eq('id', campaignId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (campErr) throw campErr
+  if (!campaignRow) {
+    throw new Error('Campaign not found or not active')
+  }
+
+  const c = campaignRow as CampaignRow
+  if (!campaignInWindow(c, now)) {
+    throw new Error('Campaign is outside its start/end window')
+  }
+
+  return processDueCampaignMessages({ ...opts, campaignIdOnly: campaignId })
 }

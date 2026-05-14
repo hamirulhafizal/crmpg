@@ -12,13 +12,32 @@ function authorizeCron(request: Request): boolean {
   return q === secret
 }
 
+function cronDebugEnabled(request: Request): boolean {
+  const url = new URL(request.url)
+  if (url.searchParams.get('debug') === '1') return true
+  const env = process.env.CAMPAIGN_CRON_DEBUG
+  return env === '1' || env === 'true' || env === 'TRUE'
+}
+
 export async function GET(request: Request) {
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const summary = await processDueCampaignMessages()
-    return NextResponse.json({ ok: true, summary })
+    const url = new URL(request.url)
+    const campaignIdOnly = url.searchParams.get('campaign_id')?.trim() || undefined
+    const debug = cronDebugEnabled(request)
+
+    const { summary, debug: debugLines } = await processDueCampaignMessages({
+      debug,
+      campaignIdOnly,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      summary,
+      ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}),
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Processor failed'
     return NextResponse.json({ error: msg }, { status: 500 })
