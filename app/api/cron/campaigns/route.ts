@@ -28,10 +28,14 @@ export async function GET(request: Request) {
     const campaignIdOnly = url.searchParams.get('campaign_id')?.trim() || undefined
     const debug = cronDebugEnabled(request)
 
+    console.log('cronDebugEnabled', "masuk 1=---->", campaignIdOnly)
+
     const { summary, debug: debugLines } = await processDueCampaignMessages({
       debug,
       campaignIdOnly,
     })
+
+    console.log('cronDebugEnabled', "masuk 2=---->", summary)
 
     return NextResponse.json({
       ok: true,

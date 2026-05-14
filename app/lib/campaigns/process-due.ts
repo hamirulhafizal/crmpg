@@ -336,6 +336,7 @@ async function processDueEnrollmentRows(
 }
 
 export async function processDueCampaignMessages(opts?: ProcessDueOptions): Promise<ProcessDueResult> {
+  console.log('processDueCampaignMessages', "masuk 1=---->", opts)
   const debugLines = opts?.debug ? [] : undefined
   const supabase = createServiceRoleClient()
   const summary: ProcessSummary = {
@@ -357,8 +358,13 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     .select('*')
     .eq('status', 'active')
 
+
+  console.log('cronDebugEnabled', "masuk 3=---->", campaigns)
+
   let active = (campaigns ?? []).filter((c) => campaignInWindow(c as CampaignRow, now)) as CampaignRow[]
 
+  console.log('cronDebugEnabled', "masuk 4=---->", active)
+  
   if (opts?.campaignIdOnly) {
     const narrowed = active.filter((c) => c.id === opts.campaignIdOnly)
     if (narrowed.length === 0) {
