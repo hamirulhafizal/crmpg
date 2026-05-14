@@ -20,10 +20,17 @@ function cronDebugEnabled(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
+
+  console.log('cronDebugEnabled', "masduk=---->")
+
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
+
+    console.log('cronDebugEnabled', "masduk=---->")
+
+
     const url = new URL(request.url)
     const campaignIdOnly = url.searchParams.get('campaign_id')?.trim() || undefined
     const debug = cronDebugEnabled(request)

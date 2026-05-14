@@ -357,6 +357,7 @@ async function processDueEnrollmentRows(
 }
 
 export async function processDueCampaignMessages(opts?: ProcessDueOptions): Promise<ProcessDueResult> {
+  console.log('processDueCampaignMessages', "masuk 2=---->")
   const debugLines = opts?.debug ? [] : undefined
   const supabase = createServiceRoleClient()
   const summary: ProcessSummary = {
