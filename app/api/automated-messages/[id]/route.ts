@@ -86,8 +86,13 @@ export async function PUT(
       }
       update.scheduled_at = scheduledAt.toISOString()
     }
-    // Always clear any stale processing lock when the user saves edits.
-    update.locked_at = null
+    if (body.audience_target !== undefined) {
+      if (body.audience_target != null && typeof body.audience_target === 'object' && !Array.isArray(body.audience_target)) {
+        update.audience_target = body.audience_target
+      } else {
+        update.audience_target = {}
+      }
+    }
 
     // Recurring gold poster schedules should become pending again when edited.
     if (isGoldPoster) update.status = 'pending'

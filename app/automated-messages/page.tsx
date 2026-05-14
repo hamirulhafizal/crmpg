@@ -127,6 +127,13 @@ const getDefaultScheduleTimePlus3Minutes = (): string => {
   return `${hh}:${mm}`
 }
 
+/** For `<input type="datetime-local" />` — local calendar date + time, ~now + 3 minutes. */
+const getDefaultScheduleDateTimeLocalPlus3Minutes = (): string => {
+  const d = new Date(Date.now() + 3 * 60 * 1000)
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
 type AutomationTitleType =
   | 'birthday'
   | 'inactive_followup'
@@ -273,6 +280,107 @@ function ScheduleAudienceSection({ preview, loading, error, onOpenCustomer }: Sc
   )
 }
 
+function isBroadcastTitleType(t: AutomationTitleType): boolean {
+  return (
+    t === 'birthday' ||
+    t === 'inactive_followup' ||
+    t === 'free_followup' ||
+    t === 'active_profile_unverified_followup' ||
+    t === 'active_verified_no_autodebit_followup' ||
+    t === 'gold_poster'
+  )
+}
+
+/** Explains who each broadcast automation reaches (rules mirror cron / audience preview). */
+function BroadcastAutomationTargetCard({ titleType }: { titleType: AutomationTitleType }) {
+  if (!isBroadcastTitleType(titleType)) return null
+
+  const copy: {
+    heading: string
+    summary: string
+    bullets?: string[]
+    footnote?: string
+  } = (() => {
+    switch (titleType) {
+      case 'birthday':
+        return {
+          heading: 'Target customers',
+          summary:
+            'CRM contacts with a saved phone number whose birthday (month and day) matches each daily run using the Malaysia calendar. This is not limited to one account status—any customer with a matching DOB can qualify.',
+          bullets: [
+            'Rows without DOB or without a usable phone number are skipped.',
+            'At most one send per customer per matching day for this automation.',
+          ],
+        }
+      case 'free_followup':
+        return {
+          heading: 'Target customers',
+          summary:
+            'Customers your CRM classifies as a Free account (from PG code, last purchase, monthly-buyer flag, and profile fields)—the same logic as elsewhere in this app—not a manually chosen tag list.',
+          bullets: [
+            'They must also match the registration anniversary rule for that Malaysia calendar day.',
+            'May exclude people already sent for this automation or recently touched via related follow-up logs (see calendar preview).',
+          ],
+        }
+      case 'active_profile_unverified_followup':
+        return {
+          heading: 'Target customers',
+          summary:
+            'Active accounts with at least one purchase in the current Malaysia calendar month, where Profile Verified is treated as No.',
+          bullets: [
+            'Uses structured profile and purchase data from each customer record.',
+            'At most one send per customer per automation window; follow-up activity can suppress repeats.',
+          ],
+        }
+      case 'active_verified_no_autodebit_followup':
+        return {
+          heading: 'Target customers',
+          summary:
+            'Active accounts with a purchase in the current Malaysia calendar month, Profile Verified = Yes, and Direct Debit Subscription = No.',
+          bullets: [
+            'Uses the same account-status and profile fields as imports from Public Gold / spreadsheets.',
+            'At most one send per customer per automation window; follow-up activity can suppress repeats.',
+          ],
+        }
+      case 'inactive_followup':
+        return {
+          heading: 'Target customers',
+          summary:
+            'When this automation is available: customers classified as Inactive whose last-purchase month and day match the run date, with a phone number on file.',
+          footnote: 'Inactive follow-up is not schedulable yet; targeting rules are shown for reference.',
+        }
+      case 'gold_poster':
+        return {
+          heading: 'Target audience',
+          summary:
+            'WhatsApp group chats for the WAHA session you select—not individual CRM customers. Choose session and groups below.',
+          bullets: [
+            'Template variables still refer to your sender profile when the message is composed.',
+          ],
+        }
+      default:
+        return { heading: '', summary: '' }
+    }
+  })()
+
+  if (!copy.summary) return null
+
+  return (
+    <div className="rounded-xl border border-sky-200/90 bg-gradient-to-b from-sky-50/90 to-white p-4 shadow-sm ring-1 ring-sky-100/80">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-900/75">{copy.heading}</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-slate-800">{copy.summary}</p>
+      {copy.bullets && copy.bullets.length > 0 ? (
+        <ul className="mt-2.5 list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-600">
+          {copy.bullets.map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      {copy.footnote ? <p className="mt-2 text-xs font-medium text-amber-900/90">{copy.footnote}</p> : null}
+    </div>
+  )
+}
+
 const CALENDAR_MONTH_NAMES = [
   'January',
   'February',
@@ -355,13 +463,7 @@ export default function AutomatedMessagesPage() {
     })
   }
 
-  const isBroadcastAutomation =
-    titleType === 'birthday' ||
-    titleType === 'inactive_followup' ||
-    titleType === 'free_followup' ||
-    titleType === 'active_profile_unverified_followup' ||
-    titleType === 'active_verified_no_autodebit_followup' ||
-    titleType === 'gold_poster'
+  const isBroadcastAutomation = isBroadcastTitleType(titleType)
 
   const filteredItems = items.filter((item) => {
     const isGold = normalizedScheduledTitle(item.title) === normalizedScheduledTitle(SCHEDULED_TITLE_GOLD_PRICE_POSTER)
@@ -675,19 +777,21 @@ export default function AutomatedMessagesPage() {
     else if (lower.includes('skde')) inferredType = 'skde'
     else if (lower === 'gap') inferredType = 'gap'
 
-    // set now as scheduled_at
-    let scheduledValue = new Date().toISOString();
+    const broadcastScheduleInput =
+      inferredType === 'birthday' ||
+      inferredType === 'inactive_followup' ||
+      inferredType === 'free_followup' ||
+      inferredType === 'active_profile_unverified_followup' ||
+      inferredType === 'active_verified_no_autodebit_followup' ||
+      inferredType === 'gold_poster'
+
+    let scheduledValue = broadcastScheduleInput
+      ? getDefaultScheduleTimePlus3Minutes()
+      : getDefaultScheduleDateTimeLocalPlus3Minutes()
     if (item.scheduled_at) {
       const d = new Date(item.scheduled_at)
       if (!Number.isNaN(d.getTime())) {
-        if (
-          inferredType === 'birthday' ||
-          inferredType === 'inactive_followup' ||
-          inferredType === 'free_followup' ||
-          inferredType === 'active_profile_unverified_followup' ||
-          inferredType === 'active_verified_no_autodebit_followup' ||
-          inferredType === 'gold_poster'
-        ) {
+        if (broadcastScheduleInput) {
           // For birthday flows we use a time-only input (HH:MM)
           const hh = String(d.getHours()).padStart(2, '0')
           const mm = String(d.getMinutes()).padStart(2, '0')
@@ -1144,49 +1248,60 @@ export default function AutomatedMessagesPage() {
                         onChange={(e) => {
                           const value = e.target.value as AutomationTitleType
                           setTitleType(value)
-                          setForm(current => {
+                          const scheduled_at = isBroadcastTitleType(value)
+                            ? getDefaultScheduleTimePlus3Minutes()
+                            : getDefaultScheduleDateTimeLocalPlus3Minutes()
+                          setForm((current) => {
                             if (value === 'birthday')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_BIRTHDAY,
                                 message: defaultTemplates.birthday,
                               }
                             if (value === 'inactive_followup')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_INACTIVE_FOLLOWUP,
                                 message: defaultTemplates.inactive_followup,
                               }
                             if (value === 'free_followup')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_FREE_FOLLOWUP,
                                 message: defaultTemplates.free_followup,
                               }
                             if (value === 'active_profile_unverified_followup')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
                                 message: defaultTemplates.active_profile_unverified_followup,
                               }
                             if (value === 'active_verified_no_autodebit_followup')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP,
                                 message: defaultTemplates.active_verified_no_autodebit_followup,
                               }
                             if (value === 'gold_poster')
                               return {
                                 ...current,
+                                scheduled_at,
                                 title: SCHEDULED_TITLE_GOLD_PRICE_POSTER,
                                 message:
                                   'Assalamualaikum & salam sejahtera.\nIni update terkini harga buyback Public Gold hari ini.',
                                 poster_session: current.poster_session || '',
                                 poster_groups: current.poster_groups || [],
                               }
-                            if (value === 'skde') return { ...current, title: 'SKDE (coming soon)' }
-                            if (value === 'gap') return { ...current, title: 'GAP (coming soon)' }
-                            return { ...current, title: '' }
+                            if (value === 'skde')
+                              return { ...current, scheduled_at, title: 'SKDE (coming soon)' }
+                            if (value === 'gap')
+                              return { ...current, scheduled_at, title: 'GAP (coming soon)' }
+                            return { ...current, scheduled_at, title: '' }
                           })
                         }}
                         className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1264,6 +1379,8 @@ export default function AutomatedMessagesPage() {
                     )}
                   </div>
                 </div>
+
+                <BroadcastAutomationTargetCard titleType={titleType} />
 
                 {!isBroadcastAutomation && (
                   <div>
@@ -1374,7 +1491,7 @@ export default function AutomatedMessagesPage() {
                       type="datetime-local"
                       value={form.scheduled_at}
                       onChange={(e) => setForm({ ...form, scheduled_at: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus-border-transparent"
+                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   )}
                   <p className="text-xs text-slate-500 mt-1">

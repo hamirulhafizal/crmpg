@@ -67,6 +67,15 @@ export async function POST(request: Request) {
 
     const isBroadcast = isBroadcastScheduledTitle(title)
 
+    const audience_target = isGoldPoster
+      ? {}
+      : isBroadcast &&
+          body.audience_target != null &&
+          typeof body.audience_target === 'object' &&
+          !Array.isArray(body.audience_target)
+        ? body.audience_target
+        : {}
+
     if (!title || !message || !scheduled_at || (!isBroadcast && !phone) || (isGoldPoster && !phone)) {
       return NextResponse.json(
         {
@@ -99,6 +108,7 @@ export async function POST(request: Request) {
         is_enable: isEnabled,
         status: 'pending',
         locked_at: null,
+        audience_target,
       })
       .select()
       .single()

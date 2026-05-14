@@ -493,6 +493,21 @@ export default function DashboardPage() {
 
             {!checkingWahaSession && hasActiveWahaSession && (
               <Link
+                href="/dashboard/campaigns"
+                className="group rounded-2xl border border-rose-200 bg-gradient-to-b from-rose-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
+              >
+                <div className="h-12 w-12 rounded-full bg-rose-500 text-white flex items-center justify-center mb-3 shadow-sm">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1c0 2.21 1.79 4 4 4 2.21 0 4-1.79 4-4h1a4 4 0 013.564 5.683M15 13v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4m6 0V9a2 2 0 00-2-2h-2a2 2 0 00-2 2v4.01" />
+                  </svg>
+                </div>
+                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Campaigns</h4>
+                <p className="text-xs text-slate-500 mt-1">Drip WhatsApp flows</p>
+              </Link>
+            )}
+
+            {!checkingWahaSession && hasActiveWahaSession && (
+              <Link
                 href="/automated-messages"
                 className="group rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
               >

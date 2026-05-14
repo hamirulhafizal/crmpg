@@ -4,6 +4,12 @@
       "PLAYWRIGHT_BROWSERS_PATH": "0"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/campaigns",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "functions": {
     "app/api/submit-form/route.ts": {
       "maxDuration": 120
