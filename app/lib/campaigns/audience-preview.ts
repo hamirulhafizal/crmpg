@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { enrollmentNextSendDueOr } from '@/app/lib/campaigns/postgrest-filters'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 
@@ -144,7 +145,7 @@ export async function computeDueAudiencePreview(
     .select('id', { count: 'exact', head: true })
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
-    .or(`next_send_at.is.null,next_send_at.lte.${isoNow}`)
+    .or(enrollmentNextSendDueOr(isoNow))
 
   if (cErr) throw cErr
 
@@ -160,7 +161,7 @@ export async function computeDueAudiencePreview(
     )
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
-    .or(`next_send_at.is.null,next_send_at.lte.${isoNow}`)
+    .or(enrollmentNextSendDueOr(isoNow))
     .order('next_send_at', { ascending: true, nullsFirst: true })
     .limit(40)
 

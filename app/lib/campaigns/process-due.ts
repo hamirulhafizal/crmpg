@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { enrollmentNextSendDueOr } from '@/app/lib/campaigns/postgrest-filters'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import { computeSendAt } from '@/app/lib/campaigns/schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
@@ -418,7 +419,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     .from('campaign_enrollments')
     .select(enrollmentDueSelect)
     .eq('status', 'active')
-    .or(`next_send_at.is.null,next_send_at.lte.${isoNow}`)
+    .or(enrollmentNextSendDueOr(isoNow))
     .limit(SEND_BATCH)
 
   if (opts?.campaignIdOnly) {
