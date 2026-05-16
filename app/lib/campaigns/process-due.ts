@@ -9,6 +9,11 @@ import type {
   CampaignRow,
   CampaignStepRow,
 } from '@/app/lib/campaigns/types'
+import {
+  customerWorkflowLabel,
+  WORKFLOW_NODE,
+  type CampaignWorkflowProgressHandler,
+} from '@/app/lib/campaigns/workflow-events'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -23,6 +28,8 @@ export type ProcessDueOptions = {
   debug?: boolean
   /** Restrict enrollment sync + due-send batch to this campaign (must be active and in window). */
   campaignIdOnly?: string
+  /** Live progress for workflow visualizer (test run stream). */
+  onProgress?: CampaignWorkflowProgressHandler
 }
 
 export type ProcessDueResult = {
@@ -136,7 +143,8 @@ async function syncEnrollmentsForCampaign(
   campaign: CampaignRow,
   steps: CampaignStepRow[],
   summary: ProcessSummary,
-  debugLines?: string[]
+  debugLines?: string[],
+  onProgress?: CampaignWorkflowProgressHandler
 ): Promise<void> {
   if (steps.length === 0) {
     cronLog(debugLines, `skip enrollment sync: no steps campaign=${campaign.id}`)
@@ -162,6 +170,9 @@ async function syncEnrollmentsForCampaign(
     .eq('campaign_id', campaign.id)
 
   const enrolled = new Set((existing ?? []).map((r) => r.customer_id))
+  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.audience, state: 'active' })
+  onProgress?.({ type: 'log', message: 'Matching audience and enrolling new customers…' })
+  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.enroll, state: 'active' })
   cronLog(
     debugLines,
     `sync start campaign=${campaign.id} user_id=${campaign.user_id} audience=${audienceFiltersSummary(filters)} first_step_order=${first.step_order} send_time=${first.send_time} delay_days=${first.delay_days} tz=${tz} already_enrolled_customers=${enrolled.size}`
@@ -231,6 +242,9 @@ async function syncEnrollmentsForCampaign(
         enrolled.add(c.id)
         summary.enrollments_inserted++
         insertedHere++
+        const label = customerWorkflowLabel(c)
+        onProgress?.({ type: 'enrollment', customerId: c.id, label })
+        onProgress?.({ type: 'log', message: `Enrolled ${label}`, level: 'success' })
       } else {
         insertFailed++
         cronLog(debugLines, `enrollment insert failed campaign=${campaign.id} customer=${c.id}: ${insErr.message}`)
@@ -245,6 +259,8 @@ async function syncEnrollmentsForCampaign(
     debugLines,
     `sync done campaign=${campaign.id} customers_scanned=${scanned} new_inserts_this_run=${insertedHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
   )
+  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.audience, state: 'complete' })
+  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.enroll, state: 'complete' })
 }
 
 /** `customers(*)` avoids PostgREST 400 when prod schema is missing columns we list explicitly. */
@@ -267,9 +283,12 @@ async function processDueEnrollmentRows(
   now: Date,
   dayStart: Date,
   summary: ProcessSummary,
-  debugLines?: string[]
+  debugLines?: string[],
+  onProgress?: CampaignWorkflowProgressHandler
 ): Promise<void> {
   cronLog(debugLines, `due batch: ${due.length} enrollment row(s)`)
+  const total = due.length
+  let sendIndex = 0
   for (const row of due) {
     const rawCamp = row.campaign
     const campaign = (Array.isArray(rawCamp) ? rawCamp[0] : rawCamp) as CampaignRow | null
@@ -334,6 +353,24 @@ async function processDueEnrollmentRows(
     const vars = buildTemplateVariableMap(customer as Record<string, unknown>)
     const body = renderCampaignTemplate(nextStep.message_template, vars)
     summary.messages_attempted++
+    sendIndex += 1
+    const label = customerWorkflowLabel(customer)
+    const stepNodeId = WORKFLOW_NODE.step(nextStep.step_order)
+    onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'active' })
+    onProgress?.({
+      type: 'send',
+      status: 'sending',
+      stepOrder: nextStep.step_order,
+      stepId: nextStep.id,
+      customerId: customer.id,
+      label,
+      index: sendIndex,
+      total,
+    })
+    onProgress?.({
+      type: 'log',
+      message: `Sending step ${nextStep.step_order} to ${label} (${sendIndex}/${total})…`,
+    })
 
     const { data: logInsert, error: logErr } = await supabase
       .from('campaign_message_logs')
@@ -353,6 +390,19 @@ async function processDueEnrollmentRows(
     if (logErr || !logInsert?.id) {
       summary.messages_failed++
       cronLog(debugLines, `fail enrollment=${row.id}: log insert error ${logErr?.message ?? 'unknown'}`)
+      onProgress?.({
+        type: 'send',
+        status: 'failed',
+        stepOrder: nextStep.step_order,
+        stepId: nextStep.id,
+        customerId: customer.id,
+        label,
+        index: sendIndex,
+        total,
+        error: logErr?.message ?? 'Log insert failed',
+      })
+      onProgress?.({ type: 'log', message: `Failed ${label}: log error`, level: 'error' })
+      onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'idle' })
       continue
     }
 
@@ -382,6 +432,18 @@ async function processDueEnrollmentRows(
       })
 
       summary.messages_sent++
+      onProgress?.({
+        type: 'send',
+        status: 'sent',
+        stepOrder: nextStep.step_order,
+        stepId: nextStep.id,
+        customerId: customer.id,
+        label,
+        index: sendIndex,
+        total,
+      })
+      onProgress?.({ type: 'log', message: `Sent to ${label}`, level: 'success' })
+      onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'complete' })
 
       cronLog(
         debugLines,
@@ -417,6 +479,19 @@ async function processDueEnrollmentRows(
       const msg = e instanceof Error ? e.message : String(e)
       summary.messages_failed++
       cronLog(debugLines, `fail send enrollment=${row.id} log=${logInsert.id}: ${msg}`)
+      onProgress?.({
+        type: 'send',
+        status: 'failed',
+        stepOrder: nextStep.step_order,
+        stepId: nextStep.id,
+        customerId: customer.id,
+        label,
+        index: sendIndex,
+        total,
+        error: msg,
+      })
+      onProgress?.({ type: 'log', message: `Failed ${label}: ${msg}`, level: 'error' })
+      onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'idle' })
       await supabase
         .from('campaign_message_logs')
         .update({
@@ -430,6 +505,7 @@ async function processDueEnrollmentRows(
 
 export async function processDueCampaignMessages(opts?: ProcessDueOptions): Promise<ProcessDueResult> {
   const debugLines = opts?.debug ? [] : undefined
+  const onProgress = opts?.onProgress
   const supabase = createServiceRoleClient()
   const summary: ProcessSummary = {
     campaigns_scanned: 0,
@@ -440,6 +516,12 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   }
 
   const now = new Date()
+  if (onProgress) {
+    onProgress({ type: 'phase', phase: 'started' })
+    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.trigger, state: 'active' })
+    onProgress({ type: 'log', message: 'Starting campaign run…' })
+    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.trigger, state: 'complete' })
+  }
   cronLog(
     debugLines,
     `start at=${now.toISOString()} mode=${opts?.campaignIdOnly ? 'campaign_id_only' : 'global'} campaignIdOnly=${opts?.campaignIdOnly ?? '—'}`
@@ -480,7 +562,17 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
 
     const steps = (stepRows ?? []) as CampaignStepRow[]
     const insBefore = summary.enrollments_inserted
-    await syncEnrollmentsForCampaign(supabase, c, steps, summary, debugLines)
+    if (onProgress && opts?.campaignIdOnly === c.id) {
+      onProgress({ type: 'phase', phase: 'enrollment_sync' })
+    }
+    await syncEnrollmentsForCampaign(
+      supabase,
+      c,
+      steps,
+      summary,
+      debugLines,
+      onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
+    )
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
   }
 
@@ -508,12 +600,31 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   }
 
   cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s) (as_of=${isoDue})`)
-  await processDueEnrollmentRows(supabase, (dueRows ?? []) as DueEnrollmentRow[], dueAsOf, dayStart, summary, debugLines)
+  if (onProgress && opts?.campaignIdOnly) {
+    onProgress({ type: 'phase', phase: 'due_send' })
+    onProgress({ type: 'log', message: `Processing ${(dueRows ?? []).length} due enrollment(s)…` })
+  }
+  await processDueEnrollmentRows(
+    supabase,
+    (dueRows ?? []) as DueEnrollmentRow[],
+    dueAsOf,
+    dayStart,
+    summary,
+    debugLines,
+    onProgress && opts?.campaignIdOnly ? onProgress : undefined
+  )
 
   cronLog(
     debugLines,
     `done enrollments_inserted_total=${summary.enrollments_inserted} attempted=${summary.messages_attempted} sent=${summary.messages_sent} failed=${summary.messages_failed}`
   )
+
+  if (onProgress && opts?.campaignIdOnly) {
+    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.complete, state: 'active' })
+    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.complete, state: 'complete' })
+    onProgress({ type: 'phase', phase: 'finished' })
+    onProgress({ type: 'summary', summary: { ...summary } })
+  }
 
   return {
     summary,
@@ -527,7 +638,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
  */
 export async function processDueCampaignMessagesForCampaign(
   campaignId: string,
-  opts?: { debug?: boolean }
+  opts?: { debug?: boolean; onProgress?: CampaignWorkflowProgressHandler }
 ): Promise<ProcessDueResult> {
   const supabase = createServiceRoleClient()
   const now = new Date()
@@ -549,5 +660,9 @@ export async function processDueCampaignMessagesForCampaign(
     throw new Error('Campaign is outside its start/end window')
   }
 
-  return processDueCampaignMessages({ ...opts, campaignIdOnly: campaignId })
+  return processDueCampaignMessages({
+    debug: opts?.debug,
+    onProgress: opts?.onProgress,
+    campaignIdOnly: campaignId,
+  })
 }

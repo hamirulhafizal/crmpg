@@ -45,11 +45,12 @@ export function CampaignDetailContent(props: {
   payload: CampaignDetailPayload
   onEdit: () => void
   onRefresh: () => void
+  onOpenWorkflow?: () => void
   /** POST /api/campaigns/[id]/run — sync enrollments + send due messages (same as cron, scoped to this campaign). */
   onTestRun?: () => Promise<void>
   testRunBusy?: boolean
 }) {
-  const { payload, onEdit, onRefresh, onTestRun, testRunBusy } = props
+  const { payload, onEdit, onRefresh, onOpenWorkflow, onTestRun, testRunBusy } = props
 
   const c = payload.campaign as {
     name: string
@@ -78,6 +79,21 @@ export function CampaignDetailContent(props: {
             {c.description ? <p className="mt-2 text-slate-600">{c.description}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
+            {onOpenWorkflow ? (
+              <button
+                type="button"
+                onClick={onOpenWorkflow}
+                title="Visualize workflow"
+                aria-label="Visualize workflow"
+                className="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 p-2.5 text-indigo-900 hover:bg-indigo-100"
+              >
+                <ToolbarIcon>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM8 7h3m5 0h3M8 17h3m5 0h3" />
+                  </svg>
+                </ToolbarIcon>
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onEdit}

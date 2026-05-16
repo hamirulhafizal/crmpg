@@ -69,6 +69,14 @@ body {
   animation: slideUp 0.5s ease-out forwards;
 }
 
+.campaign-workflow-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.campaign-workflow-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
 /* View Transitions - Cross-fade animation */
 @supports (view-transition-name: none) {
   ::view-transition-old(root),

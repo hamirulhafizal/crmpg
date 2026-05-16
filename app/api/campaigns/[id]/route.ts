@@ -135,6 +135,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (body.trigger_offset_days != null) updates.trigger_offset_days = Number(body.trigger_offset_days)
     if (typeof body.timezone === 'string') updates.timezone = body.timezone
     if (body.audience_filters != null) updates.audience_filters = body.audience_filters as CampaignAudienceFilters
+    if (body.workflow_layout != null && typeof body.workflow_layout === 'object') {
+      updates.workflow_layout = body.workflow_layout
+    }
     if (body.daily_send_limit != null) updates.daily_send_limit = Math.max(1, Number(body.daily_send_limit))
     if (body.cooldown_days != null) updates.cooldown_days = Math.max(0, Number(body.cooldown_days))
     if ('start_at' in body) updates.start_at = body.start_at

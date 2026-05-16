@@ -1,7 +1,14 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CampaignWorkflowModal } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
+import { draftFromCampaignPayload } from '@/app/lib/campaigns/workflow-layout'
+import {
+  applyWorkflowProgressEvent,
+  createInitialWorkflowUi,
+  runCampaignTestWithStream,
+} from '@/app/dashboard/campaigns/_components/campaign-workflow-client'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CampaignEditor } from '@/app/dashboard/campaigns/_components/CampaignEditor'
 import {
@@ -265,6 +272,18 @@ function ViewPanelInner({
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<CampaignDetailPayload | null>(null)
   const [testRunBusy, setTestRunBusy] = useState(false)
+  const [workflowOpen, setWorkflowOpen] = useState(false)
+  const [workflowUi, setWorkflowUi] = useState(() => createInitialWorkflowUi([]))
+
+  const stepOrders = useMemo(() => {
+    const steps = (payload?.steps ?? []) as Array<{ step_order: number; is_active?: boolean }>
+    return steps.filter((s) => s.is_active !== false).map((s) => s.step_order)
+  }, [payload?.steps])
+
+  useEffect(() => {
+    if (!workflowOpen) return
+    setWorkflowUi(createInitialWorkflowUi(stepOrders))
+  }, [workflowOpen, id, stepOrders.join(',')])
 
   const load = useCallback(async (): Promise<boolean> => {
     setLoading(true)
@@ -290,6 +309,51 @@ function ViewPanelInner({
 
   const cName = payload?.campaign && typeof payload.campaign === 'object' ? String((payload.campaign as { name?: string }).name ?? '') : ''
 
+  const runTestWithWorkflow = useCallback(async () => {
+    setWorkflowOpen(true)
+    setWorkflowUi(createInitialWorkflowUi(stepOrders))
+    setTestRunBusy(true)
+    try {
+      const result = await runCampaignTestWithStream(id, (event) => {
+        setWorkflowUi((prev) => applyWorkflowProgressEvent(prev, event))
+      })
+      if (!result.ok) {
+        pushToast('error', result.error || 'Run failed')
+      } else {
+        pushToast('success', 'Test run finished. See workflow for details.')
+        await load()
+      }
+    } catch (e: unknown) {
+      pushToast('error', e instanceof Error ? e.message : 'Run failed')
+    } finally {
+      setTestRunBusy(false)
+    }
+  }, [id, stepOrders, load, pushToast])
+
+  const camp = payload?.campaign as {
+    name?: string
+    status?: string
+    trigger_type?: string
+    trigger_offset_days?: number
+    audience_filters?: Record<string, unknown>
+    daily_send_limit?: number
+    cooldown_days?: number
+    workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
+  } | undefined
+
+  const workflowDraft = useMemo(() => {
+    if (!payload || !camp) return null
+    const stepRows = (payload.steps as Array<Record<string, unknown>>).map((s) => ({
+      id: String(s.id),
+      step_order: Number(s.step_order),
+      delay_days: Number(s.delay_days ?? 0),
+      send_time: String(s.send_time ?? '10:00'),
+      message_template: String(s.message_template ?? ''),
+      is_active: s.is_active !== false,
+    }))
+    return draftFromCampaignPayload(camp, stepRows)
+  }, [payload, camp])
+
   return (
     <>
       <PanelChrome title={'Campaign'} subtitle="Details & analytics" onClose={onClose} />
@@ -302,6 +366,7 @@ function ViewPanelInner({
           <CampaignDetailContent
             payload={payload}
             onEdit={() => onNavigateEdit(id)}
+            onOpenWorkflow={() => setWorkflowOpen(true)}
             onRefresh={() => {
               void load().then((ok) => {
                 if (ok) pushToast('success', 'Refreshed.')
@@ -309,34 +374,43 @@ function ViewPanelInner({
               })
             }}
             testRunBusy={testRunBusy}
-            onTestRun={async () => {
-              setTestRunBusy(true)
-              try {
-                const res = await fetch(`/api/campaigns/${id}/run`, { method: 'POST' })
-                const json = (await res.json()) as {
-                  error?: string
-                  summary?: { enrollments_inserted: number; messages_sent: number; messages_failed: number; messages_attempted: number }
-                }
-                if (!res.ok) throw new Error(json.error || 'Run failed')
-                const s = json.summary
-                if (s) {
-                  pushToast(
-                    'success',
-                    `Test run finished: +${s.enrollments_inserted} enrollments, ${s.messages_sent} sent, ${s.messages_failed} failed (${s.messages_attempted} attempts).`
-                  )
-                } else {
-                  pushToast('success', 'Test run finished.')
-                }
-                await load()
-              } catch (e: unknown) {
-                pushToast('error', e instanceof Error ? e.message : 'Run failed')
-              } finally {
-                setTestRunBusy(false)
-              }
-            }}
+            onTestRun={runTestWithWorkflow}
           />
         )}
       </div>
+      {payload && camp ? (
+        <CampaignWorkflowModal
+          open={workflowOpen}
+          onClose={() => setWorkflowOpen(false)}
+          campaignId={id}
+          editable
+          initialDraft={workflowDraft ?? undefined}
+          onSaved={() => {
+            pushToast('success', 'Workflow saved.')
+            void load()
+          }}
+          campaignName={String(camp.name ?? cName)}
+          campaignStatus={String(camp.status ?? 'draft')}
+          triggerType={String(camp.trigger_type ?? 'manual')}
+          steps={(payload.steps as Array<Record<string, unknown>>).map((s) => ({
+            id: String(s.id),
+            step_order: Number(s.step_order),
+            delay_days: Number(s.delay_days ?? 0),
+            send_time: String(s.send_time ?? '10:00'),
+            message_template: String(s.message_template ?? ''),
+            is_active: s.is_active !== false,
+          }))}
+          enrolled={payload.stats.enrolled}
+          dueNow={payload.audience?.due_now.total ?? 0}
+          matchingAudience={payload.audience?.eligible.matching_total}
+          nodeStates={workflowUi.nodeStates}
+          logs={workflowUi.logs}
+          running={testRunBusy}
+          currentSend={workflowUi.currentSend}
+          onRunTest={() => void runTestWithWorkflow()}
+          testRunDisabled={camp.status !== 'active'}
+        />
+      ) : null}
     </>
   )
 }
