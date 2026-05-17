@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CampaignWorkflowModal } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 import { draftFromCampaignPayload } from '@/app/lib/campaigns/workflow-layout'
+import { buildCampaignWorkflowPlan } from '@/app/lib/workflows/plan'
 import {
   applyWorkflowProgressEvent,
   createInitialWorkflowUi,
@@ -11,13 +12,20 @@ import {
 } from '@/app/dashboard/campaigns/_components/campaign-workflow-client'
 import { AnimatePresence, motion } from 'framer-motion'
 import { CampaignEditor } from '@/app/dashboard/campaigns/_components/CampaignEditor'
+import { CampaignWorkflowBuilder } from '@/app/dashboard/campaigns/_components/CampaignWorkflowBuilder'
 import {
   CampaignDetailContent,
   CampaignDetailSkeleton,
   type CampaignDetailPayload,
 } from '@/app/dashboard/campaigns/_components/CampaignDetailContent'
 import { CampaignEditorSkeleton } from '@/app/dashboard/campaigns/_components/CampaignEditorSkeleton'
-import type { CampaignAudienceFilters, CampaignStatus, CampaignTriggerType } from '@/app/lib/campaigns/types'
+import type {
+  CampaignAudienceFilters,
+  CampaignRow,
+  CampaignStatus,
+  CampaignStepRow,
+  CampaignTriggerType,
+} from '@/app/lib/campaigns/types'
 
 const Z_PANEL = 'z-[950]'
 
@@ -71,7 +79,9 @@ export function CampaignFullScreenPanel({
           <motion.div
             role="dialog"
             aria-modal="true"
-            className="relative flex h-full w-full max-w-full flex-col bg-white shadow-2xl md:max-w-3xl lg:max-w-4xl"
+            className={`relative flex h-full w-full max-w-full flex-col bg-white shadow-2xl ${
+              panelMode === 'create' ? '' : 'md:max-w-3xl lg:max-w-4xl'
+            }`}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -109,20 +119,15 @@ function CampaignPanelBody({
 }) {
   if (mode === 'create') {
     return (
-      <>
-        <PanelChrome title="New campaign" subtitle="Define audience, triggers, and drip steps." onClose={onClose} />
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8">
-          <CampaignEditor
-            mode="create"
-            onCancel={onClose}
-            onSaveSuccess={({ id }) => {
-              pushToast('success', 'Campaign created.')
-              onSaved()
-              onNavigateView(id)
-            }}
-          />
-        </div>
-      </>
+      <CampaignWorkflowBuilder
+        onClose={onClose}
+        pushToast={pushToast}
+        onCreated={(id) => {
+          pushToast('success', 'Campaign created.')
+          onSaved()
+          onNavigateView(id)
+        }}
+      />
     )
   }
 
@@ -280,10 +285,41 @@ function ViewPanelInner({
     return steps.filter((s) => s.is_active !== false).map((s) => s.step_order)
   }, [payload?.steps])
 
+  const camp = payload?.campaign as {
+    name?: string
+    status?: string
+    trigger_type?: string
+    trigger_offset_days?: number
+    audience_filters?: Record<string, unknown>
+    daily_send_limit?: number
+    cooldown_days?: number
+    workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
+    workflow_definition?: unknown
+  } | undefined
+
+  const workflowDraft = useMemo(() => {
+    if (!payload || !camp) return null
+    const stepRows = (payload.steps as Array<Record<string, unknown>>).map((s) => ({
+      id: String(s.id),
+      step_order: Number(s.step_order),
+      delay_days: Number(s.delay_days ?? 0),
+      send_time: String(s.send_time ?? '10:00'),
+      message_template: String(s.message_template ?? ''),
+      is_active: s.is_active !== false,
+    }))
+    return draftFromCampaignPayload(camp, stepRows)
+  }, [payload, camp])
+
+  const workflowNodeIds = useMemo(() => {
+    if (!payload || !camp) return [] as string[]
+    const steps = (payload.steps ?? []) as CampaignStepRow[]
+    return buildCampaignWorkflowPlan(camp as CampaignRow, steps).nodeIds
+  }, [payload, camp])
+
   useEffect(() => {
     if (!workflowOpen) return
-    setWorkflowUi(createInitialWorkflowUi(stepOrders))
-  }, [workflowOpen, id, stepOrders.join(',')])
+    setWorkflowUi(createInitialWorkflowUi(stepOrders, workflowNodeIds))
+  }, [workflowOpen, id, stepOrders.join(','), workflowNodeIds.join(',')])
 
   const load = useCallback(async (): Promise<boolean> => {
     setLoading(true)
@@ -311,7 +347,7 @@ function ViewPanelInner({
 
   const runTestWithWorkflow = useCallback(async () => {
     setWorkflowOpen(true)
-    setWorkflowUi(createInitialWorkflowUi(stepOrders))
+    setWorkflowUi(createInitialWorkflowUi(stepOrders, workflowNodeIds))
     setTestRunBusy(true)
     try {
       const result = await runCampaignTestWithStream(id, (event) => {
@@ -328,31 +364,7 @@ function ViewPanelInner({
     } finally {
       setTestRunBusy(false)
     }
-  }, [id, stepOrders, load, pushToast])
-
-  const camp = payload?.campaign as {
-    name?: string
-    status?: string
-    trigger_type?: string
-    trigger_offset_days?: number
-    audience_filters?: Record<string, unknown>
-    daily_send_limit?: number
-    cooldown_days?: number
-    workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
-  } | undefined
-
-  const workflowDraft = useMemo(() => {
-    if (!payload || !camp) return null
-    const stepRows = (payload.steps as Array<Record<string, unknown>>).map((s) => ({
-      id: String(s.id),
-      step_order: Number(s.step_order),
-      delay_days: Number(s.delay_days ?? 0),
-      send_time: String(s.send_time ?? '10:00'),
-      message_template: String(s.message_template ?? ''),
-      is_active: s.is_active !== false,
-    }))
-    return draftFromCampaignPayload(camp, stepRows)
-  }, [payload, camp])
+  }, [id, stepOrders, workflowNodeIds, load, pushToast])
 
   return (
     <>
@@ -409,6 +421,7 @@ function ViewPanelInner({
           currentSend={workflowUi.currentSend}
           onRunTest={() => void runTestWithWorkflow()}
           testRunDisabled={camp.status !== 'active'}
+          pushToast={pushToast}
         />
       ) : null}
     </>

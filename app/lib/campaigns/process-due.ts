@@ -14,6 +14,12 @@ import {
   WORKFLOW_NODE,
   type CampaignWorkflowProgressHandler,
 } from '@/app/lib/campaigns/workflow-events'
+import { metadataAfterStepSent, metadataForNewEnrollment } from '@/app/lib/workflows/enrollment-state'
+import {
+  buildCampaignWorkflowPlan,
+  nodeIdForStep,
+  type CampaignWorkflowPlan,
+} from '@/app/lib/workflows/plan'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -142,21 +148,25 @@ async function syncEnrollmentsForCampaign(
   supabase: ReturnType<typeof createServiceRoleClient>,
   campaign: CampaignRow,
   steps: CampaignStepRow[],
+  plan: CampaignWorkflowPlan,
   summary: ProcessSummary,
   debugLines?: string[],
   onProgress?: CampaignWorkflowProgressHandler
 ): Promise<void> {
+  if (!plan.enableEnrollmentSync) {
+    cronLog(
+      debugLines,
+      `skip enrollment sync: workflow plan disabled (audience=${Boolean(plan.audienceNodeId)} enroll=${Boolean(plan.enrollNodeId)} trigger=${plan.compiled.trigger_type}) campaign=${campaign.id}`
+    )
+    return
+  }
   if (steps.length === 0) {
     cronLog(debugLines, `skip enrollment sync: no steps campaign=${campaign.id}`)
     return
   }
-  if (!['manual', 'enrollment'].includes(campaign.trigger_type)) {
-    cronLog(debugLines, `skip enrollment sync: trigger=${campaign.trigger_type} campaign=${campaign.id}`)
-    return
-  }
 
   const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
-  const filters = (campaign.audience_filters || {}) as CampaignAudienceFilters
+  const filters = plan.compiled.audience_filters
   const sorted = [...steps].filter((s) => s.is_active).sort((a, b) => a.step_order - b.step_order)
   const first = sorted[0]
   if (!first) {
@@ -170,9 +180,11 @@ async function syncEnrollmentsForCampaign(
     .eq('campaign_id', campaign.id)
 
   const enrolled = new Set((existing ?? []).map((r) => r.customer_id))
-  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.audience, state: 'active' })
+  const audienceId = plan.audienceNodeId ?? WORKFLOW_NODE.audience
+  const enrollId = plan.enrollNodeId ?? WORKFLOW_NODE.enroll
+  onProgress?.({ type: 'node', nodeId: audienceId, state: 'active' })
   onProgress?.({ type: 'log', message: 'Matching audience and enrolling new customers…' })
-  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.enroll, state: 'active' })
+  onProgress?.({ type: 'node', nodeId: enrollId, state: 'active' })
   cronLog(
     debugLines,
     `sync start campaign=${campaign.id} user_id=${campaign.user_id} audience=${audienceFiltersSummary(filters)} first_step_order=${first.step_order} send_time=${first.send_time} delay_days=${first.delay_days} tz=${tz} already_enrolled_customers=${enrolled.size}`
@@ -235,7 +247,7 @@ async function syncEnrollmentsForCampaign(
         status: 'active',
         last_step_sent: 0,
         next_send_at: nextSend.toISOString(),
-        metadata: {},
+        metadata: metadataForNewEnrollment(plan),
       })
 
       if (!insErr) {
@@ -259,8 +271,8 @@ async function syncEnrollmentsForCampaign(
     debugLines,
     `sync done campaign=${campaign.id} customers_scanned=${scanned} new_inserts_this_run=${insertedHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
   )
-  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.audience, state: 'complete' })
-  onProgress?.({ type: 'node', nodeId: WORKFLOW_NODE.enroll, state: 'complete' })
+  onProgress?.({ type: 'node', nodeId: audienceId, state: 'complete' })
+  onProgress?.({ type: 'node', nodeId: enrollId, state: 'complete' })
 }
 
 /** `customers(*)` avoids PostgREST 400 when prod schema is missing columns we list explicitly. */
@@ -273,6 +285,7 @@ const enrollmentDueSelect = `
 type DueEnrollmentRow = {
   id: string
   last_step_sent: number
+  metadata?: Record<string, unknown> | null
   campaign: CampaignRow | CampaignRow[] | null
   customer: CustomerForAudience | CustomerForAudience[] | null
 }
@@ -280,6 +293,7 @@ type DueEnrollmentRow = {
 async function processDueEnrollmentRows(
   supabase: ReturnType<typeof createServiceRoleClient>,
   due: DueEnrollmentRow[],
+  plansByCampaignId: Map<string, CampaignWorkflowPlan>,
   now: Date,
   dayStart: Date,
   summary: ProcessSummary,
@@ -294,7 +308,8 @@ async function processDueEnrollmentRows(
     const campaign = (Array.isArray(rawCamp) ? rawCamp[0] : rawCamp) as CampaignRow | null
     const rawCust = row.customer as CustomerForAudience | CustomerForAudience[] | null
     const customer = (Array.isArray(rawCust) ? rawCust[0] : rawCust) as CustomerForAudience | null
-    if (!campaign || campaign.status !== 'active' || !campaignInWindow(campaign, now) || !customer?.phone) {
+    const plan = plansByCampaignId.get(campaign?.id ?? '') ?? null
+    if (!campaign || campaign.status !== 'active' || !campaignInWindow(campaign, now) || !customer?.phone || !plan) {
       cronLog(
         debugLines,
         `skip enrollment=${row.id}: campaign=${campaign?.id ?? 'null'} status=${campaign?.status ?? 'n/a'} inWindow=${campaign ? campaignInWindow(campaign, now) : false} phone=${Boolean(customer?.phone)}`
@@ -302,11 +317,17 @@ async function processDueEnrollmentRows(
       continue
     }
 
+    if (!plan.enableDueSend) {
+      cronLog(debugLines, `skip enrollment=${row.id}: workflow has no active WhatsApp nodes`)
+      continue
+    }
+
+    const dailyLimit = plan.compiled.daily_send_limit
     const sentToday = await countSentToday(supabase, campaign.id, dayStart)
-    if (sentToday >= campaign.daily_send_limit) {
+    if (sentToday >= dailyLimit) {
       cronLog(
         debugLines,
-        `skip enrollment=${row.id}: daily cap campaign=${campaign.id} sentToday=${sentToday} limit=${campaign.daily_send_limit}`
+        `skip enrollment=${row.id}: daily cap campaign=${campaign.id} sentToday=${sentToday} limit=${dailyLimit}`
       )
       continue
     }
@@ -355,7 +376,7 @@ async function processDueEnrollmentRows(
     summary.messages_attempted++
     sendIndex += 1
     const label = customerWorkflowLabel(customer)
-    const stepNodeId = WORKFLOW_NODE.step(nextStep.step_order)
+    const stepNodeId = nodeIdForStep(plan, nextStep.step_order)
     onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'active' })
     onProgress?.({
       type: 'send',
@@ -466,6 +487,8 @@ async function processDueEnrollmentRows(
         nextSend = computed
       }
 
+      const workflowMeta = metadataAfterStepSent(plan, nextStep.step_order, stepNodeId)
+
       await supabase
         .from('campaign_enrollments')
         .update({
@@ -473,6 +496,10 @@ async function processDueEnrollmentRows(
           next_send_at: following ? nextSend!.toISOString() : null,
           status: following ? 'active' : 'completed',
           completed_at: following ? null : new Date().toISOString(),
+          metadata: {
+            ...(row.metadata ?? {}),
+            ...workflowMeta,
+          },
         })
         .eq('id', row.id)
     } catch (e) {
@@ -516,12 +543,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   }
 
   const now = new Date()
-  if (onProgress) {
-    onProgress({ type: 'phase', phase: 'started' })
-    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.trigger, state: 'active' })
-    onProgress({ type: 'log', message: 'Starting campaign run…' })
-    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.trigger, state: 'complete' })
-  }
+  let scopedPlan: CampaignWorkflowPlan | null = null
   cronLog(
     debugLines,
     `start at=${now.toISOString()} mode=${opts?.campaignIdOnly ? 'campaign_id_only' : 'global'} campaignIdOnly=${opts?.campaignIdOnly ?? '—'}`
@@ -553,6 +575,8 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     `active_campaigns=${active.length} → ${active.map((c) => `${c.id.slice(0, 8)}…${c.name}`).join(' | ') || 'none'}`
   )
 
+  const plansByCampaignId = new Map<string, CampaignWorkflowPlan>()
+
   for (const c of active) {
     const { data: stepRows } = await supabase
       .from('campaign_steps')
@@ -561,18 +585,25 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       .order('step_order', { ascending: true })
 
     const steps = (stepRows ?? []) as CampaignStepRow[]
-    const insBefore = summary.enrollments_inserted
-    if (onProgress && opts?.campaignIdOnly === c.id) {
-      onProgress({ type: 'phase', phase: 'enrollment_sync' })
+    const plan = buildCampaignWorkflowPlan(c as CampaignRow, steps)
+    plansByCampaignId.set(c.id, plan)
+
+    if (opts?.campaignIdOnly === c.id) {
+      scopedPlan = plan
     }
-    await syncEnrollmentsForCampaign(
-      supabase,
-      c,
-      steps,
-      summary,
-      debugLines,
-      onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
-    )
+
+    const insBefore = summary.enrollments_inserted
+    const progress = onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
+    if (progress) {
+      progress({ type: 'phase', phase: 'started' })
+      progress({ type: 'log', message: 'Starting campaign run…' })
+      for (const tid of plan.triggerNodeIds) {
+        progress({ type: 'node', nodeId: tid, state: 'active' })
+        progress({ type: 'node', nodeId: tid, state: 'complete' })
+      }
+      progress({ type: 'phase', phase: 'enrollment_sync' })
+    }
+    await syncEnrollmentsForCampaign(supabase, c, steps, plan, summary, debugLines, progress)
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
   }
 
@@ -607,6 +638,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   await processDueEnrollmentRows(
     supabase,
     (dueRows ?? []) as DueEnrollmentRow[],
+    plansByCampaignId,
     dueAsOf,
     dayStart,
     summary,
@@ -619,9 +651,10 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     `done enrollments_inserted_total=${summary.enrollments_inserted} attempted=${summary.messages_attempted} sent=${summary.messages_sent} failed=${summary.messages_failed}`
   )
 
-  if (onProgress && opts?.campaignIdOnly) {
-    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.complete, state: 'active' })
-    onProgress({ type: 'node', nodeId: WORKFLOW_NODE.complete, state: 'complete' })
+  if (onProgress && opts?.campaignIdOnly && scopedPlan) {
+    const completeId = scopedPlan.completeNodeId ?? WORKFLOW_NODE.complete
+    onProgress({ type: 'node', nodeId: completeId, state: 'active' })
+    onProgress({ type: 'node', nodeId: completeId, state: 'complete' })
     onProgress({ type: 'phase', phase: 'finished' })
     onProgress({ type: 'summary', summary: { ...summary } })
   }

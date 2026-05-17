@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
+import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export async function GET() {
   try {
@@ -89,13 +92,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 })
     }
 
-    const steps = Array.isArray(body.steps) ? (body.steps as StepInput[]) : []
-    if (steps.length === 0) {
-      return NextResponse.json({ error: 'At least one step is required' }, { status: 400 })
-    }
-
-    const audience_filters = (body.audience_filters ?? {}) as CampaignAudienceFilters
-    const payload = {
+    const payload: Record<string, unknown> = {
       user_id: user.id,
       name,
       description: typeof body.description === 'string' ? body.description : null,
@@ -103,17 +100,40 @@ export async function POST(request: Request) {
       trigger_type: (body.trigger_type as string) || 'manual',
       trigger_offset_days: Number(body.trigger_offset_days ?? 0),
       timezone: typeof body.timezone === 'string' ? body.timezone : 'Asia/Kuala_Lumpur',
-      audience_filters,
+      audience_filters: (body.audience_filters ?? {}) as CampaignAudienceFilters,
       daily_send_limit: Math.max(1, Number(body.daily_send_limit ?? 100)),
       cooldown_days: Math.max(0, Number(body.cooldown_days ?? 30)),
       start_at: body.start_at ?? null,
       end_at: body.end_at ?? null,
     }
 
-    const { data: campaign, error: cErr } = await supabase.from('campaigns').insert(payload).select('*').single()
+    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, payload)
+    if (workflowErr) {
+      return NextResponse.json({ error: workflowErr }, { status: 400 })
+    }
+
+    const steps = Array.isArray(body.steps) ? (body.steps as StepInput[]) : []
+    if (steps.length === 0 && !payload.workflow_definition) {
+      return NextResponse.json({ error: 'At least one step is required' }, { status: 400 })
+    }
+
+    const { data: campaign, error: cErr } = await supabase.from('campaigns').insert(payload as never).select('*').single()
     if (cErr) throw cErr
 
-    const stepRows = steps.map((s, i) => ({
+    const compiledSteps =
+      steps.length > 0
+        ? steps
+        : payload.workflow_definition
+          ? compileWorkflowDefinition(payload.workflow_definition as WorkflowDefinition).steps.map((s) => ({
+              step_order: s.step_order,
+              delay_days: s.delay_days,
+              send_time: s.send_time,
+              message_template: s.message_template,
+              is_active: s.is_active,
+            }))
+          : []
+
+    const stepRows = compiledSteps.map((s, i) => ({
       campaign_id: campaign.id,
       step_order: Number.isFinite(s.step_order) ? s.step_order : i + 1,
       delay_days: Math.max(0, Number(s.delay_days ?? 0)),

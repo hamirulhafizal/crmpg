@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
+import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 import {
   computeDueAudiencePreview,
   computeEligibleAudiencePreview,
@@ -138,6 +141,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (body.workflow_layout != null && typeof body.workflow_layout === 'object') {
       updates.workflow_layout = body.workflow_layout
     }
+
+    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, updates)
+    if (workflowErr) {
+      return NextResponse.json({ error: workflowErr }, { status: 400 })
+    }
     if (body.daily_send_limit != null) updates.daily_send_limit = Math.max(1, Number(body.daily_send_limit))
     if (body.cooldown_days != null) updates.cooldown_days = Math.max(0, Number(body.cooldown_days))
     if ('start_at' in body) updates.start_at = body.start_at
@@ -156,11 +164,21 @@ export async function PATCH(request: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    if (Array.isArray(body.steps)) {
+    const patchBody = body as Record<string, unknown>
+    const shouldSyncSteps =
+      Array.isArray(body.steps) || (patchBody.workflow_definition != null && updates.workflow_definition)
+
+    if (shouldSyncSteps) {
       await supabase.from('campaign_steps').delete().eq('campaign_id', id)
-      const stepRows = (body.steps as Array<Record<string, unknown>>).map((s, i) => ({
+      const compiledSteps = Array.isArray(body.steps)
+        ? (body.steps as Array<Record<string, unknown>>)
+        : updates.workflow_definition
+          ? compileWorkflowDefinition(updates.workflow_definition as WorkflowDefinition).steps
+          : []
+
+      const stepRows = compiledSteps.map((s, i) => ({
         campaign_id: id,
-        step_order: Number.isFinite(s.step_order as number) ? Number(s.step_order) : i + 1,
+        step_order: Number.isFinite(Number(s.step_order)) ? Number(s.step_order) : i + 1,
         delay_days: Math.max(0, Number(s.delay_days ?? 0)),
         send_time:
           String(s.send_time || '10:00').length <= 5

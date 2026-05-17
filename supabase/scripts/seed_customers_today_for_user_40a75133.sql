@@ -1,3 +1,5 @@
+-- DEPRECATED: use supabase/scripts/seed_customers_from_waha_sessions_40a75133.sql instead.
+--
 -- Seed 4 demo customers for user_id 40a75133-1895-49da-bbc0-f548780ff851.
 -- All rows use dob = CURRENT_DATE and default phone 60184644305.
 -- Safe to run multiple times (idempotent by user_id + email).

@@ -27,9 +27,23 @@ export function buildInitialWorkflowNodeStates(stepOrders: number[]): Record<str
   return states
 }
 
-export function createInitialWorkflowUi(stepOrders: number[]): WorkflowUiState {
+/** Initialize idle states for every node in the workflow graph. */
+export function buildInitialWorkflowNodeStatesFromDefinition(
+  nodeIds: string[],
+  stepOrders: number[]
+): Record<string, WorkflowNodeState> {
+  if (nodeIds.length === 0) return buildInitialWorkflowNodeStates(stepOrders)
+  const states: Record<string, WorkflowNodeState> = {}
+  for (const id of nodeIds) states[id] = 'idle'
+  return states
+}
+
+export function createInitialWorkflowUi(
+  stepOrders: number[],
+  nodeIds?: string[]
+): WorkflowUiState {
   return {
-    nodeStates: buildInitialWorkflowNodeStates(stepOrders),
+    nodeStates: buildInitialWorkflowNodeStatesFromDefinition(nodeIds ?? [], stepOrders),
     logs: [],
     currentSend: null,
     logSeq: 0,

@@ -32,6 +32,7 @@ export type CampaignRow = {
   timezone: string | null
   audience_filters: CampaignAudienceFilters
   workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
+  workflow_definition?: { version?: number; nodes?: unknown[]; edges?: unknown[] }
   daily_send_limit: number
   cooldown_days: number
   start_at: string | null

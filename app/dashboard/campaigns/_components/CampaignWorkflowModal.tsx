@@ -2,32 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  Panel,
-  ReactFlow,
-  ReactFlowProvider,
-  useEdgesState,
-  useNodesState,
-  useReactFlow,
-  type Edge,
-} from '@xyflow/react'
+import { ReactFlowProvider } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
-import { buildWorkflowFlowGraph } from '@/app/dashboard/campaigns/_components/build-workflow-graph'
+import { WorkflowFlowCanvas } from '@/app/dashboard/campaigns/_components/WorkflowFlowCanvas'
+import { WorkflowN8nToolbar } from '@/app/dashboard/campaigns/_components/WorkflowN8nToolbar'
 import { CampaignWorkflowNodeInspector } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNodeInspector'
-import {
-  campaignWorkflowNodeTypes,
-  type WorkflowNodeData,
-} from '@/app/dashboard/campaigns/_components/CampaignWorkflowNode'
 import {
   addWorkflowStep,
   draftFromCampaignPayload,
-  layoutFromNodePositions,
   type WorkflowEditorDraft,
 } from '@/app/lib/campaigns/workflow-layout'
+import {
+  addEdgeToDefinition,
+  applyEdgesFromFlow,
+  ensureExplicitEdges,
+  updateDefinitionPositions,
+} from '@/app/lib/workflows/graph-mutate'
+import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
 
 export type WorkflowNodeState = 'idle' | 'active' | 'complete'
 
@@ -73,6 +65,7 @@ type Props = {
   editable?: boolean
   initialDraft?: WorkflowEditorDraft
   onSaved?: () => void
+  pushToast?: (type: 'success' | 'error', text: string) => void
 }
 
 function useIsMobile() {
@@ -85,110 +78,6 @@ function useIsMobile() {
     return () => mq.removeEventListener('change', update)
   }, [])
   return mobile
-}
-
-function FitViewOnChange({ deps }: { deps: unknown[] }) {
-  const { fitView } = useReactFlow()
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      void fitView({ padding: 0.22, duration: 280 })
-    }, 60)
-    return () => window.clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
-  return null
-}
-
-function WorkflowFlowCanvas({
-  draft,
-  nodeStates,
-  editable,
-  selectedNodeId,
-  onSelectNode,
-  onPositionsChange,
-  enrolled,
-  dueNow,
-  matchingAudience,
-  vertical,
-  fitDeps,
-}: {
-  draft: WorkflowEditorDraft
-  nodeStates: Record<string, WorkflowNodeState>
-  editable: boolean
-  selectedNodeId: string | null
-  onSelectNode: (id: string | null) => void
-  onPositionsChange: (positions: Record<string, { x: number; y: number }>) => void
-  enrolled: number
-  dueNow: number
-  matchingAudience?: number
-  vertical: boolean
-  fitDeps: unknown[]
-}) {
-  const built = useMemo(
-    () =>
-      buildWorkflowFlowGraph({
-        draft,
-        nodeStates,
-        vertical,
-        editable,
-        selectedNodeId,
-        enrolled,
-        dueNow,
-        matchingAudience,
-      }),
-    [draft, nodeStates, vertical, editable, selectedNodeId, enrolled, dueNow, matchingAudience]
-  )
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(built.nodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(built.edges)
-  const { getNodes } = useReactFlow()
-
-  useEffect(() => {
-    setNodes(built.nodes)
-    setEdges(built.edges)
-  }, [built.nodes, built.edges, setNodes, setEdges])
-
-  const onNodeDragStop = useCallback(() => {
-    if (!editable) return
-    const positions = Object.fromEntries(getNodes().map((n) => [n.id, { x: n.position.x, y: n.position.y }]))
-    onPositionsChange(positions)
-  }, [editable, getNodes, onPositionsChange])
-
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={editable ? onNodesChange : undefined}
-      onEdgesChange={onEdgesChange}
-      onNodeClick={(_, node) => onSelectNode(node.id)}
-      onPaneClick={() => onSelectNode(null)}
-      onNodeDragStop={onNodeDragStop}
-      nodeTypes={campaignWorkflowNodeTypes}
-      fitView
-      minZoom={0.25}
-      maxZoom={1.6}
-      panOnScroll
-      zoomOnScroll
-      nodesDraggable={editable}
-      nodesConnectable={false}
-      elementsSelectable={editable}
-      proOptions={{ hideAttribution: true }}
-      style={{ width: '100%', height: '100%' }}
-      className="campaign-workflow-canvas"
-    >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} color="#c4c9d4" />
-      <Controls
-        showInteractive={false}
-        className="!rounded-xl !border !border-slate-200 !bg-white/95 !shadow-lg [&>button]:!border-slate-200 [&>button]:!bg-white [&>button:hover]:!bg-slate-50"
-      />
-      <Panel position="top-center" className="pointer-events-none mt-2 hidden sm:block">
-        <span className="rounded-full border border-slate-200/80 bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm backdrop-blur">
-          {editable ? 'Drag nodes · Click to edit · Save when done' : 'Pan & zoom to explore'}
-        </span>
-      </Panel>
-      <FitViewOnChange deps={fitDeps} />
-    </ReactFlow>
-  )
 }
 
 function LiveActivityPanel({
@@ -290,6 +179,7 @@ function CampaignWorkflowView(props: Props) {
     editable = false,
     initialDraft,
     onSaved,
+    pushToast,
   } = props
 
   const isMobile = useIsMobile()
@@ -310,7 +200,22 @@ function CampaignWorkflowView(props: Props) {
   const isDirty = editable && JSON.stringify(draft) !== savedSnapshot.current
 
   const onPositionsChange = useCallback((positions: Record<string, { x: number; y: number }>) => {
-    setDraft((d) => ({ ...d, layout: layoutFromNodePositions(positions) }))
+    setDraft((d) => {
+      const def = draftToDefinition(d)
+      return definitionToDraft(updateDefinitionPositions(def, positions))
+    })
+  }, [])
+
+  const onConnect = useCallback((source: string, target: string) => {
+    setDraft((d) => definitionToDraft(addEdgeToDefinition(draftToDefinition(d), source, target)))
+  }, [])
+
+  const onEdgesSync = useCallback((flowEdges: Array<{ id: string; source: string; target: string }>) => {
+    setDraft((d) => {
+      let def = ensureExplicitEdges(draftToDefinition(d))
+      def = applyEdgesFromFlow(def, flowEdges)
+      return definitionToDraft(def)
+    })
   }, [])
 
   const fitDeps = useMemo(
@@ -323,24 +228,11 @@ function CampaignWorkflowView(props: Props) {
     setSaving(true)
     setSaveError(null)
     try {
+      const workflow_definition = draftToDefinition(draft)
       const res = await fetch(`/api/campaigns/${campaignId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trigger_type: draft.trigger_type,
-          trigger_offset_days: draft.trigger_offset_days,
-          audience_filters: draft.audience_filters,
-          daily_send_limit: draft.daily_send_limit,
-          cooldown_days: draft.cooldown_days,
-          workflow_layout: draft.layout,
-          steps: draft.steps.map((s) => ({
-            step_order: s.step_order,
-            delay_days: s.delay_days,
-            send_time: s.send_time,
-            message_template: s.message_template,
-            is_active: s.is_active !== false,
-          })),
-        }),
+        body: JSON.stringify({ workflow_definition }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Save failed')
@@ -415,6 +307,14 @@ function CampaignWorkflowView(props: Props) {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {editable ? (
+            <WorkflowN8nToolbar
+              campaignName={campaignName}
+              draft={draft}
+              onDraftChange={setDraft}
+              onToast={(type, msg) => pushToast?.(type, msg)}
+            />
+          ) : null}
           {editable ? (
             <>
               <button
@@ -502,6 +402,8 @@ function CampaignWorkflowView(props: Props) {
                 selectedNodeId={selectedNodeId}
                 onSelectNode={setSelectedNodeId}
                 onPositionsChange={onPositionsChange}
+                onConnect={editable ? onConnect : undefined}
+                onEdgesSync={editable ? onEdgesSync : undefined}
                 enrolled={enrolled}
                 dueNow={dueNow}
                 matchingAudience={matchingAudience}

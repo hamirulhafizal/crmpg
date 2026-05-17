@@ -10,7 +10,8 @@
     "postinstall": "node scripts/install-playwright-chromium.mjs",
     "update-avatars-from-dealers-json": "node scripts/update-profile-avatars-from-dealers-json.mjs",
     "env:pull": "vercel env pull .env --yes",
-    "campaign:reset-test": "node scripts/reset-campaign-for-test.mjs"
+    "campaign:reset-test": "node scripts/reset-campaign-for-test.mjs",
+    "workflow:sync-n8n": "node scripts/sync-n8n-workflow-nodes.mjs"
   },
   "dependencies": {
     "@sparticuz/chromium": "^148.0.0",
@@ -33,6 +34,9 @@
     "react-dom": "^19.2.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "n8n-nodes-base": "^1.82.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

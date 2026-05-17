@@ -1,5 +1,7 @@
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
+import { definitionToDraft, draftToDefinition, resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export type CampaignWorkflowLayout = {
   nodes?: Record<string, { x: number; y: number }>
@@ -22,6 +24,8 @@ export type WorkflowEditorDraft = {
   cooldown_days: number
   steps: WorkflowEditorStep[]
   layout: CampaignWorkflowLayout
+  /** Canonical graph; synced with fields above on save. */
+  definition?: WorkflowDefinition
 }
 
 const NODE_W = 220
@@ -77,24 +81,19 @@ export function draftFromCampaignPayload(campaign: {
   audience_filters?: CampaignAudienceFilters
   daily_send_limit?: number
   cooldown_days?: number
-  workflow_layout?: CampaignWorkflowLayout | null
+  workflow_layout?: CampaignWorkflowLayout | null | undefined
+  workflow_definition?: unknown
 }, steps: WorkflowEditorStep[]): WorkflowEditorDraft {
-  return {
-    trigger_type: (campaign.trigger_type as CampaignTriggerType) ?? 'manual',
-    trigger_offset_days: Number(campaign.trigger_offset_days ?? 0),
-    audience_filters: (campaign.audience_filters ?? {}) as CampaignAudienceFilters,
-    daily_send_limit: Number(campaign.daily_send_limit ?? 100),
-    cooldown_days: Number(campaign.cooldown_days ?? 30),
-    steps: steps.map((s) => ({
-      id: s.id,
-      step_order: s.step_order,
-      delay_days: s.delay_days,
-      send_time: sendTimeLabel(s.send_time),
-      message_template: s.message_template,
-      is_active: s.is_active !== false,
-    })),
-    layout: (campaign.workflow_layout ?? {}) as CampaignWorkflowLayout,
-  }
+  const stepDrafts = steps.map((s) => ({
+    id: s.id,
+    step_order: s.step_order,
+    delay_days: s.delay_days,
+    send_time: sendTimeLabel(s.send_time),
+    message_template: s.message_template,
+    is_active: s.is_active !== false,
+  }))
+  const def = resolveWorkflowDefinition(campaign, stepDrafts)
+  return definitionToDraft(def)
 }
 
 export function addWorkflowStep(draft: WorkflowEditorDraft): WorkflowEditorDraft {
@@ -107,18 +106,6 @@ export function addWorkflowStep(draft: WorkflowEditorDraft): WorkflowEditorDraft
     message_template: 'Hello {{name}}, …',
     is_active: true,
   }
-  const nodeId = WORKFLOW_NODE.step(order)
-  const ids = workflowNodeIds([...active.map((s) => s.step_order), order])
-  const positions = mergeLayoutPositions(ids, draft.layout, false)
-  const enrollPos = positions[WORKFLOW_NODE.enroll] ?? { x: 0, y: 40 }
-  positions[nodeId] = { x: enrollPos.x + NODE_W + GAP, y: enrollPos.y }
-  positions[WORKFLOW_NODE.complete] = {
-    x: positions[nodeId]!.x + NODE_W + GAP,
-    y: positions[nodeId]!.y,
-  }
-  return {
-    ...draft,
-    steps: [...draft.steps, newStep],
-    layout: layoutFromNodePositions(positions),
-  }
+  const next = { ...draft, steps: [...draft.steps, newStep] }
+  return definitionToDraft(draftToDefinition(next))
 }

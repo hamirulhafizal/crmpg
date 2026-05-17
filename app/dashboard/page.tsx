@@ -424,6 +424,24 @@ export default function DashboardPage() {
                 </Link>
 
                 <Link
+                  href="/admin/workflow-nodes"
+                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-violet-50/80 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
+                >
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm">
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 6h16M4 12h8m-8 6h16"
+                      />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-semibold leading-tight text-slate-900">Workflow nodes</h4>
+                  <p className="mt-1 text-xs text-slate-500">Campaign builder palette</p>
+                </Link>
+
+                <Link
                   href="/admin/google-ads"
                   className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
                 >

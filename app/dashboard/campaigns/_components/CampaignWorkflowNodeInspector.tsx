@@ -6,6 +6,7 @@ import type { CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
 import { CUSTOMER_MESSAGE_TEMPLATE_COLUMNS } from '@/app/lib/campaigns/template'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
+import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
 
 const TRIGGERS: { value: CampaignTriggerType; label: string }[] = [
   { value: 'manual', label: 'Manual (run / cron sync)' },
@@ -42,7 +43,22 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
 
   const patch = (partial: Partial<WorkflowEditorDraft>) => onChange({ ...draft, ...partial })
 
-  if (selectedNodeId === WORKFLOW_NODE.trigger) {
+  const defNode = draft.definition?.nodes.find((n) => n.id === selectedNodeId)
+  const nodeType =
+    defNode?.type ??
+    (selectedNodeId === WORKFLOW_NODE.trigger
+      ? 'crm.trigger.manual'
+      : selectedNodeId === WORKFLOW_NODE.audience
+        ? 'crm.audience.filter'
+        : selectedNodeId === WORKFLOW_NODE.enroll
+          ? 'crm.enroll.queue'
+          : selectedNodeId === WORKFLOW_NODE.complete
+            ? 'crm.flow.complete'
+            : /^step-\d+$/.test(selectedNodeId)
+              ? 'crm.whatsapp.send'
+              : null)
+
+  if (nodeType === 'crm.trigger.manual') {
     return (
       <InspectorShell title="Trigger" subtitle="When customers enter this campaign" onClose={onClose}>
         <label className="field">
@@ -50,7 +66,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
           <select
             value={draft.trigger_type}
             onChange={(e) => patch({ trigger_type: e.target.value as CampaignTriggerType })}
-            className="input"
+            className="input text-black"
           >
             {TRIGGERS.map((t) => (
               <option key={t.value} value={t.value}>
@@ -63,7 +79,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
           <span>Offset (days)</span>
           <input
             type="number"
-            className="input"
+            className="input text-black"
             value={draft.trigger_offset_days}
             onChange={(e) => patch({ trigger_offset_days: Math.max(0, Number(e.target.value) || 0) })}
           />
@@ -73,7 +89,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
     )
   }
 
-  if (selectedNodeId === WORKFLOW_NODE.audience) {
+  if (nodeType === 'crm.audience.filter') {
     return (
       <InspectorShell title="Audience" subtitle="CRM filters for who can enroll" onClose={onClose}>
         <AudienceBuilder value={draft.audience_filters} onChange={(audience_filters) => patch({ audience_filters })} />
@@ -81,7 +97,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
     )
   }
 
-  if (selectedNodeId === WORKFLOW_NODE.enroll) {
+  if (nodeType === 'crm.enroll.queue') {
     return (
       <InspectorShell title="Enroll & send limits" subtitle="Queue and rate limits" onClose={onClose}>
         <label className="field">
@@ -89,7 +105,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
           <input
             type="number"
             min={1}
-            className="input"
+            className="input text-black"
             value={draft.daily_send_limit}
             onChange={(e) => patch({ daily_send_limit: Math.max(1, Number(e.target.value) || 1) })}
           />
@@ -99,7 +115,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
           <input
             type="number"
             min={0}
-            className="input"
+            className="input text-black"
             value={draft.cooldown_days}
             onChange={(e) => patch({ cooldown_days: Math.max(0, Number(e.target.value) || 0) })}
           />
@@ -109,7 +125,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
     )
   }
 
-  if (selectedNodeId === WORKFLOW_NODE.complete) {
+  if (nodeType === 'crm.flow.complete') {
     return (
       <InspectorShell title="Done" subtitle="End of the automation path" onClose={onClose}>
         <p className="text-sm text-slate-600">
@@ -119,7 +135,30 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
     )
   }
 
+  if (nodeType === 'crm.whatsapp.send') {
   const stepIdx = stepIndexFromNodeId(selectedNodeId, draft.steps)
+  if (stepIdx < 0 && defNode) {
+    const order = Number((defNode.parameters.step_order as number) ?? 1)
+    const newStep: WorkflowEditorStep = {
+      step_order: order,
+      delay_days: Number(defNode.parameters.delay_days ?? 0),
+      send_time: String(defNode.parameters.send_time ?? '10:00'),
+      message_template: String(defNode.parameters.message_template ?? ''),
+      is_active: defNode.parameters.is_active !== false,
+    }
+    return (
+      <InspectorShell title={`Step ${order}`} subtitle="WhatsApp message" onClose={onClose}>
+        <p className="text-sm text-slate-600">Syncing step fields… save workflow to persist.</p>
+        <button
+          type="button"
+          className="mt-2 text-sm font-medium text-violet-700"
+          onClick={() => onChange(definitionToDraft(draftToDefinition({ ...draft, steps: [...draft.steps, newStep] })))}
+        >
+          Link step to campaign
+        </button>
+      </InspectorShell>
+    )
+  }
   if (stepIdx >= 0) {
     const step = draft.steps[stepIdx]!
     const updateStep = (partial: Partial<WorkflowEditorStep>) => {
@@ -196,6 +235,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
         ) : null}
       </InspectorShell>
     )
+  }
   }
 
   return (
