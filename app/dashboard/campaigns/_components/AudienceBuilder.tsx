@@ -5,6 +5,7 @@ import type { CategoryRow } from '@/app/admin/settings/tag-admin-sidebar'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 const STATUSES = ['temporary', 'freeze', 'active', 'free', 'inactive', 'unknown'] as const
+const ETHNICITIES = ['Malay', 'Chinese', 'Indian', 'Other'] as const
 
 type FlatTag = {
   slug: string
@@ -329,6 +330,13 @@ export function AudienceBuilder({
     onChange({ ...value, account_status: Array.from(cur) })
   }
 
+  const toggleEthnicity = (key: (typeof ETHNICITIES)[number]) => {
+    const cur = new Set(value.ethnicities ?? [])
+    if (cur.has(key)) cur.delete(key)
+    else cur.add(key)
+    onChange({ ...value, ethnicities: Array.from(cur) })
+  }
+
   return (
     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
       <div>
@@ -358,6 +366,23 @@ export function AudienceBuilder({
             </label>
           ))}
         </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-slate-700 text-slate-900">Ethnicity (any match)</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {ETHNICITIES.map((e) => (
+            <label key={e} className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="checkbox"
+                checked={(value.ethnicities ?? []).includes(e)}
+                onChange={() => toggleEthnicity(e)}
+              />
+              {e}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-slate-500">Matches customers whose ethnicity is any of the selected values.</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">

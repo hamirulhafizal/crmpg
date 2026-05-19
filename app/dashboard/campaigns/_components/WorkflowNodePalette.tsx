@@ -6,9 +6,16 @@ import type { WorkflowNodeTypeDescriptor } from '@/app/lib/workflows/types'
 
 const ICONS: Record<string, string> = {
   bolt: '⚡',
+  clock: '🕐',
   users: '👥',
+  database: '⚡',
+  loop: '🔁',
+  edit: '✎',
   plus: '＋',
   chat: '💬',
+  globe: '🌐',
+  hourglass: '⏳',
+  forward: '»',
   check: '✓',
 }
 
@@ -37,7 +44,7 @@ export function WorkflowNodePalette({
   }, [])
 
   return (
-    <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <div className="flex h-full min-h-0 w-full flex-col bg-white">
       <div className="border-b border-slate-200 px-3 py-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nodes</h2>
         <p className="mt-0.5 text-[11px] text-slate-400">Drag or click to add</p>
@@ -72,6 +79,6 @@ export function WorkflowNodePalette({
           ))
         )}
       </ul>
-    </aside>
+    </div>
   )
 }

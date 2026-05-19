@@ -19,12 +19,18 @@ export type WorkflowNodeInstance = {
   parameters: Record<string, unknown>
 }
 
+export type WorkflowEdgeRouting = 'default' | 'loop-back'
+
 export type WorkflowEdge = {
   id: string
   source: string
   target: string
   sourceHandle?: string
   targetHandle?: string
+  /** Route backward connections below the main row (draggable). */
+  routing?: WorkflowEdgeRouting
+  /** Pixels below the lower endpoint — used when routing is loop-back. */
+  pathOffsetY?: number
 }
 
 export type WorkflowDefinition = {

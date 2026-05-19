@@ -15,6 +15,8 @@ export type CampaignAudienceFilters = {
   is_monthly_buyer?: boolean | null
   is_friend?: boolean | null
   gender?: string | null
+  /** Any match (OR) — values from customers.ethnicity: Malay, Chinese, Indian, Other */
+  ethnicities?: Array<'Malay' | 'Chinese' | 'Indian' | 'Other'>
   location_contains?: string | null
   /** Minimum whole days since last purchase (based on column + original_data resolution in TS). */
   last_purchase_days_gt?: number | null

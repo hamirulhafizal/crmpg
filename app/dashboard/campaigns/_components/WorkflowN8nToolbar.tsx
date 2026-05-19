@@ -1,21 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { exportToN8n } from '@/app/lib/workflows/n8n/export'
 import { importFromN8n } from '@/app/lib/workflows/n8n/import'
 import type { N8nCatalogEntry } from '@/app/lib/workflows/n8n/catalog-mappings'
 import { definitionToDraft } from '@/app/lib/workflows/sync'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { BUILTIN_WORKFLOW_NODE_TYPES } from '@/app/lib/workflows/catalog'
+import { createJohorWahaBulkWorkflowDefinition } from '@/app/lib/workflows/templates/johor-bulk-workflow'
 
+/** n8n JSON file import only (node copy/paste uses Ctrl+C / Ctrl+V on the canvas). */
 export function WorkflowN8nToolbar({
-  campaignName,
   draft,
   onDraftChange,
   onToast,
 }: {
-  campaignName: string
   draft: WorkflowEditorDraft
   onDraftChange: (d: WorkflowEditorDraft) => void
   onToast: (type: 'success' | 'error', msg: string) => void
@@ -65,80 +64,35 @@ export function WorkflowN8nToolbar({
     )
   }, [draft.definition])
 
-  const applyImport = useCallback(
-    (raw: unknown, mode: 'replace' | 'merge') => {
-      try {
-        const base = mode === 'merge' ? currentDef() : undefined
-        const { definition, warnings } = importFromN8n(raw, {
-          catalog,
-          mergeInto: base,
-        })
-        onDraftChange(definitionToDraft(definition))
-        onToast(
-          'success',
-          warnings.length
-            ? mode === 'merge'
-              ? `Pasted with ${warnings.length} warning(s)`
-              : `Imported with ${warnings.length} warning(s)`
-            : mode === 'merge'
-              ? 'Pasted from n8n'
-              : 'Imported from n8n'
-        )
-      } catch (e: unknown) {
-        onToast('error', e instanceof Error ? e.message : 'Import failed')
-      }
-    },
-    [catalog, currentDef, onDraftChange, onToast]
-  )
-
-  const exportJson = () => {
-    const def = currentDef()
-    const n8n = exportToN8n(def, campaignName || 'CRM Campaign', catalog)
-    void navigator.clipboard.writeText(JSON.stringify(n8n, null, 2))
-    onToast('success', 'n8n workflow JSON copied — paste in n8n or share')
-  }
-
-  const pasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      const json = JSON.parse(text) as unknown
-      const nodeCount =
-        json && typeof json === 'object' && 'nodes' in json && Array.isArray((json as { nodes: unknown[] }).nodes)
-          ? (json as { nodes: unknown[] }).nodes.length
-          : 1
-      applyImport(json, nodeCount <= 2 && currentDef().nodes.length > 0 ? 'merge' : 'replace')
-    } catch (e: unknown) {
-      onToast('error', e instanceof Error ? e.message : 'Paste failed — copy n8n JSON first')
-    }
-  }
-
   const importFile = async (file: File) => {
     try {
       const text = await file.text()
       const json = JSON.parse(text) as unknown
-      applyImport(json, 'replace')
+      const { definition, warnings } = importFromN8n(json, { catalog })
+      onDraftChange(definitionToDraft(definition))
+      onToast(
+        'success',
+        warnings.length ? `Imported with ${warnings.length} warning(s)` : 'Imported from n8n file'
+      )
     } catch (e: unknown) {
       onToast('error', e instanceof Error ? e.message : 'Import failed')
     }
+  }
+
+  const loadJohorTemplate = () => {
+    onDraftChange(definitionToDraft(createJohorWahaBulkWorkflowDefinition()))
+    onToast('success', 'Loaded Johor bulk workflow template')
   }
 
   return (
     <div className="flex flex-wrap items-center gap-1">
       <button
         type="button"
-        onClick={exportJson}
-        className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-        title="Copy workflow as n8n JSON (paste into n8n canvas)"
+        onClick={loadJohorTemplate}
+        className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100"
+        title="Load n8n-style Johor bulk message workflow on canvas"
       >
-        Copy n8n
-      </button>
-      <button
-        type="button"
-        onClick={() => void pasteFromClipboard()}
-        className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-        title="Paste n8n JSON from clipboard onto this canvas"
-      >
-        Paste n8n
+        Johor template
       </button>
       <button
         type="button"

@@ -4,6 +4,7 @@ import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaign
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import { createDefaultWorkflowDefinition, isEmptyWorkflowDefinition } from '@/app/lib/workflows/defaults'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
+import { normalizeN8nTypesInDefinition } from '@/app/lib/workflows/normalize-definition'
 import type { WorkflowDefinition, WorkflowEdge, WorkflowNodeInstance } from '@/app/lib/workflows/types'
 
 function layoutFromDefinition(def: WorkflowDefinition) {
@@ -15,7 +16,8 @@ function layoutFromDefinition(def: WorkflowDefinition) {
 }
 
 export function definitionToDraft(def: WorkflowDefinition): WorkflowEditorDraft {
-  const compiled = compileWorkflowDefinition(def)
+  const normalized = normalizeN8nTypesInDefinition(def)
+  const compiled = compileWorkflowDefinition(normalized)
   return {
     trigger_type: compiled.trigger_type,
     trigger_offset_days: compiled.trigger_offset_days,
@@ -29,19 +31,28 @@ export function definitionToDraft(def: WorkflowDefinition): WorkflowEditorDraft 
       message_template: s.message_template,
       is_active: s.is_active,
     })),
-    layout: layoutFromDefinition(def),
-    definition: def,
+    layout: layoutFromDefinition(normalized),
+    definition: normalized,
   }
 }
 
 export function draftToDefinition(draft: WorkflowEditorDraft): WorkflowDefinition {
   if (draft.definition?.nodes?.length) {
-    return syncDefinitionFromDraftFields(draft.definition, draft)
+    return normalizeN8nTypesInDefinition(syncDefinitionFromDraftFields(draft.definition, draft))
   }
   return buildDefinitionFromLegacyDraft(draft)
 }
 
 function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowEditorDraft): WorkflowDefinition {
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
+    const wa = def.nodes.filter((n) => n.type === 'crm.whatsapp.send')
+    console.debug('[workflow sync] whatsapp nodes before sync', wa.map((n) => ({
+      id: n.id,
+      step_order: n.parameters?.step_order,
+      legacyOrder: legacyStepOrderFromNodeId(n.id),
+    })))
+  }
+
   const nodes = def.nodes.map((n) => {
     switch (n.type) {
       case 'crm.trigger.manual':
@@ -64,13 +75,16 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
             cooldown_days: draft.cooldown_days,
           },
         }
-      case 'crm.whatsapp.send': {
-        const order = stepOrderFromNodeId(n.id, draft.steps)
+      case 'crm.whatsapp.send':
+      case 'crm.integration.waha': {
+        const legacyOrder = legacyStepOrderFromNodeId(n.id)
+        const order = legacyOrder ?? Math.max(1, Number(n.parameters?.step_order ?? 0))
         const step = draft.steps.find((s) => s.step_order === order)
         if (!step) return n
         return {
           ...n,
           parameters: {
+            ...n.parameters,
             step_order: step.step_order,
             delay_days: step.delay_days,
             send_time: step.send_time,
@@ -79,6 +93,17 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
           },
         }
       }
+      case 'crm.data.supabase':
+        if (n.parameters?.operation === 'getAll') {
+          return {
+            ...n,
+            parameters: {
+              ...n.parameters,
+              audience_filters: draft.audience_filters,
+            },
+          }
+        }
+        return n
       default:
         return n
     }
@@ -90,14 +115,23 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
     position: positions[n.id] ?? n.position,
   }))
 
-  return { ...def, nodes: nodesWithPos }
+  const result = { ...def, nodes: nodesWithPos }
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') {
+    const wa = result.nodes.filter((n) => n.type === 'crm.whatsapp.send')
+    console.debug('[workflow sync] whatsapp nodes after sync', wa.map((n) => ({
+      id: n.id,
+      step_order: n.parameters?.step_order,
+    })))
+  }
+
+  return result
 }
 
-function stepOrderFromNodeId(nodeId: string, steps: WorkflowEditorStep[]): number {
+/** Only legacy canvas ids `step-1`, `step-2`. Dynamic ids (e.g. `send-173…-1`) must use parameters.step_order. */
+function legacyStepOrderFromNodeId(nodeId: string): number | null {
   const m = /^step-(\d+)$/.exec(nodeId)
-  if (m) return Number(m[1])
-  const idx = steps.findIndex((_, i) => nodeId.includes(String(i)))
-  return idx >= 0 ? steps[idx]!.step_order : 1
+  return m ? Number(m[1]) : null
 }
 
 function buildDefinitionFromLegacyDraft(draft: WorkflowEditorDraft): WorkflowDefinition {

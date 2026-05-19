@@ -238,8 +238,8 @@ export function CampaignDetailContent(props: {
                         spelling as in Admin tag settings).
                       </li>
                       <li>
-                        <strong>Combined rules</strong> — account status, gender, location, last purchase age, and
-                        segment filters are combined with AND logic together with tags.
+                        <strong>Combined rules</strong> — account status, ethnicity, gender, location, last purchase
+                        age, and segment filters are combined with AND logic together with tags.
                       </li>
                     </ul>
                   </div>

@@ -11,6 +11,7 @@ export type CustomerForAudience = {
   pg_code: string | null
   save_name: string | null
   gender: string | null
+  ethnicity: string | null
   location: string | null
   last_purchase_at: string | null
   is_monthly_buyer: boolean | null
@@ -91,6 +92,15 @@ export function customerMatchesFilters(c: CustomerForAudience, filters: Campaign
   if (filters.gender) {
     if ((c.gender || '').toLowerCase() !== filters.gender.toLowerCase()) return false
   }
+
+  const wantEthnicities = (filters.ethnicities ?? []).map((e) => String(e).trim()).filter(Boolean)
+  if (wantEthnicities.length > 0) {
+    const have = (c.ethnicity || '').trim()
+    if (!have) return false
+    const haveLower = have.toLowerCase()
+    if (!wantEthnicities.some((e) => e.toLowerCase() === haveLower)) return false
+  }
+
   if (filters.location_contains?.trim()) {
     if (!(c.location || '').toLowerCase().includes(filters.location_contains.trim().toLowerCase())) return false
   }

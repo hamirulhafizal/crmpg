@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/auth-context'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
@@ -20,7 +20,7 @@ type Row = {
   created_at: string
 }
 
-type ToastItem = { id: number; type: 'success' | 'error'; text: string }
+type ToastItem = { id: string; type: 'success' | 'error'; text: string }
 
 function ActionIcon({
   children,
@@ -104,11 +104,13 @@ function CampaignsListInner() {
   const [busy, setBusy] = useState<string | null>(null)
   const [listLoading, setListLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const toastSeqRef = useRef(0)
 
   const panelMode = useMemo(() => panelModeFromSearchParams(searchParams), [searchParams])
 
   const pushToast = useCallback((type: 'success' | 'error', text: string) => {
-    const id = Date.now() + Math.floor(Math.random() * 1000)
+    toastSeqRef.current += 1
+    const id = `${Date.now()}-${toastSeqRef.current}`
     setToasts((prev) => [...prev, { id, type, text }])
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))

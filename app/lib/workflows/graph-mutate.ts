@@ -1,6 +1,12 @@
 import { defaultParametersForType } from '@/app/lib/workflows/catalog'
+import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
-import type { WorkflowDefinition, WorkflowNodeTypeSlug } from '@/app/lib/workflows/types'
+import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
+import type {
+  WorkflowDefinition,
+  WorkflowEdgeRouting,
+  WorkflowNodeTypeSlug,
+} from '@/app/lib/workflows/types'
 
 let idCounter = 0
 export function newWorkflowNodeId(prefix = 'node'): string {
@@ -44,29 +50,60 @@ export function updateDefinitionPositions(
 export function addEdgeToDefinition(
   def: WorkflowDefinition,
   source: string,
-  target: string
+  target: string,
+  handles?: { sourceHandle?: string | null; targetHandle?: string | null }
 ): WorkflowDefinition {
-  const id = `e-${source}-${target}`
+  const sourceHandle = handles?.sourceHandle ?? 'main'
+  const targetHandle = handles?.targetHandle ?? 'main'
+  const id = `e-${source}-${target}${sourceHandle !== 'main' ? `-${sourceHandle}` : ''}`
   if (def.edges.some((e) => e.id === id)) return def
   return {
     ...def,
-    edges: [...def.edges, { id, source, target, sourceHandle: 'main', targetHandle: 'main' }],
+    edges: [
+      ...def.edges,
+      {
+        id,
+        source,
+        target,
+        sourceHandle,
+        targetHandle,
+      },
+    ],
   }
+}
+
+export type FlowEdgeSyncPayload = {
+  id: string
+  source: string
+  target: string
+  sourceHandle?: string
+  targetHandle?: string
+  routing?: WorkflowEdgeRouting
+  pathOffsetY?: number
 }
 
 export function applyEdgesFromFlow(
   def: WorkflowDefinition,
-  edges: Array<{ source: string; target: string; id?: string }>
+  edges: FlowEdgeSyncPayload[]
 ): WorkflowDefinition {
+  const prevById = new Map(def.edges.map((e) => [e.id, e]))
+  const prevByPair = new Map(def.edges.map((e) => [`${e.source}:${e.target}`, e]))
+
   return {
     ...def,
-    edges: edges.map((e) => ({
-      id: e.id ?? `e-${e.source}-${e.target}`,
-      source: e.source,
-      target: e.target,
-      sourceHandle: 'main',
-      targetHandle: 'main',
-    })),
+    edges: edges.map((e) => {
+      const id = e.id ?? `e-${e.source}-${e.target}`
+      const prev = prevById.get(id) ?? prevByPair.get(`${e.source}:${e.target}`)
+      return {
+        id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? prev?.sourceHandle,
+        targetHandle: e.targetHandle ?? prev?.targetHandle,
+        routing: e.routing ?? prev?.routing,
+        pathOffsetY: e.pathOffsetY ?? prev?.pathOffsetY,
+      }
+    }),
   }
 }
 
@@ -88,5 +125,49 @@ export function removeEdgeFromDefinition(def: WorkflowDefinition, edgeId: string
   return {
     ...def,
     edges: def.edges.filter((e) => e.id !== edgeId),
+  }
+}
+
+/** Remove a node and any edges connected to it. */
+/** Update a single node's parameters on the canvas draft. */
+export function patchNodeParametersInDraft(
+  draft: WorkflowEditorDraft,
+  nodeId: string,
+  partial: Record<string, unknown>
+): WorkflowEditorDraft {
+  const def = draft.definition
+  if (!def) return draft
+
+  const nodes = def.nodes.map((n) => {
+    if (n.id !== nodeId) return n
+    return { ...n, parameters: { ...n.parameters, ...partial } }
+  })
+
+  const node = nodes.find((n) => n.id === nodeId)
+  let next: WorkflowEditorDraft = { ...draft, definition: { ...def, nodes } }
+
+  if (node?.type === 'crm.data.supabase' && node.parameters.operation === 'getAll') {
+    const af = node.parameters.audience_filters as CampaignAudienceFilters | undefined
+    if (af && typeof af === 'object') {
+      next = { ...next, audience_filters: af }
+    }
+  }
+
+  if (node?.type === 'crm.trigger.schedule' && typeof node.parameters.cron_expression === 'string') {
+    next = {
+      ...next,
+      trigger_type: 'manual',
+    }
+  }
+
+  return next
+}
+
+export function removeNodeFromDefinition(def: WorkflowDefinition, nodeId: string): WorkflowDefinition {
+  const withEdges = ensureExplicitEdges(def)
+  return {
+    ...withEdges,
+    nodes: withEdges.nodes.filter((n) => n.id !== nodeId),
+    edges: withEdges.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
   }
 }

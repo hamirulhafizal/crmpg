@@ -23,7 +23,7 @@ export async function GET() {
       return NextResponse.json({ data: BUILTIN_WORKFLOW_NODE_TYPES })
     }
 
-    const list =
+    const dbList =
       rows && rows.length > 0
         ? rows.map((r) => ({
             slug: r.slug,
@@ -40,9 +40,17 @@ export async function GET() {
             enabled: r.enabled,
             sort_order: r.sort_order,
           }))
-        : BUILTIN_WORKFLOW_NODE_TYPES
+        : []
 
-    return NextResponse.json({ data: list })
+    const dbSlugs = new Set(dbList.map((t) => t.slug))
+    const list = [
+      ...dbList,
+      ...BUILTIN_WORKFLOW_NODE_TYPES.filter((b) => !dbSlugs.has(b.slug)),
+    ].sort((a, b) => a.sort_order - b.sort_order)
+
+    const merged = list.length > 0 ? list : BUILTIN_WORKFLOW_NODE_TYPES
+
+    return NextResponse.json({ data: merged })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to load node types'
     return NextResponse.json({ error: msg }, { status: 500 })

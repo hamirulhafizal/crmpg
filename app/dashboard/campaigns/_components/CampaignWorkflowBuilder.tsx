@@ -1,10 +1,17 @@
 'use client'
 
-import { useCallback, useState, type Dispatch, type DragEvent, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type SetStateAction } from 'react'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { CampaignWorkflowNodeInspector } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNodeInspector'
 import { WorkflowFlowCanvas } from '@/app/dashboard/campaigns/_components/WorkflowFlowCanvas'
 import { WorkflowN8nToolbar } from '@/app/dashboard/campaigns/_components/WorkflowN8nToolbar'
+import { useWorkflowNodeClipboard } from '@/app/dashboard/campaigns/_components/use-workflow-node-clipboard'
+import { useWorkflowDraftHistory } from '@/app/dashboard/campaigns/_components/use-workflow-draft-history'
+import { WorkflowUndoButtons } from '@/app/dashboard/campaigns/_components/WorkflowUndoButtons'
+import {
+  WorkflowCollapsibleSidebar,
+  WorkflowSidebarFloatingToggle,
+} from '@/app/dashboard/campaigns/_components/WorkflowCollapsibleSidebar'
 import { WorkflowNodePalette } from '@/app/dashboard/campaigns/_components/WorkflowNodePalette'
 import { addWorkflowStep, type WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { createDefaultWorkflowDefinition } from '@/app/lib/workflows/defaults'
@@ -16,18 +23,26 @@ import {
   updateDefinitionPositions,
 } from '@/app/lib/workflows/graph-mutate'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
+import { isN8nNodeType } from '@/app/lib/workflows/n8n/detect'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 import { validateWorkflowDefinition } from '@/app/lib/workflows/validate'
 
 function BuilderCanvas({
   draft,
   setDraft,
-  selectedNodeId,
-  setSelectedNodeId,
+  selectedNodeIds,
+  setSelectedNodeIds,
+  onTestNode,
+  testingNodeId,
+  fitDeps,
 }: {
   draft: WorkflowEditorDraft
   setDraft: Dispatch<SetStateAction<WorkflowEditorDraft>>
-  selectedNodeId: string | null
-  setSelectedNodeId: (id: string | null) => void
+  selectedNodeIds: string[]
+  setSelectedNodeIds: Dispatch<SetStateAction<string[]>>
+  onTestNode?: (nodeId: string) => void
+  testingNodeId?: string | null
+  fitDeps: unknown[]
 }) {
   const { screenToFlowPosition } = useReactFlow()
 
@@ -42,10 +57,14 @@ function BuilderCanvas({
   )
 
   const onConnect = useCallback(
-    (source: string, target: string) => {
+    (
+      source: string,
+      target: string,
+      handles?: { sourceHandle?: string | null; targetHandle?: string | null }
+    ) => {
       setDraft((d) => {
         const def = draftToDefinition(d)
-        return definitionToDraft(addEdgeToDefinition(def, source, target))
+        return definitionToDraft(addEdgeToDefinition(def, source, target, handles))
       })
     },
     [setDraft]
@@ -58,6 +77,13 @@ function BuilderCanvas({
         def = applyEdgesFromFlow(def, flowEdges)
         return definitionToDraft(def)
       })
+    },
+    [setDraft]
+  )
+
+  const onTidyLayout = useCallback(
+    (def: WorkflowDefinition) => {
+      setDraft(() => definitionToDraft(def))
     },
     [setDraft]
   )
@@ -76,21 +102,32 @@ function BuilderCanvas({
     [screenToFlowPosition, setDraft]
   )
 
+  useWorkflowNodeClipboard({
+    editable: true,
+    draft,
+    setDraft,
+    selectedNodeIds,
+    setSelectedNodeIds,
+  })
+
   return (
     <div className="relative h-full min-h-[320px] flex-1" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <WorkflowFlowCanvas
         draft={draft}
         nodeStates={{}}
         editable
-        selectedNodeId={selectedNodeId}
-        onSelectNode={setSelectedNodeId}
+        selectedNodeIds={selectedNodeIds}
+        onSelectNodes={setSelectedNodeIds}
         onPositionsChange={onPositionsChange}
         onConnect={onConnect}
         onEdgesSync={onEdgesSync}
+        onTidyLayout={onTidyLayout}
         enrolled={0}
         dueNow={0}
         vertical={false}
-        fitDeps={[draft.definition?.nodes?.length ?? 0, draft.steps.length, selectedNodeId]}
+        fitDeps={fitDeps}
+        onTestNode={onTestNode}
+        testingNodeId={testingNodeId}
       />
     </div>
   )
@@ -107,12 +144,27 @@ export function CampaignWorkflowBuilder({
 }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [draft, setDraft] = useState<WorkflowEditorDraft>(() =>
-    definitionToDraft(createDefaultWorkflowDefinition())
-  )
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const initialDraft = useMemo(() => definitionToDraft(createDefaultWorkflowDefinition()), [])
+  const { draft, setDraft, undo, redo, canUndo, canRedo } = useWorkflowDraftHistory(initialDraft)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
+  const [nodeTestAutoRunKey, setNodeTestAutoRunKey] = useState(0)
+  const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+
+  useEffect(() => {
+    const def = draft.definition
+    if (!def?.nodes.some((n) => isN8nNodeType(String(n.type)))) return
+    setDraft(definitionToDraft(def))
+  }, [draft.definition, setDraft])
+
+  const triggerNodeTest = useCallback((nodeId: string) => {
+    setSelectedNodeIds([nodeId])
+    setTestingNodeId(nodeId)
+    setNodeTestAutoRunKey((k) => k + 1)
+  }, [])
 
   const addNodeFromPalette = useCallback((typeSlug: string) => {
     setDraft((d) => {
@@ -123,7 +175,7 @@ export function CampaignWorkflowBuilder({
         : { x: 80, y: 80 }
       return definitionToDraft(addNodeToDefinition(def, typeSlug, position))
     })
-  }, [])
+  }, [setDraft])
 
   const save = async () => {
     const trimmed = name.trim()
@@ -178,14 +230,10 @@ export function CampaignWorkflowBuilder({
           placeholder="Campaign name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-black"
         />
-        <WorkflowN8nToolbar
-          campaignName={name}
-          draft={draft}
-          onDraftChange={setDraft}
-          onToast={pushToast}
-        />
+        <WorkflowUndoButtons canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
+        <WorkflowN8nToolbar draft={draft} onDraftChange={setDraft} onToast={pushToast} />
         <button
           type="button"
           onClick={() => setDraft((d) => addWorkflowStep(d))}
@@ -208,23 +256,65 @@ export function CampaignWorkflowBuilder({
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <WorkflowNodePalette onAddNode={addNodeFromPalette} />
-        <ReactFlowProvider>
-          <BuilderCanvas
-            draft={draft}
-            setDraft={setDraft}
-            selectedNodeId={selectedNodeId}
-            setSelectedNodeId={setSelectedNodeId}
-          />
-        </ReactFlowProvider>
-        <aside className="flex w-[min(100%,22rem)] shrink-0 flex-col border-l border-slate-200 bg-white sm:max-w-sm">
+        <WorkflowCollapsibleSidebar
+          side="left"
+          open={leftSidebarOpen}
+          onToggle={() => setLeftSidebarOpen((v) => !v)}
+          panelLabel="Nodes"
+          className="w-52 sm:w-56"
+        >
+          <WorkflowNodePalette onAddNode={addNodeFromPalette} />
+        </WorkflowCollapsibleSidebar>
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {!leftSidebarOpen ? (
+            <WorkflowSidebarFloatingToggle
+              side="left"
+              panelLabel="Nodes"
+              onOpen={() => setLeftSidebarOpen(true)}
+            />
+          ) : null}
+          {!rightSidebarOpen ? (
+            <WorkflowSidebarFloatingToggle
+              side="right"
+              panelLabel="Properties"
+              onOpen={() => setRightSidebarOpen(true)}
+            />
+          ) : null}
+          <ReactFlowProvider>
+            <BuilderCanvas
+              draft={draft}
+              setDraft={setDraft}
+              selectedNodeIds={selectedNodeIds}
+              setSelectedNodeIds={setSelectedNodeIds}
+              onTestNode={triggerNodeTest}
+              testingNodeId={testingNodeId}
+              fitDeps={[
+                draft.definition?.nodes?.length ?? 0,
+                draft.steps.length,
+                selectedNodeIds.join(','),
+                leftSidebarOpen,
+                rightSidebarOpen,
+              ]}
+            />
+          </ReactFlowProvider>
+        </div>
+        <WorkflowCollapsibleSidebar
+          side="right"
+          open={rightSidebarOpen}
+          onToggle={() => setRightSidebarOpen((v) => !v)}
+          panelLabel="Properties"
+          className="w-[min(100%,22rem)] sm:max-w-sm"
+        >
           <CampaignWorkflowNodeInspector
-            selectedNodeId={selectedNodeId}
+            selectedNodeIds={selectedNodeIds}
             draft={draft}
             onChange={setDraft}
-            onClose={() => setSelectedNodeId(null)}
+            onClose={() => setSelectedNodeIds([])}
+            onToast={pushToast}
+            nodeTestAutoRunKey={nodeTestAutoRunKey}
+            onNodeTestEnd={() => setTestingNodeId(null)}
           />
-        </aside>
+        </WorkflowCollapsibleSidebar>
       </div>
     </div>
   )

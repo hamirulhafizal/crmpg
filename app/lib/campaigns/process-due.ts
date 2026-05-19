@@ -80,7 +80,8 @@ function audienceFiltersSummary(f: CampaignAudienceFilters): string {
   const slugs = (f.tag_slugs ?? []).map((s) => String(s).toLowerCase().trim()).filter(Boolean)
   const ids = (f.tag_ids ?? []).map(String).filter(Boolean)
   const acct = (f.account_status ?? []).length
-  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} is_friend=${f.is_friend ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'}`
+  const eth = (f.ethnicities ?? []).join(',') || '—'
+  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} ethnicities=${eth} is_friend=${f.is_friend ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'}`
 }
 
 async function logCampaignPipelineDiagnostics(
@@ -202,7 +203,7 @@ async function syncEnrollmentsForCampaign(
     const { data: batch, error } = await supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', campaign.user_id)

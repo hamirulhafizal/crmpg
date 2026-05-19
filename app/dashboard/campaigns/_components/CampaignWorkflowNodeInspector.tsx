@@ -4,9 +4,27 @@ import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaign
 import { sendTimeLabel } from '@/app/lib/campaigns/workflow-layout'
 import type { CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
-import { CUSTOMER_MESSAGE_TEMPLATE_COLUMNS } from '@/app/lib/campaigns/template'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
+import { WorkflowNodeTestPanel } from '@/app/dashboard/campaigns/_components/WorkflowNodeTestPanel'
+import {
+  findStepIndexForWhatsAppNode,
+  patchWhatsAppStepInDraft,
+  stepFromNodeParameters,
+} from '@/app/lib/workflows/whatsapp-step'
+import {
+  LoopNodeFields,
+  nodeDisplayTitle,
+  PassNodeFields,
+  patchNodeAndRefreshDraft,
+  ScheduleNodeFields,
+  SetNodeFields,
+  SupabaseNodeFields,
+  WaitNodeFields,
+  WhatsAppMessageFields,
+} from '@/app/dashboard/campaigns/_components/workflow-node-parameter-forms'
+import { safeInt } from '@/app/lib/safe-number'
+import { getBuiltinNodeType } from '@/app/lib/workflows/catalog'
 
 const TRIGGERS: { value: CampaignTriggerType; label: string }[] = [
   { value: 'manual', label: 'Manual (run / cron sync)' },
@@ -15,21 +33,74 @@ const TRIGGERS: { value: CampaignTriggerType; label: string }[] = [
   { value: 'enrollment', label: 'On enrollment' },
 ]
 
-function stepIndexFromNodeId(nodeId: string, steps: WorkflowEditorStep[]): number {
-  const m = /^step-(\d+)$/.exec(nodeId)
-  if (!m) return -1
-  const order = Number(m[1])
-  return steps.findIndex((s) => s.step_order === order)
-}
-
 type Props = {
-  selectedNodeId: string | null
+  selectedNodeIds: string[]
   draft: WorkflowEditorDraft
   onChange: (draft: WorkflowEditorDraft) => void
   onClose: () => void
+  campaignId?: string
+  onToast?: (type: 'success' | 'error', text: string) => void
+  nodeTestAutoRunKey?: number
+  onNodeTestEnd?: () => void
 }
 
-export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange, onClose }: Props) {
+export function CampaignWorkflowNodeInspector({
+  selectedNodeIds,
+  draft,
+  onChange,
+  onClose,
+  campaignId,
+  onToast,
+  nodeTestAutoRunKey,
+  onNodeTestEnd,
+}: Props) {
+  const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
+
+  if (selectedNodeIds.length > 1) {
+    return (
+      <InspectorShell
+        title={`${selectedNodeIds.length} nodes selected`}
+        subtitle="Multi-select"
+        onClose={onClose}
+      >
+        <p className="text-sm text-slate-600">
+          Click a single node to edit its settings, or use{' '}
+          <kbd className="rounded border border-slate-200 bg-slate-50 px-1 text-xs">Ctrl+C</kbd> to copy and{' '}
+          <kbd className="rounded border border-slate-200 bg-slate-50 px-1 text-xs">Delete</kbd> to remove.
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          <kbd className="rounded border border-slate-200 bg-slate-50 px-1">Ctrl+A</kbd> /{' '}
+          <kbd className="rounded border border-slate-200 bg-slate-50 px-1">⌘A</kbd> select all ·{' '}
+          <kbd className="rounded border border-slate-200 bg-slate-50 px-1">Ctrl+V</kbd> paste workflow JSON
+        </p>
+      </InspectorShell>
+    )
+  }
+
+  const defNode = selectedNodeId
+    ? draft.definition?.nodes.find((n) => n.id === selectedNodeId)
+    : undefined
+
+  const nodeType =
+    defNode?.type ??
+    (selectedNodeId === WORKFLOW_NODE.trigger
+      ? 'crm.trigger.manual'
+      : selectedNodeId === WORKFLOW_NODE.audience
+        ? 'crm.audience.filter'
+        : selectedNodeId === WORKFLOW_NODE.enroll
+          ? 'crm.enroll.queue'
+          : selectedNodeId === WORKFLOW_NODE.complete
+            ? 'crm.flow.complete'
+            : /^step-\d+$/.test(selectedNodeId ?? '')
+              ? 'crm.whatsapp.send'
+              : null)
+
+  const isWhatsAppType =
+    nodeType === 'crm.whatsapp.send' || nodeType === 'crm.integration.waha'
+
+  const stepIdx =
+    selectedNodeId && isWhatsAppType ? findStepIndexForWhatsAppNode(selectedNodeId, draft, defNode) : -1
+
   if (!selectedNodeId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
@@ -43,20 +114,16 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
 
   const patch = (partial: Partial<WorkflowEditorDraft>) => onChange({ ...draft, ...partial })
 
-  const defNode = draft.definition?.nodes.find((n) => n.id === selectedNodeId)
-  const nodeType =
-    defNode?.type ??
-    (selectedNodeId === WORKFLOW_NODE.trigger
-      ? 'crm.trigger.manual'
-      : selectedNodeId === WORKFLOW_NODE.audience
-        ? 'crm.audience.filter'
-        : selectedNodeId === WORKFLOW_NODE.enroll
-          ? 'crm.enroll.queue'
-          : selectedNodeId === WORKFLOW_NODE.complete
-            ? 'crm.flow.complete'
-            : /^step-\d+$/.test(selectedNodeId)
-              ? 'crm.whatsapp.send'
-              : null)
+  const nodeTestFooter = (
+    <WorkflowNodeTestPanel
+      nodeId={selectedNodeId}
+      draft={draft}
+      campaignId={campaignId}
+      onToast={onToast}
+      autoRunKey={nodeTestAutoRunKey}
+      onTestEnd={onNodeTestEnd}
+    />
+  )
 
   if (nodeType === 'crm.trigger.manual') {
     return (
@@ -80,11 +147,12 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
           <input
             type="number"
             className="input text-black"
-            value={draft.trigger_offset_days}
+            value={safeInt(draft.trigger_offset_days, 0, 0)}
             onChange={(e) => patch({ trigger_offset_days: Math.max(0, Number(e.target.value) || 0) })}
           />
           <span className="hint">Days before/after the trigger event (birthday, last purchase, etc.).</span>
         </label>
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
@@ -93,6 +161,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
     return (
       <InspectorShell title="Audience" subtitle="CRM filters for who can enroll" onClose={onClose}>
         <AudienceBuilder value={draft.audience_filters} onChange={(audience_filters) => patch({ audience_filters })} />
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
@@ -106,7 +175,7 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
             type="number"
             min={1}
             className="input text-black"
-            value={draft.daily_send_limit}
+            value={safeInt(draft.daily_send_limit, 100, 1)}
             onChange={(e) => patch({ daily_send_limit: Math.max(1, Number(e.target.value) || 1) })}
           />
         </label>
@@ -116,11 +185,12 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
             type="number"
             min={0}
             className="input text-black"
-            value={draft.cooldown_days}
+            value={safeInt(draft.cooldown_days, 0, 0)}
             onChange={(e) => patch({ cooldown_days: Math.max(0, Number(e.target.value) || 0) })}
           />
           <span className="hint">Minimum days between campaign touches for the same customer.</span>
         </label>
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
@@ -131,116 +201,175 @@ export function CampaignWorkflowNodeInspector({ selectedNodeId, draft, onChange,
         <p className="text-sm text-slate-600">
           Marks enrollments complete after all active steps are sent. This node has no settings.
         </p>
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
 
-  if (nodeType === 'crm.whatsapp.send') {
-  const stepIdx = stepIndexFromNodeId(selectedNodeId, draft.steps)
-  if (stepIdx < 0 && defNode) {
-    const order = Number((defNode.parameters.step_order as number) ?? 1)
-    const newStep: WorkflowEditorStep = {
-      step_order: order,
-      delay_days: Number(defNode.parameters.delay_days ?? 0),
-      send_time: String(defNode.parameters.send_time ?? '10:00'),
-      message_template: String(defNode.parameters.message_template ?? ''),
-      is_active: defNode.parameters.is_active !== false,
-    }
+  if (nodeType === 'crm.trigger.schedule' && defNode) {
     return (
-      <InspectorShell title={`Step ${order}`} subtitle="WhatsApp message" onClose={onClose}>
-        <p className="text-sm text-slate-600">Syncing step fields… save workflow to persist.</p>
-        <button
-          type="button"
-          className="mt-2 text-sm font-medium text-violet-700"
-          onClick={() => onChange(definitionToDraft(draftToDefinition({ ...draft, steps: [...draft.steps, newStep] })))}
-        >
-          Link step to campaign
-        </button>
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle={getBuiltinNodeType(nodeType)?.label ?? 'Schedule'}
+        onClose={onClose}
+      >
+        <ScheduleNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
-  if (stepIdx >= 0) {
-    const step = draft.steps[stepIdx]!
+
+  if (nodeType === 'crm.data.supabase' && defNode) {
+    return (
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle={`${defNode.parameters?.operation ?? 'getAll'} · ${defNode.parameters?.table ?? 'customers'}`}
+        onClose={onClose}
+      >
+        <SupabaseNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
+  if (nodeType === 'crm.flow.loop' && defNode) {
+    return (
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle="Split in batches"
+        onClose={onClose}
+      >
+        <LoopNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
+  if (nodeType === 'crm.data.set' && defNode) {
+    return (
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle="Set fields"
+        onClose={onClose}
+      >
+        <SetNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
+  if (nodeType === 'crm.flow.wait' && defNode) {
+    return (
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle="Wait between steps"
+        onClose={onClose}
+      >
+        <WaitNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
+  if (nodeType === 'crm.flow.pass' && defNode) {
+    return (
+      <InspectorShell
+        title={nodeDisplayTitle(defNode)}
+        subtitle="Loop continue"
+        onClose={onClose}
+      >
+        <PassNodeFields node={defNode} draft={draft} nodeId={selectedNodeId} onChange={onChange} />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
+  if (isWhatsAppType && defNode) {
+    const linkedIdx = stepIdx >= 0 ? stepIdx : findStepIndexForWhatsAppNode(selectedNodeId, draft, defNode)
+    const step =
+      linkedIdx >= 0 ? draft.steps[linkedIdx]! : stepFromNodeParameters(defNode)
+
     const updateStep = (partial: Partial<WorkflowEditorStep>) => {
-      const steps = draft.steps.map((s, i) => (i === stepIdx ? { ...s, ...partial } : s))
-      onChange({ ...draft, steps })
+      onChange(patchWhatsAppStepInDraft(draft, selectedNodeId, partial))
     }
+
     const removeStep = () => {
-      if (draft.steps.length <= 1) return
-      const steps = draft.steps.filter((_, i) => i !== stepIdx)
-      onChange({ ...draft, steps })
+      const whatsappCount = draft.definition?.nodes.filter((n) => n.type === 'crm.whatsapp.send').length ?? 0
+      if (whatsappCount <= 1) return
+      const def = draft.definition
+      if (!def) return
+      const nodes = def.nodes.filter((n) => n.id !== selectedNodeId)
+      const edges = def.edges.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId)
+      const steps = draft.steps.filter((s) => s.step_order !== step.step_order)
+      onChange(
+        definitionToDraft(
+          draftToDefinition({
+            ...draft,
+            steps,
+            definition: { ...def, nodes, edges },
+          })
+        )
+      )
     }
+
+    const waCount =
+      draft.definition?.nodes.filter(
+        (n) => n.type === 'crm.whatsapp.send' || n.type === 'crm.integration.waha'
+      ).length ?? 0
 
     return (
       <InspectorShell
-        title={`Step ${step.step_order}`}
+        title={defNode.parameters?.display_name ? nodeDisplayTitle(defNode) : `Step ${step.step_order}`}
         subtitle={`WhatsApp · +${step.delay_days}d · ${sendTimeLabel(step.send_time)}`}
         onClose={onClose}
       >
-        <label className="field">
-          <span>Step order</span>
-          <input
-            type="number"
-            min={1}
-            className="input text-black"
-            value={step.step_order}
-            onChange={(e) => updateStep({ step_order: Math.max(1, Number(e.target.value) || 1) })}
-          />
-        </label>
-        <label className="field">
-          <span>Delay after previous (days)</span>
-          <input
-            type="number"
-            min={0}
-            className="input text-black"
-            value={step.delay_days}
-            onChange={(e) => updateStep({ delay_days: Math.max(0, Number(e.target.value) || 0) })}
-          />
-        </label>
-        <label className="field">
-          <span>Send time</span>
-          <input
-            type="time"
-            className="input text-black"
-            value={sendTimeLabel(step.send_time)}
-            onChange={(e) => updateStep({ send_time: e.target.value || '10:00' })}
-          />
-        </label>
-        <label className="field">
-          <span>Message template</span>
-          <textarea
-            rows={6}
-            className="input font-mono text-xs text-black"
-            value={step.message_template}
-            onChange={(e) => updateStep({ message_template: e.target.value })}
-          />
-          <span className="hint">
-            Variables:{' '}
-            {CUSTOMER_MESSAGE_TEMPLATE_COLUMNS.map((c) => `{{${c}}}`).join(', ')}
-          </span>
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox text-black"
-            checked={step.is_active !== false}
-            onChange={(e) => updateStep({ is_active: e.target.checked })}
-            className="rounded border-slate-300"
-          />
-          Active (include in sends)
-        </label>
-        {draft.steps.length > 1 ? (
-          <button type="button" onClick={removeStep} className="mt-2 text-sm font-medium text-red-600 hover:underline">
-            Remove step
-          </button>
+        {nodeType === 'crm.integration.waha' ? (
+          <label className="field">
+            <span>Display name</span>
+            <input
+              className="input text-black"
+              value={String(defNode.parameters?.display_name ?? '')}
+              onChange={(e) =>
+                onChange(patchNodeAndRefreshDraft(draft, selectedNodeId, { display_name: e.target.value }))
+              }
+            />
+          </label>
         ) : null}
+        <WhatsAppMessageFields
+          stepOrder={step.step_order}
+          delayDays={step.delay_days}
+          sendTime={sendTimeLabel(step.send_time)}
+          messageTemplate={step.message_template}
+          isActive={step.is_active !== false}
+          onStepOrder={(n) => updateStep({ step_order: n })}
+          onDelayDays={(n) => updateStep({ delay_days: n })}
+          onSendTime={(t) => updateStep({ send_time: t })}
+          onMessageTemplate={(t) => updateStep({ message_template: t })}
+          onIsActive={(v) => updateStep({ is_active: v })}
+          showRemove={nodeType === 'crm.whatsapp.send' && (draft.steps.length > 1 || waCount > 1)}
+          onRemove={nodeType === 'crm.whatsapp.send' ? removeStep : undefined}
+        />
+        {nodeTestFooter}
       </InspectorShell>
     )
   }
+
+  if (defNode && nodeType) {
+    const meta = getBuiltinNodeType(nodeType)
+    return (
+      <InspectorShell title={nodeDisplayTitle(defNode)} subtitle={meta?.label ?? nodeType} onClose={onClose}>
+        <p className="text-sm text-slate-600">
+          Node type <code className="text-xs">{nodeType}</code> has no parameter editor yet.
+        </p>
+        {nodeTestFooter}
+      </InspectorShell>
+    )
   }
 
   return (
     <InspectorShell title="Node" subtitle={selectedNodeId} onClose={onClose}>
       <p className="text-sm text-slate-500">Unknown node.</p>
+      {nodeTestFooter}
     </InspectorShell>
   )
 }

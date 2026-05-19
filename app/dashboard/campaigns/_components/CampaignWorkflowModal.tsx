@@ -1,13 +1,30 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type DragEvent,
+  type SetStateAction,
+} from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ReactFlowProvider } from '@xyflow/react'
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
 import { WorkflowFlowCanvas } from '@/app/dashboard/campaigns/_components/WorkflowFlowCanvas'
 import { WorkflowN8nToolbar } from '@/app/dashboard/campaigns/_components/WorkflowN8nToolbar'
+import { useWorkflowNodeClipboard } from '@/app/dashboard/campaigns/_components/use-workflow-node-clipboard'
+import { useWorkflowDraftHistory } from '@/app/dashboard/campaigns/_components/use-workflow-draft-history'
+import { WorkflowUndoButtons } from '@/app/dashboard/campaigns/_components/WorkflowUndoButtons'
 import { CampaignWorkflowNodeInspector } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNodeInspector'
+import {
+  WorkflowCollapsibleSidebar,
+  WorkflowSidebarFloatingToggle,
+} from '@/app/dashboard/campaigns/_components/WorkflowCollapsibleSidebar'
+import { WorkflowNodePalette } from '@/app/dashboard/campaigns/_components/WorkflowNodePalette'
 import {
   addWorkflowStep,
   draftFromCampaignPayload,
@@ -15,11 +32,13 @@ import {
 } from '@/app/lib/campaigns/workflow-layout'
 import {
   addEdgeToDefinition,
+  addNodeToDefinition,
   applyEdgesFromFlow,
   ensureExplicitEdges,
   updateDefinitionPositions,
 } from '@/app/lib/workflows/graph-mutate'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export type WorkflowNodeState = 'idle' | 'active' | 'complete'
 
@@ -78,6 +97,37 @@ function useIsMobile() {
     return () => mq.removeEventListener('change', update)
   }, [])
   return mobile
+}
+
+function WorkflowCanvasDropZone({
+  setDraft,
+  children,
+}: {
+  setDraft: Dispatch<SetStateAction<WorkflowEditorDraft>>
+  children: React.ReactNode
+}) {
+  const { screenToFlowPosition } = useReactFlow()
+
+  const onDrop = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault()
+      const type = e.dataTransfer.getData('application/workflow-node-type')
+      if (!type) return
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      setDraft((d) => definitionToDraft(addNodeToDefinition(draftToDefinition(d), type, position)))
+    },
+    [screenToFlowPosition, setDraft]
+  )
+
+  return (
+    <motion.div
+      className="h-full min-h-[240px] w-full flex-1"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+    >
+      {children}
+    </motion.div>
+  )
 }
 
 function LiveActivityPanel({
@@ -183,18 +233,54 @@ function CampaignWorkflowView(props: Props) {
   } = props
 
   const isMobile = useIsMobile()
-  const [mobileTab, setMobileTab] = useState<'canvas' | 'node' | 'logs'>('canvas')
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<WorkflowEditorDraft>(() => initialDraft!)
+  const [mobileTab, setMobileTab] = useState<'canvas' | 'nodes' | 'node' | 'logs'>('canvas')
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
+  const { draft, setDraft, undo, redo, canUndo, canRedo, resetHistory } = useWorkflowDraftHistory(
+    initialDraft,
+    { enabled: editable }
+  )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const savedSnapshot = useRef(JSON.stringify(initialDraft))
+  const [nodeTestAutoRunKey, setNodeTestAutoRunKey] = useState(0)
+  const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+
+  const openNodeCatalog = useCallback(() => {
+    if (isMobile) {
+      setMobileTab('nodes')
+    } else {
+      setLeftSidebarOpen(true)
+    }
+  }, [isMobile])
+
+  const addNodeFromPalette = useCallback(
+    (typeSlug: string) => {
+      setDraft((d) => {
+        const def = draftToDefinition(d)
+        const last = def.nodes[def.nodes.length - 1]
+        const position = last
+          ? { x: last.position.x + 260, y: last.position.y }
+          : { x: 80, y: 80 }
+        return definitionToDraft(addNodeToDefinition(def, typeSlug, position))
+      })
+    },
+    [setDraft]
+  )
+
+  const triggerNodeTest = useCallback(
+    (nodeId: string) => {
+      setSelectedNodeIds([nodeId])
+      setTestingNodeId(nodeId)
+      setNodeTestAutoRunKey((k) => k + 1)
+      if (isMobile) setMobileTab('node')
+    },
+    [isMobile]
+  )
 
   useEffect(() => {
-    if (initialDraft) {
-      setDraft(initialDraft)
-      savedSnapshot.current = JSON.stringify(initialDraft)
-    }
+    if (initialDraft) savedSnapshot.current = JSON.stringify(initialDraft)
   }, [initialDraft])
 
   const isDirty = editable && JSON.stringify(draft) !== savedSnapshot.current
@@ -206,9 +292,16 @@ function CampaignWorkflowView(props: Props) {
     })
   }, [])
 
-  const onConnect = useCallback((source: string, target: string) => {
-    setDraft((d) => definitionToDraft(addEdgeToDefinition(draftToDefinition(d), source, target)))
-  }, [])
+  const onConnect = useCallback(
+    (
+      source: string,
+      target: string,
+      handles?: { sourceHandle?: string | null; targetHandle?: string | null }
+    ) => {
+      setDraft((d) => definitionToDraft(addEdgeToDefinition(draftToDefinition(d), source, target, handles)))
+    },
+    []
+  )
 
   const onEdgesSync = useCallback((flowEdges: Array<{ id: string; source: string; target: string }>) => {
     setDraft((d) => {
@@ -218,9 +311,30 @@ function CampaignWorkflowView(props: Props) {
     })
   }, [])
 
+  const onTidyLayout = useCallback((def: WorkflowDefinition) => {
+    setDraft(() => definitionToDraft(def))
+  }, [])
+
+  useWorkflowNodeClipboard({
+    editable: Boolean(editable),
+    draft,
+    setDraft,
+    selectedNodeIds,
+    setSelectedNodeIds,
+    onToast: pushToast,
+  })
+
   const fitDeps = useMemo(
-    () => [isMobile, draft.steps.length, JSON.stringify(nodeStates), selectedNodeId, editable],
-    [isMobile, draft.steps.length, nodeStates, selectedNodeId, editable]
+    () => [
+      isMobile,
+      draft.steps.length,
+      JSON.stringify(nodeStates),
+      selectedNodeIds.join(','),
+      editable,
+      leftSidebarOpen,
+      rightSidebarOpen,
+    ],
+    [isMobile, draft.steps.length, nodeStates, selectedNodeIds, editable, leftSidebarOpen, rightSidebarOpen]
   )
 
   const saveWorkflow = async () => {
@@ -237,6 +351,7 @@ function CampaignWorkflowView(props: Props) {
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Save failed')
       savedSnapshot.current = JSON.stringify(draft)
+      resetHistory(draft)
       onSaved?.()
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Save failed')
@@ -255,8 +370,8 @@ function CampaignWorkflowView(props: Props) {
   }, [isMobile])
 
   useEffect(() => {
-    if (selectedNodeId && isMobile) setMobileTab('node')
-  }, [selectedNodeId, isMobile])
+    if (selectedNodeIds.length > 0 && isMobile) setMobileTab('node')
+  }, [selectedNodeIds, isMobile])
 
   const rightPanelTab = isMobile ? mobileTab : 'side'
 
@@ -308,12 +423,25 @@ function CampaignWorkflowView(props: Props) {
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {editable ? (
-            <WorkflowN8nToolbar
-              campaignName={campaignName}
-              draft={draft}
-              onDraftChange={setDraft}
-              onToast={(type, msg) => pushToast?.(type, msg)}
-            />
+            <>
+              <WorkflowUndoButtons canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
+              <button
+                type="button"
+                onClick={openNodeCatalog}
+                title="Open node catalog — drag or click to add nodes"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100 sm:px-3"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                <span className="hidden sm:inline">Add node</span>
+              </button>
+              <WorkflowN8nToolbar
+                draft={draft}
+                onDraftChange={setDraft}
+                onToast={(type, msg) => pushToast?.(type, msg)}
+              />
+            </>
           ) : null}
           {editable ? (
             <>
@@ -368,7 +496,7 @@ function CampaignWorkflowView(props: Props) {
       {isMobile ? (
         <div className="flex shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
           <div className="flex w-full rounded-lg bg-slate-100 p-0.5">
-            {(['canvas', ...(editable ? (['node'] as const) : []), 'logs'] as const).map((tab) => (
+            {(['canvas', ...(editable ? (['nodes', 'node'] as const) : []), 'logs'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -377,7 +505,7 @@ function CampaignWorkflowView(props: Props) {
                   mobileTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
                 }`}
               >
-                {tab === 'node' ? 'Node' : tab}
+                {tab === 'node' ? 'Node' : tab === 'nodes' ? 'Catalog' : tab}
                 {tab === 'logs' && logs.length > 0 ? (
                   <span className="ml-1 rounded-full bg-slate-200 px-1.5 text-[10px]">{logs.length}</span>
                 ) : null}
@@ -388,61 +516,128 @@ function CampaignWorkflowView(props: Props) {
       ) : null}
 
       <div className="flex min-h-0 flex-1">
+        {editable && !isMobile ? (
+          <WorkflowCollapsibleSidebar
+            side="left"
+            open={leftSidebarOpen}
+            onToggle={() => setLeftSidebarOpen((v) => !v)}
+            panelLabel="Nodes"
+            className="w-52 sm:w-56"
+          >
+            <WorkflowNodePalette onAddNode={addNodeFromPalette} />
+          </WorkflowCollapsibleSidebar>
+        ) : null}
         <div
-          className={`min-h-0 flex-1 ${
+          className={`relative min-h-0 min-w-0 flex-1 ${
             isMobile && mobileTab !== 'canvas' ? 'hidden' : 'flex h-full flex-col'
           }`}
         >
+          {editable && !isMobile && !leftSidebarOpen ? (
+            <WorkflowSidebarFloatingToggle
+              side="left"
+              panelLabel="Nodes"
+              onOpen={() => setLeftSidebarOpen(true)}
+            />
+          ) : null}
+          {!isMobile && !rightSidebarOpen ? (
+            <WorkflowSidebarFloatingToggle
+              side="right"
+              panelLabel={editable ? 'Properties' : 'Activity'}
+              onOpen={() => setRightSidebarOpen(true)}
+            />
+          ) : null}
           <ReactFlowProvider>
-            <div className="h-full min-h-[240px] w-full flex-1">
-              <WorkflowFlowCanvas
-                draft={draft}
-                nodeStates={nodeStates}
-                editable={editable}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={setSelectedNodeId}
-                onPositionsChange={onPositionsChange}
-                onConnect={editable ? onConnect : undefined}
-                onEdgesSync={editable ? onEdgesSync : undefined}
-                enrolled={enrolled}
-                dueNow={dueNow}
-                matchingAudience={matchingAudience}
-                vertical={isMobile && !editable}
-                fitDeps={fitDeps}
-              />
-            </div>
+            {editable ? (
+              <WorkflowCanvasDropZone setDraft={setDraft}>
+                <WorkflowFlowCanvas
+                  draft={draft}
+                  nodeStates={nodeStates}
+                  editable={editable}
+                  selectedNodeIds={selectedNodeIds}
+                  onSelectNodes={setSelectedNodeIds}
+                  onPositionsChange={onPositionsChange}
+                  onConnect={onConnect}
+                  onEdgesSync={onEdgesSync}
+                  onTidyLayout={onTidyLayout}
+                  enrolled={enrolled}
+                  dueNow={dueNow}
+                  matchingAudience={matchingAudience}
+                  vertical={isMobile && !editable}
+                  fitDeps={fitDeps}
+                  onTestNode={triggerNodeTest}
+                  testingNodeId={testingNodeId}
+                />
+              </WorkflowCanvasDropZone>
+            ) : (
+              <div className="h-full min-h-[240px] w-full flex-1">
+                <WorkflowFlowCanvas
+                  draft={draft}
+                  nodeStates={nodeStates}
+                  editable={editable}
+                  selectedNodeIds={selectedNodeIds}
+                  onSelectNodes={setSelectedNodeIds}
+                  onPositionsChange={onPositionsChange}
+                  onConnect={undefined}
+                  onEdgesSync={undefined}
+                  onTidyLayout={undefined}
+                  enrolled={enrolled}
+                  dueNow={dueNow}
+                  matchingAudience={matchingAudience}
+                  vertical={isMobile && !editable}
+                  fitDeps={fitDeps}
+                  onTestNode={undefined}
+                  testingNodeId={testingNodeId}
+                />
+              </div>
+            )}
           </ReactFlowProvider>
         </div>
 
-        <aside
-          className={`flex min-h-0 flex-col border-slate-200 bg-white ${
-            isMobile
-              ? mobileTab === 'node' || mobileTab === 'logs'
+        {isMobile ? (
+          <aside
+            className={`flex min-h-0 flex-col border-slate-200 bg-white ${
+              mobileTab === 'nodes' || mobileTab === 'node' || mobileTab === 'logs'
                 ? 'flex w-full flex-1 border-t'
                 : 'hidden'
-              : 'w-[min(100%,24rem)] border-l sm:max-w-md'
-          }`}
-        >
-          {isMobile ? (
-            mobileTab === 'logs' ? (
+            }`}
+          >
+            {mobileTab === 'logs' ? (
               <LiveActivityPanel logs={logs} running={running} currentSend={currentSend} />
+            ) : mobileTab === 'nodes' ? (
+              <WorkflowNodePalette onAddNode={addNodeFromPalette} />
             ) : mobileTab === 'node' ? (
               <CampaignWorkflowNodeInspector
-                selectedNodeId={selectedNodeId}
+                selectedNodeIds={selectedNodeIds}
                 draft={draft}
                 onChange={setDraft}
-                onClose={() => setSelectedNodeId(null)}
+                onClose={() => setSelectedNodeIds([])}
+                campaignId={campaignId}
+                onToast={pushToast}
+                nodeTestAutoRunKey={nodeTestAutoRunKey}
+                onNodeTestEnd={() => setTestingNodeId(null)}
               />
-            ) : null
-          ) : (
+            ) : null}
+          </aside>
+        ) : (
+          <WorkflowCollapsibleSidebar
+            side="right"
+            open={rightSidebarOpen}
+            onToggle={() => setRightSidebarOpen((v) => !v)}
+            panelLabel={editable ? 'Properties' : 'Activity'}
+            className="w-[min(100%,24rem)] sm:max-w-md"
+          >
             <div className="flex min-h-0 flex-1 flex-col">
               {editable ? (
                 <div className="flex min-h-0 flex-1 flex-col border-b border-slate-200">
                   <CampaignWorkflowNodeInspector
-                    selectedNodeId={selectedNodeId}
+                    selectedNodeIds={selectedNodeIds}
                     draft={draft}
                     onChange={setDraft}
-                    onClose={() => setSelectedNodeId(null)}
+                    onClose={() => setSelectedNodeIds([])}
+                    campaignId={campaignId}
+                    onToast={pushToast}
+                    nodeTestAutoRunKey={nodeTestAutoRunKey}
+                    onNodeTestEnd={() => setTestingNodeId(null)}
                   />
                 </div>
               ) : null}
@@ -453,8 +648,8 @@ function CampaignWorkflowView(props: Props) {
                 className={editable ? 'max-h-[38vh] shrink-0' : 'min-h-0 flex-1'}
               />
             </div>
-          )}
-        </aside>
+          </WorkflowCollapsibleSidebar>
+        )}
       </div>
     </motion.div>
   )

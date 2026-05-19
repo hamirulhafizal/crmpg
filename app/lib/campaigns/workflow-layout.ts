@@ -1,6 +1,7 @@
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { definitionToDraft, draftToDefinition, resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
+import { addWorkflowStepToDraft } from '@/app/lib/workflows/whatsapp-step'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export type CampaignWorkflowLayout = {
@@ -97,15 +98,5 @@ export function draftFromCampaignPayload(campaign: {
 }
 
 export function addWorkflowStep(draft: WorkflowEditorDraft): WorkflowEditorDraft {
-  const active = draft.steps.filter((s) => s.is_active !== false)
-  const order = active.length ? Math.max(...active.map((s) => s.step_order)) + 1 : 1
-  const newStep: WorkflowEditorStep = {
-    step_order: order,
-    delay_days: 0,
-    send_time: '10:00',
-    message_template: 'Hello {{name}}, …',
-    is_active: true,
-  }
-  const next = { ...draft, steps: [...draft.steps, newStep] }
-  return definitionToDraft(draftToDefinition(next))
+  return addWorkflowStepToDraft(draft)
 }

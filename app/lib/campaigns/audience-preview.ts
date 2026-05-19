@@ -64,6 +64,10 @@ export function describeCampaignAudienceFilters(
   if (filters.gender?.trim()) {
     lines.push(`Gender: ${filters.gender.trim()}`)
   }
+  const ethnicities = (filters.ethnicities ?? []).filter(Boolean)
+  if (ethnicities.length) {
+    lines.push(`Ethnicity (any): ${ethnicities.join(', ')}`)
+  }
   if (filters.location_contains?.trim()) {
     lines.push(`Location contains: “${filters.location_contains.trim()}”`)
   }
@@ -99,7 +103,7 @@ export async function computeEligibleAudiencePreview(
     const { data: batch, error } = await supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', userId)
