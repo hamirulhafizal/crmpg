@@ -205,7 +205,7 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
     slug: 'crm.flow.wait',
     category: 'flow',
     label: 'Wait',
-    description: 'Pause between steps (seconds)',
+    description: 'Pause between WhatsApp steps (random min–max wait)',
     icon: 'hourglass',
     parameter_schema: {
       type: 'object',
@@ -279,7 +279,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
         is_active: true,
       }
     case 'crm.flow.wait':
-      return { wait_min_seconds: 30, wait_max_seconds: 60 }
+      return { wait_min_seconds: 60, wait_max_seconds: 120 }
     case 'crm.flow.pass':
       return { display_name: 'Next' }
     default:

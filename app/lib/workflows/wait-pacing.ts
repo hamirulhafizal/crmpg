@@ -1,12 +1,7 @@
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
+import { normalizeWaitParams, pickWaitSeconds } from '@/app/lib/workflows/wait-params'
 
-/** Random integer seconds in [min, max] inclusive. */
-export function pickWaitSeconds(minSeconds: number, maxSeconds: number): number {
-  const min = Math.max(0, Math.floor(Number(minSeconds) || 0))
-  const max = Math.max(min, Math.floor(Number(maxSeconds) || min))
-  if (max === min) return min
-  return min + Math.floor(Math.random() * (max - min + 1))
-}
+export { pickWaitSeconds } from '@/app/lib/workflows/wait-params'
 
 /**
  * Sum wait-node delays along a path from `fromNodeId` to `toNodeId` (BFS, first path wins).
@@ -41,8 +36,8 @@ export function waitSecondsOnPath(
       const node = nodeById.get(nextId)
       let add = 0
       if (node?.type === 'crm.flow.wait') {
-        const p = node.parameters ?? {}
-        add = pickWaitSeconds(Number(p.wait_min_seconds ?? 0), Number(p.wait_max_seconds ?? 0))
+        const { minSeconds, maxSeconds } = normalizeWaitParams(node.parameters ?? {})
+        add = pickWaitSeconds(minSeconds, maxSeconds)
       }
       queue.push({ id: nextId, wait: wait + add })
     }

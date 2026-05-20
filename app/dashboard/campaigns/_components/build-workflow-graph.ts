@@ -2,6 +2,7 @@ import type { Edge, Node } from '@xyflow/react'
 import { Position } from '@xyflow/react'
 import type { WorkflowNodeData, WorkflowNodeKind } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNode'
 import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
+import { formatWaitRangeLabel, normalizeWaitParams } from '@/app/lib/workflows/wait-params'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { getBuiltinNodeType } from '@/app/lib/workflows/catalog'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
@@ -92,9 +93,8 @@ function subtitleForType(type: string, params: Record<string, unknown>): string 
       return `${method} · step ${params.step_order ?? '?'}`
     }
     case 'crm.flow.wait': {
-      const min = params.wait_min_seconds ?? 30
-      const max = params.wait_max_seconds ?? min
-      return min === max ? `${min}s` : `${min}–${max}s`
+      const { minSeconds, maxSeconds } = normalizeWaitParams(params)
+      return formatWaitRangeLabel(minSeconds, maxSeconds)
     }
     case 'crm.flow.pass':
       return ''

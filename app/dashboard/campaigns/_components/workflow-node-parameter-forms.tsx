@@ -9,8 +9,16 @@ import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { getBuiltinNodeType } from '@/app/lib/workflows/catalog'
 import { patchNodeParametersInDraft } from '@/app/lib/workflows/graph-mutate'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
-import { safeInt } from '@/app/lib/safe-number'
+import {
+  formatWaitRangeLabel,
+  minutesToSeconds,
+  normalizeWaitParams,
+  secondsToMinutes,
+  WAIT_RANGE_PRESETS,
+  activeWaitPresetId,
+} from '@/app/lib/workflows/wait-params'
 import type { WorkflowNodeInstance } from '@/app/lib/workflows/types'
+import { safeInt } from '@/app/lib/safe-number'
 
 export function nodeDisplayTitle(node: WorkflowNodeInstance): string {
   const name = node.parameters?.display_name
@@ -270,8 +278,16 @@ export function WaitNodeFields({
   onChange: (d: WorkflowEditorDraft) => void
 }) {
   const p = node.parameters ?? {}
+  const { minSeconds, maxSeconds } = normalizeWaitParams(p)
+  const activePreset = activeWaitPresetId(minSeconds, maxSeconds)
   const patch = (partial: Record<string, unknown>) =>
     onChange(patchNodeAndRefreshDraft(draft, nodeId, partial))
+
+  const patchMinutes = (minMinutes: number, maxMinutes: number) => {
+    const nextMin = minutesToSeconds(minMinutes)
+    const nextMax = Math.max(nextMin, minutesToSeconds(maxMinutes))
+    patch({ wait_min_seconds: nextMin, wait_max_seconds: nextMax })
+  }
 
   return (
     <>
@@ -282,24 +298,56 @@ export function WaitNodeFields({
           onChange={(e) => patch({ display_name: e.target.value })}
         />
       </InspectorField>
-      <InspectorField label="Min wait (seconds)">
-        <input
-          type="number"
-          min={0}
-          className="input text-black"
-          value={safeInt(p.wait_min_seconds, 30, 0)}
-          onChange={(e) => patch({ wait_min_seconds: Math.max(0, Number(e.target.value) || 0) })}
-        />
+
+      <InspectorField
+        label="Wait before next WhatsApp"
+        hint={`Random delay: ${formatWaitRangeLabel(minSeconds, maxSeconds)} (${minSeconds}–${maxSeconds}s stored on node).`}
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {WAIT_RANGE_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() =>
+                patch({
+                  wait_min_seconds: preset.minSeconds,
+                  wait_max_seconds: preset.maxSeconds,
+                })
+              }
+              className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                activePreset === preset.id
+                  ? 'border-violet-400 bg-violet-50 text-violet-900'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-violet-300 hover:bg-violet-50/60'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
       </InspectorField>
-      <InspectorField label="Max wait (seconds)" hint="Random delay between this step and the next WhatsApp send (30–60 = wait 30s to 60s).">
-        <input
-          type="number"
-          min={0}
-          className="input text-black"
-          value={safeInt(p.wait_max_seconds, 60, 0)}
-          onChange={(e) => patch({ wait_max_seconds: Math.max(0, Number(e.target.value) || 0) })}
-        />
-      </InspectorField>
+
+      <div className="grid grid-cols-2 gap-3">
+        <InspectorField label="Min (minutes)">
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            className="input text-black"
+            value={secondsToMinutes(minSeconds)}
+            onChange={(e) => patchMinutes(Number(e.target.value) || 0, secondsToMinutes(maxSeconds))}
+          />
+        </InspectorField>
+        <InspectorField label="Max (minutes)">
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            className="input text-black"
+            value={secondsToMinutes(maxSeconds)}
+            onChange={(e) => patchMinutes(secondsToMinutes(minSeconds), Number(e.target.value) || 0)}
+          />
+        </InspectorField>
+      </div>
     </>
   )
 }
