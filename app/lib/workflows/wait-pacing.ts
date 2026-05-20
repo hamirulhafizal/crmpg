@@ -3,6 +3,20 @@ import { normalizeWaitParams, pickWaitSeconds } from '@/app/lib/workflows/wait-p
 
 export { pickWaitSeconds } from '@/app/lib/workflows/wait-params'
 
+export function loopNodeIdFromDefinition(definition: WorkflowDefinition): string | null {
+  return definition.nodes.find((n) => n.type === 'crm.flow.loop')?.id ?? null
+}
+
+/** Wait nodes on the path from the last sent step back to the loop (pace before next customer). */
+export function waitSecondsBeforeNextCustomer(
+  definition: WorkflowDefinition,
+  completedStepNodeId: string
+): number {
+  const loopId = loopNodeIdFromDefinition(definition)
+  if (!loopId || !completedStepNodeId) return 0
+  return waitSecondsOnPath(definition, completedStepNodeId, loopId)
+}
+
 /**
  * Sum wait-node delays along a path from `fromNodeId` to `toNodeId` (BFS, first path wins).
  * Used after a WhatsApp step to pace the next step.

@@ -130,8 +130,9 @@ export async function reconcileSequentialQueue(
 export async function promoteNextQueuedEnrollment(
   supabase: Supabase,
   campaignId: string,
-  log?: (msg: string) => void
+  opts?: { nextSendAt?: Date | string; log?: (msg: string) => void }
 ): Promise<boolean> {
+  const log = opts?.log
   const { data, error } = await supabase
     .from('campaign_enrollments')
     .select('id, metadata, enrolled_at')
@@ -143,19 +144,26 @@ export async function promoteNextQueuedEnrollment(
   const next = ((data ?? []) as EnrollmentRow[]).find((row) => isQueueWaiting(row.metadata))
   if (!next) return false
 
-  const isoNow = new Date().toISOString()
+  const sendAt =
+    opts?.nextSendAt instanceof Date
+      ? opts.nextSendAt.toISOString()
+      : typeof opts?.nextSendAt === 'string'
+        ? opts.nextSendAt
+        : new Date().toISOString()
+
   await supabase
     .from('campaign_enrollments')
     .update({
-      next_send_at: isoNow,
+      next_send_at: sendAt,
       metadata: metadataWithCustomerQueue((next.metadata ?? {}) as Record<string, unknown>, {
         status: 'active',
-        enrolled_at: String(next.enrolled_at ?? isoNow),
+        enrolled_at: String(next.enrolled_at ?? sendAt),
       }),
     })
     .eq('id', next.id)
 
-  log?.(`queue promote enrollment=${next.id} → active (next send now)`)
+  const dueLabel = sendAt <= new Date().toISOString() ? 'now' : `at ${sendAt}`
+  log?.(`queue promote enrollment=${next.id} → active (next send ${dueLabel})`)
   return true
 }
 

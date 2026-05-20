@@ -31,7 +31,7 @@ import {
   nodeIdForStep,
   type CampaignWorkflowPlan,
 } from '@/app/lib/workflows/plan'
-import { waitSecondsOnPath } from '@/app/lib/workflows/wait-pacing'
+import { waitSecondsBeforeNextCustomer, waitSecondsOnPath } from '@/app/lib/workflows/wait-pacing'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -145,6 +145,34 @@ async function logCampaignPipelineDiagnostics(
   } else {
     cronLog(debugLines, 'enrollment_recent_sample=[] (no rows for this campaign)')
   }
+}
+
+async function promoteNextCustomerInQueue(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  campaignId: string,
+  plan: CampaignWorkflowPlan,
+  completedStepOrder: number,
+  afterAt: string | Date,
+  debugLines?: string[]
+): Promise<void> {
+  if (!usesSequentialCustomerQueue(plan)) return
+
+  const lastNodeId = nodeIdForStep(plan, completedStepOrder)
+  const waitSec = waitSecondsBeforeNextCustomer(plan.definition, lastNodeId)
+  const baseMs = new Date(afterAt).getTime()
+  const promoteAt = waitSec > 0 ? new Date(baseMs + waitSec * 1000) : new Date(baseMs)
+
+  if (waitSec > 0) {
+    cronLog(
+      debugLines,
+      `queue inter-customer wait=${waitSec}s after step=${completedStepOrder} → next customer at ${promoteAt.toISOString()}`
+    )
+  }
+
+  await promoteNextQueuedEnrollment(supabase, campaignId, {
+    nextSendAt: promoteAt,
+    log: (msg) => cronLog(debugLines, msg),
+  })
 }
 
 async function countSentToday(
@@ -396,7 +424,14 @@ async function processDueEnrollmentRows(
         })
         .eq('id', row.id)
       if (usesSequentialCustomerQueue(plan)) {
-        await promoteNextQueuedEnrollment(supabase, campaign.id, (msg) => cronLog(debugLines, msg))
+        await promoteNextCustomerInQueue(
+          supabase,
+          campaign.id,
+          plan,
+          row.last_step_sent,
+          new Date(),
+          debugLines
+        )
       }
       continue
     }
@@ -565,8 +600,15 @@ async function processDueEnrollmentRows(
         })
         .eq('id', row.id)
 
-      if (!following && usesSequentialCustomerQueue(plan)) {
-        await promoteNextQueuedEnrollment(supabase, campaign.id, (msg) => cronLog(debugLines, msg))
+      if (!following) {
+        await promoteNextCustomerInQueue(
+          supabase,
+          campaign.id,
+          plan,
+          nextStep.step_order,
+          sentAt,
+          debugLines
+        )
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
