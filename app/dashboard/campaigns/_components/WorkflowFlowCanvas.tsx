@@ -19,6 +19,8 @@ import '@xyflow/react/dist/style.css'
 import { buildWorkflowFlowGraph } from '@/app/dashboard/campaigns/_components/build-workflow-graph'
 import { campaignWorkflowNodeTypes } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNode'
 import { WorkflowCanvasTidyButton } from '@/app/dashboard/campaigns/_components/WorkflowCanvasTidyButton'
+import { WorkflowCanvasThemeToggle } from '@/app/dashboard/campaigns/_components/WorkflowCanvasThemeToggle'
+import { useWorkflowCanvasTheme } from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
 import { WorkflowDeletableEdge } from '@/app/dashboard/campaigns/_components/WorkflowDeletableEdge'
 import { WorkflowEdgeActionsProvider } from '@/app/dashboard/campaigns/_components/workflow-edge-actions-context'
 import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
@@ -82,6 +84,10 @@ export function WorkflowFlowCanvas({
   testingNodeId?: string | null
   onTidyLayout?: (def: WorkflowDefinition) => void
 }) {
+  const { isDark } = useWorkflowCanvasTheme()
+  const dotColor = isDark ? '#3a4358' : '#c4c9d4'
+  const edgeMarkerColor = isDark ? '#64748b' : '#cbd5e1'
+
   const built = useMemo(
     () =>
       buildWorkflowFlowGraph({
@@ -129,6 +135,15 @@ export function WorkflowFlowCanvas({
   useEffect(() => {
     setEdges(built.edges)
   }, [edgesFingerprint, built.edges, setEdges])
+
+  useEffect(() => {
+    setEdges((eds) =>
+      eds.map((e) => ({
+        ...e,
+        markerEnd: workflowEdgeMarkerEnd(edgeMarkerColor),
+      }))
+    )
+  }, [edgeMarkerColor, setEdges])
 
   /** Parent draft must not update inside a setEdges updater (React render-phase error). */
   const syncEdgesToDraft = useCallback(
@@ -273,14 +288,15 @@ export function WorkflowFlowCanvas({
         selectable: editable,
         deletable: editable,
         focusable: editable,
-        markerEnd: workflowEdgeMarkerEnd('#cbd5e1'),
+        markerEnd: workflowEdgeMarkerEnd(edgeMarkerColor),
       }}
       proOptions={{ hideAttribution: true }}
       style={{ width: '100%', height: '100%' }}
-      className="campaign-workflow-canvas"
+      className={`campaign-workflow-canvas${isDark ? ' campaign-workflow-canvas--dark' : ''}`}
     >
-      <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} color="#c4c9d4" />
+      <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} color={dotColor} />
       <Controls showInteractive={false} className="campaign-workflow-controls">
+        <WorkflowCanvasThemeToggle />
         {onTidyLayout ? (
           <WorkflowCanvasTidyButton
             draft={draft}
@@ -291,7 +307,13 @@ export function WorkflowFlowCanvas({
         ) : null}
       </Controls>
       <Panel position="top-center" className="pointer-events-none mt-2 hidden sm:block">
-        <span className="rounded-full border border-slate-200/80 bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm backdrop-blur">
+        <span
+          className={`rounded-full border px-3 py-1 text-[11px] font-medium shadow-sm backdrop-blur ${
+            isDark
+              ? 'border-slate-600/80 bg-slate-900/90 text-slate-300'
+              : 'border-slate-200/80 bg-white/90 text-slate-500'
+          }`}
+        >
           {editable
             ? '▶ Test node · Ctrl+V paste · Ctrl+A select all · Ctrl+Z undo'
             : 'Pan & zoom to explore'}

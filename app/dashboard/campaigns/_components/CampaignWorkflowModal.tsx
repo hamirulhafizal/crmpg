@@ -26,6 +26,11 @@ import {
 } from '@/app/dashboard/campaigns/_components/WorkflowCollapsibleSidebar'
 import { WorkflowNodePalette } from '@/app/dashboard/campaigns/_components/WorkflowNodePalette'
 import {
+  WorkflowCanvasThemeProvider,
+  workflowCanvasShellProps,
+  useWorkflowCanvasTheme,
+} from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
+import {
   addWorkflowStep,
   draftFromCampaignPayload,
   type WorkflowEditorDraft,
@@ -142,7 +147,7 @@ function LiveActivityPanel({
   className?: string
 }) {
   return (
-    <div className={`flex min-h-0 flex-col ${className ?? ''}`}>
+    <div className={`flex min-h-0 flex-col workflow-chrome ${className ?? ''}`}>
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Executions</h3>
@@ -246,6 +251,8 @@ function CampaignWorkflowView(props: Props) {
   const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const { theme } = useWorkflowCanvasTheme()
+  const shellTheme = workflowCanvasShellProps(theme)
 
   const openNodeCatalog = useCallback(() => {
     if (isMobile) {
@@ -333,8 +340,9 @@ function CampaignWorkflowView(props: Props) {
       editable,
       leftSidebarOpen,
       rightSidebarOpen,
+      theme,
     ],
-    [isMobile, draft.steps.length, nodeStates, selectedNodeIds, editable, leftSidebarOpen, rightSidebarOpen]
+    [isMobile, draft.steps.length, nodeStates, selectedNodeIds, editable, leftSidebarOpen, rightSidebarOpen, theme]
   )
 
   const saveWorkflow = async () => {
@@ -377,7 +385,8 @@ function CampaignWorkflowView(props: Props) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[1000] flex flex-col bg-[#eceef1]"
+      className={`campaign-workflow-shell fixed inset-0 z-[1000] flex flex-col bg-[#eceef1] ${shellTheme.className ?? ''}`}
+      data-workflow-theme={shellTheme['data-workflow-theme']}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -385,7 +394,7 @@ function CampaignWorkflowView(props: Props) {
       aria-modal="true"
       aria-labelledby="workflow-title"
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-slate-200/90 bg-white px-3 py-2.5 shadow-sm sm:gap-3 sm:px-4 sm:py-3">
+      <header className="workflow-chrome flex shrink-0 items-center gap-2 border-b border-slate-200/90 bg-white px-3 py-2.5 shadow-sm sm:gap-3 sm:px-4 sm:py-3">
         <button
           type="button"
           onClick={handleClose}
@@ -494,7 +503,7 @@ function CampaignWorkflowView(props: Props) {
       ) : null}
 
       {isMobile ? (
-        <div className="flex shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
+        <div className="workflow-chrome flex shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
           <div className="flex w-full rounded-lg bg-slate-100 p-0.5">
             {(['canvas', ...(editable ? (['nodes', 'node'] as const) : []), 'logs'] as const).map((tab) => (
               <button
@@ -595,7 +604,7 @@ function CampaignWorkflowView(props: Props) {
 
         {isMobile ? (
           <aside
-            className={`flex min-h-0 flex-col border-slate-200 bg-white ${
+            className={`workflow-chrome flex min-h-0 flex-col border-slate-200 bg-white ${
               mobileTab === 'nodes' || mobileTab === 'node' || mobileTab === 'logs'
                 ? 'flex w-full flex-1 border-t'
                 : 'hidden'
@@ -702,7 +711,11 @@ export function CampaignWorkflowModal(props: Props) {
 
   return (
     <AnimatePresence>
-      {open ? <CampaignWorkflowView {...props} initialDraft={draft} /> : null}
+      {open ? (
+        <WorkflowCanvasThemeProvider>
+          <CampaignWorkflowView {...props} initialDraft={draft} />
+        </WorkflowCanvasThemeProvider>
+      ) : null}
     </AnimatePresence>
   )
 }

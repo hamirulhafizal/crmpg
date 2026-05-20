@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useWorkflowCanvasTheme } from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
 import { BUILTIN_WORKFLOW_NODE_TYPES } from '@/app/lib/workflows/catalog'
 import type { WorkflowNodeTypeDescriptor } from '@/app/lib/workflows/types'
 
@@ -24,6 +25,7 @@ export function WorkflowNodePalette({
 }: {
   onAddNode: (typeSlug: string) => void
 }) {
+  const { isDark } = useWorkflowCanvasTheme()
   const [types, setTypes] = useState<WorkflowNodeTypeDescriptor[]>(BUILTIN_WORKFLOW_NODE_TYPES)
   const [loading, setLoading] = useState(true)
 
@@ -44,8 +46,8 @@ export function WorkflowNodePalette({
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="border-b border-slate-200 px-3 py-3">
+    <div className="workflow-node-palette workflow-chrome flex h-full min-h-0 w-full flex-col bg-white">
+      <div className="workflow-node-palette-header border-b border-slate-200 px-3 py-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nodes</h2>
         <p className="mt-0.5 text-[11px] text-slate-400">Drag or click to add</p>
       </div>
@@ -63,15 +65,33 @@ export function WorkflowNodePalette({
                   e.dataTransfer.effectAllowed = 'move'
                 }}
                 onClick={() => onAddNode(t.slug)}
-                className="mb-1 flex w-full items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-2.5 py-2 text-left transition-colors hover:border-violet-300 hover:bg-violet-50/50"
+                className={`workflow-node-palette-item mb-1 flex w-full items-start gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors ${
+                  isDark
+                    ? 'border-[#2f384c] bg-[#252c3d] hover:border-violet-500/50 hover:bg-[#2f384c]'
+                    : 'border-slate-200 bg-slate-50/80 hover:border-violet-300 hover:bg-violet-50/50'
+                }`}
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-base shadow-sm">
+                <span
+                  className={`workflow-node-palette-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base ${
+                    isDark
+                      ? 'border border-[#2f384c] bg-[#1c2230] shadow-none'
+                      : 'bg-white shadow-sm'
+                  }`}
+                >
                   {ICONS[t.icon ?? ''] ?? '◆'}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-xs font-semibold text-slate-900">{t.label}</span>
+                  <span
+                    className={`block text-xs font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}
+                  >
+                    {t.label}
+                  </span>
                   {t.description ? (
-                    <span className="mt-0.5 line-clamp-2 text-[10px] text-slate-500">{t.description}</span>
+                    <span
+                      className={`mt-0.5 line-clamp-2 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                    >
+                      {t.description}
+                    </span>
                   ) : null}
                 </span>
               </button>

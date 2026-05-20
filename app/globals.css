@@ -108,6 +108,146 @@ body {
   fill: currentColor;
 }
 
+/* Workflow editor dark mode (scoped to campaign workflow shell) */
+.campaign-workflow-shell--dark {
+  --wf-bg: #141820;
+  --wf-surface: #1c2230;
+  --wf-surface-muted: #252c3d;
+  --wf-border: #2f384c;
+  --wf-text: #e2e8f0;
+  --wf-muted: #94a3b8;
+  background: var(--wf-bg) !important;
+  color: var(--wf-text);
+}
+
+.campaign-workflow-shell--dark .workflow-chrome {
+  background: var(--wf-surface) !important;
+  border-color: var(--wf-border) !important;
+  color: var(--wf-text);
+}
+
+.campaign-workflow-shell--dark header.workflow-chrome button,
+.campaign-workflow-shell--dark .workflow-chrome button:not([class*='bg-']) {
+  border-color: var(--wf-border);
+  color: var(--wf-text);
+  background: var(--wf-surface-muted);
+}
+
+.campaign-workflow-shell--dark header.workflow-chrome button:hover,
+.campaign-workflow-shell--dark .workflow-chrome button:hover:not([class*='bg-']) {
+  background: #323b50;
+}
+
+.campaign-workflow-shell--dark h1,
+.campaign-workflow-shell--dark h2,
+.campaign-workflow-shell--dark h3,
+.campaign-workflow-shell--dark label,
+.campaign-workflow-shell--dark .text-slate-900,
+.campaign-workflow-shell--dark .text-slate-800,
+.campaign-workflow-shell--dark .text-slate-700 {
+  color: var(--wf-text) !important;
+}
+
+.campaign-workflow-shell--dark .text-slate-500,
+.campaign-workflow-shell--dark .text-slate-400,
+.campaign-workflow-shell--dark .hint {
+  color: var(--wf-muted) !important;
+}
+
+.campaign-workflow-shell--dark .input,
+.campaign-workflow-shell--dark input,
+.campaign-workflow-shell--dark textarea,
+.campaign-workflow-shell--dark select {
+  background: var(--wf-surface-muted) !important;
+  border-color: var(--wf-border) !important;
+  color: var(--wf-text) !important;
+}
+
+.campaign-workflow-shell--dark .border-slate-200,
+.campaign-workflow-shell--dark .border-slate-200\/90,
+.campaign-workflow-shell--dark .border-slate-300 {
+  border-color: var(--wf-border) !important;
+}
+
+.campaign-workflow-shell--dark .bg-slate-50,
+.campaign-workflow-shell--dark .bg-slate-100,
+.campaign-workflow-shell--dark .bg-white {
+  background: var(--wf-surface-muted) !important;
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-controls {
+  border-color: var(--wf-border);
+  background: rgba(28, 34, 48, 0.96);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button {
+  color: #cbd5e1;
+  border-color: var(--wf-border);
+  background: var(--wf-surface-muted);
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button:hover {
+  color: #f8fafc;
+  background: #323b50;
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-canvas .react-flow__edge-path {
+  stroke: #64748b;
+}
+
+.campaign-workflow-shell--dark .font-mono.text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+.campaign-workflow-shell--dark .font-mono.text-slate-400 {
+  color: #64748b !important;
+}
+
+.campaign-workflow-shell--dark .workflow-node-palette {
+  background: var(--wf-surface) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-node-palette-header {
+  border-color: var(--wf-border) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-node-palette-item {
+  background: var(--wf-surface-muted) !important;
+  border-color: var(--wf-border) !important;
+  color: var(--wf-text);
+}
+
+.campaign-workflow-shell--dark .workflow-node-palette-item:hover {
+  background: #323b50 !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-node-palette-icon {
+  background: var(--wf-surface) !important;
+  border-color: var(--wf-border) !important;
+  box-shadow: none !important;
+}
+
+.campaign-workflow-shell--dark .workflow-chrome button.workflow-chrome,
+.campaign-workflow-shell--dark .workflow-sidebar-toggle {
+  background: var(--wf-surface-muted) !important;
+  border-color: var(--wf-border) !important;
+  color: var(--wf-muted) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-chrome button.workflow-chrome:hover,
+.campaign-workflow-shell--dark .workflow-sidebar-toggle:hover {
+  background: #323b50 !important;
+  border-color: rgba(139, 92, 246, 0.45) !important;
+  color: #c4b5fd !important;
+}
+
+.campaign-workflow-shell--dark .workflow-sidebar-toggle-icon {
+  background: var(--wf-surface) !important;
+  border-color: var(--wf-border) !important;
+}
+
 /* View Transitions - Cross-fade animation */
 @supports (view-transition-name: none) {
   ::view-transition-old(root),

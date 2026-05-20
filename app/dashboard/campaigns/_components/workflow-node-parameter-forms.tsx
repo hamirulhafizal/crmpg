@@ -291,7 +291,7 @@ export function WaitNodeFields({
           onChange={(e) => patch({ wait_min_seconds: Math.max(0, Number(e.target.value) || 0) })}
         />
       </InspectorField>
-      <InspectorField label="Max wait (seconds)" hint="CRM engine uses send_time + daily cap; waits are visual pacing notes for now.">
+      <InspectorField label="Max wait (seconds)" hint="Random delay between this step and the next WhatsApp send (30–60 = wait 30s to 60s).">
         <input
           type="number"
           min={0}

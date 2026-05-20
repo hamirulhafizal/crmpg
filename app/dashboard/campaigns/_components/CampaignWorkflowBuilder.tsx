@@ -13,6 +13,11 @@ import {
   WorkflowSidebarFloatingToggle,
 } from '@/app/dashboard/campaigns/_components/WorkflowCollapsibleSidebar'
 import { WorkflowNodePalette } from '@/app/dashboard/campaigns/_components/WorkflowNodePalette'
+import {
+  WorkflowCanvasThemeProvider,
+  workflowCanvasShellProps,
+  useWorkflowCanvasTheme,
+} from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
 import { addWorkflowStep, type WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { createDefaultWorkflowDefinition } from '@/app/lib/workflows/defaults'
 import {
@@ -142,6 +147,22 @@ export function CampaignWorkflowBuilder({
   onCreated: (id: string) => void
   pushToast: (type: 'success' | 'error', text: string) => void
 }) {
+  return (
+    <WorkflowCanvasThemeProvider>
+      <CampaignWorkflowBuilderInner onClose={onClose} onCreated={onCreated} pushToast={pushToast} />
+    </WorkflowCanvasThemeProvider>
+  )
+}
+
+function CampaignWorkflowBuilderInner({
+  onClose,
+  onCreated,
+  pushToast,
+}: {
+  onClose: () => void
+  onCreated: (id: string) => void
+  pushToast: (type: 'success' | 'error', text: string) => void
+}) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const initialDraft = useMemo(() => definitionToDraft(createDefaultWorkflowDefinition()), [])
@@ -153,6 +174,8 @@ export function CampaignWorkflowBuilder({
   const [error, setError] = useState<string | null>(null)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
+  const { theme } = useWorkflowCanvasTheme()
+  const shellTheme = workflowCanvasShellProps(theme)
 
   useEffect(() => {
     const def = draft.definition
@@ -216,8 +239,11 @@ export function CampaignWorkflowBuilder({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#eceef1]">
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2.5 sm:px-4">
+    <div
+      className={`campaign-workflow-shell flex min-h-0 flex-1 flex-col bg-[#eceef1] ${shellTheme.className ?? ''}`}
+      data-workflow-theme={shellTheme['data-workflow-theme']}
+    >
+      <header className="workflow-chrome flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2.5 sm:px-4">
         <button
           type="button"
           onClick={onClose}
@@ -294,6 +320,7 @@ export function CampaignWorkflowBuilder({
                 selectedNodeIds.join(','),
                 leftSidebarOpen,
                 rightSidebarOpen,
+                theme,
               ]}
             />
           </ReactFlowProvider>

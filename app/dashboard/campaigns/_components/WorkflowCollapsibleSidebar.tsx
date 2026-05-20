@@ -40,11 +40,11 @@ export function WorkflowSidebarFloatingToggle({
       onClick={onOpen}
       title={title}
       aria-label={title}
-      className={`absolute top-3 z-30 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 py-1.5 text-xs font-medium text-slate-600 shadow-md backdrop-blur-sm transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 ${
+      className={`workflow-sidebar-toggle workflow-chrome absolute top-3 z-30 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 py-1.5 text-xs font-medium text-slate-600 shadow-md backdrop-blur-sm transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 ${
         isLeft ? 'left-3 pl-2 pr-2.5' : 'right-3 pl-2.5 pr-2'
       }`}
     >
-      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white">
+      <span className="workflow-sidebar-toggle-icon flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white">
         <ChevronIcon direction={isLeft ? 'right' : 'left'} />
       </span>
       <span className="hidden sm:inline">{panelLabel}</span>
@@ -74,7 +74,7 @@ export function WorkflowCollapsibleSidebar({
 
   return (
     <div
-      className={`relative flex h-full min-h-0 shrink-0 flex-col border-slate-200 bg-white ${
+      className={`relative flex h-full min-h-0 shrink-0 flex-col border-slate-200 bg-white workflow-chrome ${
         isLeft ? 'border-r' : 'border-l'
       } ${className}`}
     >
@@ -83,7 +83,7 @@ export function WorkflowCollapsibleSidebar({
         onClick={onToggle}
         title={collapseTitle}
         aria-label={collapseTitle}
-        className={`absolute top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 ${
+        className={`workflow-sidebar-toggle workflow-chrome absolute top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md transition-colors hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 ${
           isLeft ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
         }`}
       >

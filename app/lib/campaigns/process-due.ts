@@ -21,6 +21,7 @@ import {
   nodeIdForStep,
   type CampaignWorkflowPlan,
 } from '@/app/lib/workflows/plan'
+import { waitSecondsOnPath } from '@/app/lib/workflows/wait-pacing'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -483,7 +484,11 @@ async function processDueEnrollmentRows(
       const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
       let nextSend: Date | null = null
       if (following) {
-        // Next step time comes only from that step's delay_days + send_time (campaign timezone).
+        const fromNodeId = nodeIdForStep(plan, nextStep.step_order)
+        const toNodeId = nodeIdForStep(plan, following.step_order)
+        const waitSec = waitSecondsOnPath(plan.definition, fromNodeId, toNodeId)
+
+        // Next step time comes from that step's delay_days + send_time (campaign timezone).
         // Do not apply campaign.cooldown_days here — it defaulted to 30d and overrode e.g. "delay 1d"
         // so step 2 was scheduled a month later instead of the next day.
         let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
@@ -491,6 +496,16 @@ async function processDueEnrollmentRows(
         // Same-day step with scheduled send_time already passed (e.g. default 10:00 after an evening send) → next calendar slot.
         if (isScheduledSendTime(following.send_time) && computed.getTime() <= sentMs) {
           computed = computeSendAt(new Date(sentAt), following.delay_days + 1, following.send_time, tz)
+        }
+        if (waitSec > 0) {
+          const afterWait = sentMs + waitSec * 1000
+          if (computed.getTime() < afterWait) {
+            computed = new Date(afterWait)
+          }
+          cronLog(
+            debugLines,
+            `wait pacing enrollment=${row.id} step=${nextStep.step_order}→${following.step_order} wait=${waitSec}s next_send_at=${computed.toISOString()}`
+          )
         }
         nextSend = computed
       }
