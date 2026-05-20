@@ -195,7 +195,10 @@ export function LoopNodeFields({
           onChange={(e) => patch({ display_name: e.target.value })}
         />
       </InspectorField>
-      <InspectorField label="Batch size" hint="1 = one customer per loop (like n8n Split in Batches).">
+      <InspectorField
+        label="Batch size"
+        hint="1 = one customer at a time: finish msg 1 → wait → msg 2 for customer A, then start customer B."
+      >
         <input
           type="number"
           min={1}

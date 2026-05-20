@@ -1,4 +1,14 @@
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import {
+  countActiveQueueSlots,
+  countWaitingEnrollments,
+  filterDueRowsForSequentialQueue,
+  metadataWithCustomerQueue,
+  promoteNextQueuedEnrollment,
+  reconcileSequentialQueue,
+  usesSequentialCustomerQueue,
+  type CustomerQueueMeta,
+} from '@/app/lib/campaigns/customer-queue'
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
@@ -249,14 +259,40 @@ async function syncEnrollmentsForCampaign(
         nextSend = enrollMoment
       }
 
+      const baseMeta = metadataForNewEnrollment(plan) as Record<string, unknown>
+      let nextSendAt: string | null = nextSend.toISOString()
+      let queueMeta: CustomerQueueMeta = {
+        status: 'active',
+        enrolled_at: enrollMoment.toISOString(),
+      }
+
+      if (usesSequentialCustomerQueue(plan)) {
+        const activeSlots = await countActiveQueueSlots(supabase, campaign.id)
+        if (activeSlots > 0) {
+          const position = (await countWaitingEnrollments(supabase, campaign.id)) + 1
+          queueMeta = {
+            status: 'waiting',
+            position,
+            enrolled_at: enrollMoment.toISOString(),
+          }
+          nextSendAt = null
+          cronLog(
+            debugLines,
+            `queue waiting customer=${c.id} campaign=${campaign.id} position=${position} (active customer still in flow)`
+          )
+        } else {
+          cronLog(debugLines, `queue active customer=${c.id} campaign=${campaign.id} (first in loop)`)
+        }
+      }
+
       const { error: insErr } = await supabase.from('campaign_enrollments').insert({
         campaign_id: campaign.id,
         customer_id: c.id,
         user_id: campaign.user_id,
         status: 'active',
         last_step_sent: 0,
-        next_send_at: nextSend.toISOString(),
-        metadata: metadataForNewEnrollment(plan),
+        next_send_at: nextSendAt,
+        metadata: metadataWithCustomerQueue(baseMeta, queueMeta),
       })
 
       if (!insErr) {
@@ -359,6 +395,9 @@ async function processDueEnrollmentRows(
           next_send_at: null,
         })
         .eq('id', row.id)
+      if (usesSequentialCustomerQueue(plan)) {
+        await promoteNextQueuedEnrollment(supabase, campaign.id, (msg) => cronLog(debugLines, msg))
+      }
       continue
     }
 
@@ -525,6 +564,10 @@ async function processDueEnrollmentRows(
           },
         })
         .eq('id', row.id)
+
+      if (!following && usesSequentialCustomerQueue(plan)) {
+        await promoteNextQueuedEnrollment(supabase, campaign.id, (msg) => cronLog(debugLines, msg))
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       summary.messages_failed++
@@ -656,6 +699,13 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     }
   }
 
+  for (const c of active) {
+    const plan = plansByCampaignId.get(c.id)
+    if (plan && usesSequentialCustomerQueue(plan)) {
+      await reconcileSequentialQueue(supabase, c.id, (msg) => cronLog(debugLines, msg))
+    }
+  }
+
   const { data: dueRows, error: dueErr } = await fetchActiveDueEnrollmentsMerged<DueEnrollmentRow>(supabase, {
     select: enrollmentDueSelect,
     isoNow: isoDue,
@@ -668,13 +718,20 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   }
 
   cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s) (as_of=${isoDue})`)
+  const dueFiltered = filterDueRowsForSequentialQueue((dueRows ?? []) as DueEnrollmentRow[], plansByCampaignId)
+  if (dueFiltered.length !== (dueRows ?? []).length) {
+    cronLog(
+      debugLines,
+      `sequential queue: processing ${dueFiltered.length} enrollment(s) this run (${(dueRows ?? []).length - dueFiltered.length} deferred)`
+    )
+  }
   if (onProgress && opts?.campaignIdOnly) {
     onProgress({ type: 'phase', phase: 'due_send' })
-    onProgress({ type: 'log', message: `Processing ${(dueRows ?? []).length} due enrollment(s)…` })
+    onProgress({ type: 'log', message: `Processing ${dueFiltered.length} due enrollment(s)…` })
   }
   await processDueEnrollmentRows(
     supabase,
-    (dueRows ?? []) as DueEnrollmentRow[],
+    dueFiltered,
     plansByCampaignId,
     dueAsOf,
     dayStart,
