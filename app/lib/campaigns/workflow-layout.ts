@@ -1,3 +1,5 @@
+import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
+import { triggerScheduleFromStartAt } from '@/app/lib/campaigns/trigger-schedule'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { definitionToDraft, draftToDefinition, resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
@@ -20,6 +22,10 @@ export type WorkflowEditorStep = {
 export type WorkflowEditorDraft = {
   trigger_type: CampaignTriggerType
   trigger_offset_days: number
+  /** Optional YYYY-MM-DD — workflow won't run before this date. */
+  run_date: string
+  /** Optional HH:MM — cron runs at this clock time (campaign timezone). */
+  run_time: string
   audience_filters: CampaignAudienceFilters
   daily_send_limit: number
   cooldown_days: number
@@ -72,13 +78,17 @@ export function layoutFromNodePositions(positions: Record<string, { x: number; y
   return { nodes: positions }
 }
 
-export function sendTimeLabel(sendTime: string): string {
-  return String(sendTime).slice(0, 5)
+export function sendTimeLabel(sendTime: string | null | undefined): string {
+  return sendTimeFromDb(sendTime)
 }
+
+export { sendTimeDisplayLabel, sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 
 export function draftFromCampaignPayload(campaign: {
   trigger_type?: string
   trigger_offset_days?: number
+  start_at?: string | null
+  timezone?: string | null
   audience_filters?: CampaignAudienceFilters
   daily_send_limit?: number
   cooldown_days?: number
@@ -94,7 +104,12 @@ export function draftFromCampaignPayload(campaign: {
     is_active: s.is_active !== false,
   }))
   const def = resolveWorkflowDefinition(campaign, stepDrafts)
-  return definitionToDraft(def)
+  const draft = definitionToDraft(def)
+  if (!draft.run_date && !draft.run_time && campaign.start_at) {
+    const fromStart = triggerScheduleFromStartAt(campaign.start_at, campaign.timezone)
+    return { ...draft, run_date: fromStart.run_date, run_time: fromStart.run_time }
+  }
+  return draft
 }
 
 export function addWorkflowStep(draft: WorkflowEditorDraft): WorkflowEditorDraft {

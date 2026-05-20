@@ -2,7 +2,9 @@
 
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
-import { CUSTOMER_MESSAGE_TEMPLATE_COLUMNS } from '@/app/lib/campaigns/template'
+import { TriggerRunScheduleFields } from '@/app/dashboard/campaigns/_components/TriggerRunScheduleFields'
+import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
+import { triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { getBuiltinNodeType } from '@/app/lib/workflows/catalog'
 import { patchNodeParametersInDraft } from '@/app/lib/workflows/graph-mutate'
@@ -140,12 +142,21 @@ export function ScheduleNodeFields({
       </InspectorField>
       <InspectorField
         label="Cron expression"
-        hint="e.g. 0 8 * * * = daily at 8:00. Use your host cron to run the campaign when active."
+        hint="Advanced: host cron expression. Use run date/time below for a simpler schedule."
       >
         <input
           className="input font-mono text-black"
           value={String(p.cron_expression ?? '0 8 * * *')}
           onChange={(e) => patch({ cron_expression: e.target.value })}
+        />
+      </InspectorField>
+      <InspectorField
+        label="When to run"
+        hint="Optional. Date = don't run before this day. Time = run at this clock time each day (campaign timezone)."
+      >
+        <TriggerRunScheduleFields
+          schedule={triggerScheduleFromParams(p)}
+          onChange={(partial) => patch(partial)}
         />
       </InspectorField>
     </>
@@ -366,13 +377,28 @@ export function WhatsAppMessageFields({
           onChange={(e) => onDelayDays(Math.max(0, Number(e.target.value) || 0))}
         />
       </InspectorField>
-      <InspectorField label="Send time">
-        <input
-          type="time"
-          className="input text-black"
-          value={sendTime}
-          onChange={(e) => onSendTime(e.target.value || '10:00')}
-        />
+      <InspectorField
+        label="Send time"
+        hint="When off, the message sends as soon as the step is due (after the delay)."
+      >
+        <label className="mb-2 flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={Boolean(sendTime)}
+            onChange={(e) => onSendTime(e.target.checked ? sendTime || '10:00' : '')}
+          />
+          Schedule at a fixed time
+        </label>
+        {sendTime ? (
+          <input
+            type="time"
+            className="input text-black"
+            value={sendTime}
+            onChange={(e) => onSendTime(e.target.value)}
+          />
+        ) : (
+          <p className="text-sm text-slate-500">Sends immediately when due.</p>
+        )}
       </InspectorField>
       <InspectorField label="Message template">
         <textarea
@@ -381,9 +407,7 @@ export function WhatsAppMessageFields({
           value={messageTemplate}
           onChange={(e) => onMessageTemplate(e.target.value)}
         />
-        <span className="hint">
-          Variables: {CUSTOMER_MESSAGE_TEMPLATE_COLUMNS.map((c) => `{{${c}}}`).join(', ')}
-        </span>
+        <TemplateVariableButtons compact />
       </InspectorField>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input

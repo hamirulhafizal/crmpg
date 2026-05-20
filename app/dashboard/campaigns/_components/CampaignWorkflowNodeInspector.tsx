@@ -1,7 +1,10 @@
 'use client'
 
 import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaigns/workflow-layout'
-import { sendTimeLabel } from '@/app/lib/campaigns/workflow-layout'
+import { TriggerRunScheduleFields } from '@/app/dashboard/campaigns/_components/TriggerRunScheduleFields'
+import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
+import { triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
+import { sendTimeDisplayLabel, sendTimeLabel } from '@/app/lib/campaigns/workflow-layout'
 import type { CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
@@ -113,6 +116,8 @@ export function CampaignWorkflowNodeInspector({
   }
 
   const patch = (partial: Partial<WorkflowEditorDraft>) => onChange({ ...draft, ...partial })
+  const patchSynced = (partial: Partial<WorkflowEditorDraft>) =>
+    onChange(definitionToDraft(draftToDefinition({ ...draft, ...partial })))
 
   const nodeTestFooter = (
     <WorkflowNodeTestPanel
@@ -127,12 +132,16 @@ export function CampaignWorkflowNodeInspector({
 
   if (nodeType === 'crm.trigger.manual') {
     return (
-      <InspectorShell title="Trigger" subtitle="When customers enter this campaign" onClose={onClose}>
+      <InspectorShell
+        title="Trigger"
+        subtitle={`${draft.trigger_type} · ${triggerScheduleDisplayLabel({ run_date: draft.run_date, run_time: draft.run_time })}`}
+        onClose={onClose}
+      >
         <label className="field">
           <span>Trigger type</span>
           <select
             value={draft.trigger_type}
-            onChange={(e) => patch({ trigger_type: e.target.value as CampaignTriggerType })}
+            onChange={(e) => patchSynced({ trigger_type: e.target.value as CampaignTriggerType })}
             className="input text-black"
           >
             {TRIGGERS.map((t) => (
@@ -148,10 +157,18 @@ export function CampaignWorkflowNodeInspector({
             type="number"
             className="input text-black"
             value={safeInt(draft.trigger_offset_days, 0, 0)}
-            onChange={(e) => patch({ trigger_offset_days: Math.max(0, Number(e.target.value) || 0) })}
+            onChange={(e) => patchSynced({ trigger_offset_days: Math.max(0, Number(e.target.value) || 0) })}
           />
           <span className="hint">Days before/after the trigger event (birthday, last purchase, etc.).</span>
         </label>
+        <div className="field">
+          <span className="mb-1 block text-xs font-medium text-slate-700">When to run</span>
+          <TriggerRunScheduleFields
+            schedule={{ run_date: draft.run_date, run_time: draft.run_time }}
+            onChange={(partial) => patchSynced(partial)}
+            hint="Optional. Leave both off to run whenever cron or “Run test” fires."
+          />
+        </div>
         {nodeTestFooter}
       </InspectorShell>
     )
@@ -320,7 +337,7 @@ export function CampaignWorkflowNodeInspector({
     return (
       <InspectorShell
         title={defNode.parameters?.display_name ? nodeDisplayTitle(defNode) : `Step ${step.step_order}`}
-        subtitle={`WhatsApp · +${step.delay_days}d · ${sendTimeLabel(step.send_time)}`}
+        subtitle={`WhatsApp · +${step.delay_days}d · ${sendTimeDisplayLabel(step.send_time)}`}
         onClose={onClose}
       >
         {nodeType === 'crm.integration.waha' ? (

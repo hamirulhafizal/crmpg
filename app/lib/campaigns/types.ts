@@ -48,7 +48,7 @@ export type CampaignStepRow = {
   campaign_id: string
   step_order: number
   delay_days: number
-  send_time: string
+  send_time: string | null
   message_template: string
   is_active: boolean
   created_at: string

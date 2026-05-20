@@ -63,6 +63,8 @@ export type WorkflowNodeTypeRow = WorkflowNodeTypeDescriptor & {
 export type CompiledWorkflow = {
   trigger_type: CampaignTriggerType
   trigger_offset_days: number
+  run_date: string
+  run_time: string
   audience_filters: CampaignAudienceFilters
   daily_send_limit: number
   cooldown_days: number

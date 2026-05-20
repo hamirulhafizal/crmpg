@@ -1,7 +1,8 @@
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
-import { computeSendAt } from '@/app/lib/campaigns/schedule'
+import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
+import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
 import { buildTemplateVariableMap, renderCampaignTemplate } from '@/app/lib/campaigns/template'
 import type {
@@ -23,6 +24,10 @@ import {
 
 export type ProcessSummary = {
   campaigns_scanned: number
+  /** Active campaigns skipped because trigger date/time gate did not allow run yet today. */
+  campaigns_skipped_schedule: number
+  /** Active campaigns that passed the trigger gate and ran enrollment sync. */
+  campaigns_processed: number
   enrollments_inserted: number
   messages_attempted: number
   messages_sent: number
@@ -36,6 +41,8 @@ export type ProcessDueOptions = {
   campaignIdOnly?: string
   /** Live progress for workflow visualizer (test run stream). */
   onProgress?: CampaignWorkflowProgressHandler
+  /** Manual test run — skip daily run-time gate but still honor start/end window. */
+  skipTriggerTimeGate?: boolean
 }
 
 export type ProcessDueResult = {
@@ -237,7 +244,7 @@ async function syncEnrollmentsForCampaign(
 
       const enrollMoment = new Date()
       let nextSend = computeSendAt(enrollMoment, first.delay_days, first.send_time, tz)
-      if (nextSend.getTime() < enrollMoment.getTime()) {
+      if (isScheduledSendTime(first.send_time) && nextSend.getTime() < enrollMoment.getTime()) {
         nextSend = enrollMoment
       }
 
@@ -481,8 +488,8 @@ async function processDueEnrollmentRows(
         // so step 2 was scheduled a month later instead of the next day.
         let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
         const sentMs = new Date(sentAt).getTime()
-        // Same-day step with send_time already passed (e.g. default 10:00 after an evening send) → next calendar slot.
-        if (computed.getTime() <= sentMs) {
+        // Same-day step with scheduled send_time already passed (e.g. default 10:00 after an evening send) → next calendar slot.
+        if (isScheduledSendTime(following.send_time) && computed.getTime() <= sentMs) {
           computed = computeSendAt(new Date(sentAt), following.delay_days + 1, following.send_time, tz)
         }
         nextSend = computed
@@ -537,6 +544,8 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   const supabase = createServiceRoleClient()
   const summary: ProcessSummary = {
     campaigns_scanned: 0,
+    campaigns_skipped_schedule: 0,
+    campaigns_processed: 0,
     enrollments_inserted: 0,
     messages_attempted: 0,
     messages_sent: 0,
@@ -588,6 +597,18 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     const steps = (stepRows ?? []) as CampaignStepRow[]
     const plan = buildCampaignWorkflowPlan(c as CampaignRow, steps)
     plansByCampaignId.set(c.id, plan)
+
+    if (!campaignTriggerAllowsRunNow(c as CampaignRow, plan, now, { skipTimeGate: opts?.skipTriggerTimeGate })) {
+      summary.campaigns_skipped_schedule++
+      const sched = getTriggerRunScheduleFromPlan(plan)
+      cronLog(
+        debugLines,
+        `skip campaign=${c.id} "${c.name}": outside trigger schedule (date=${sched.run_date || '—'} time=${sched.run_time || '—'})`
+      )
+      continue
+    }
+
+    summary.campaigns_processed++
 
     if (opts?.campaignIdOnly === c.id) {
       scopedPlan = plan
@@ -690,7 +711,14 @@ export async function processDueCampaignMessagesForCampaign(
   }
 
   const c = campaignRow as CampaignRow
-  if (!campaignInWindow(c, now)) {
+  const { data: stepRows } = await supabase
+    .from('campaign_steps')
+    .select('*')
+    .eq('campaign_id', campaignId)
+    .order('step_order', { ascending: true })
+  const plan = buildCampaignWorkflowPlan(c, (stepRows ?? []) as CampaignStepRow[])
+
+  if (!campaignTriggerAllowsRunNow(c, plan, now, { skipTimeGate: true })) {
     throw new Error('Campaign is outside its start/end window')
   }
 
@@ -698,5 +726,6 @@ export async function processDueCampaignMessagesForCampaign(
     debug: opts?.debug,
     onProgress: opts?.onProgress,
     campaignIdOnly: campaignId,
+    skipTriggerTimeGate: true,
   })
 }

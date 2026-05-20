@@ -1,6 +1,6 @@
 'use client'
 
-import { CUSTOMER_MESSAGE_TEMPLATE_COLUMNS } from '@/app/lib/campaigns/template'
+import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
 
 export type StepDraft = {
   step_order: number
@@ -79,14 +79,28 @@ export function CampaignStepsEditor({
                 <code className="rounded bg-slate-100 px-1">campaign_steps.delay_days</code>.
               </span>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-700">
-              Send time (local)
-              <input
-                type="time"
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-normal"
-                value={step.send_time.length > 5 ? step.send_time.slice(0, 5) : step.send_time}
-                onChange={(e) => update(i, { send_time: e.target.value })}
-              />
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-700 sm:col-span-3">
+              Send time
+              <label className="flex items-center gap-2 font-normal text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(step.send_time)}
+                  onChange={(e) =>
+                    update(i, { send_time: e.target.checked ? step.send_time || '10:00' : '' })
+                  }
+                />
+                Schedule at a fixed time
+              </label>
+              {step.send_time ? (
+                <input
+                  type="time"
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-normal"
+                  value={step.send_time.length > 5 ? step.send_time.slice(0, 5) : step.send_time}
+                  onChange={(e) => update(i, { send_time: e.target.value })}
+                />
+              ) : (
+                <span className="font-normal text-slate-500">Sends immediately when the step is due.</span>
+              )}
             </label>
           </div>
           <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-slate-700">
@@ -98,23 +112,7 @@ export function CampaignStepsEditor({
               onChange={(e) => update(i, { message_template: e.target.value })}
             />
           </label>
-          <div className="mt-2 text-xs text-slate-500">
-            <p className="font-medium text-slate-600">Variables</p>
-            <p className="mt-0.5 text-slate-500">
-              Use <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px]">{'{{column_name}}'}</code> with any
-              customer column below (same names as the database).
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {CUSTOMER_MESSAGE_TEMPLATE_COLUMNS.map((col) => (
-                <code
-                  key={col}
-                  className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-700"
-                >
-                  {`{{${col}}}`}
-                </code>
-              ))}
-            </div>
-          </div>
+          <TemplateVariableButtons />
         </div>
       ))}
       <button

@@ -21,6 +21,8 @@ export function definitionToDraft(def: WorkflowDefinition): WorkflowEditorDraft 
   return {
     trigger_type: compiled.trigger_type,
     trigger_offset_days: compiled.trigger_offset_days,
+    run_date: compiled.run_date,
+    run_time: compiled.run_time,
     audience_filters: compiled.audience_filters,
     daily_send_limit: compiled.daily_send_limit,
     cooldown_days: compiled.cooldown_days,
@@ -56,12 +58,15 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
   const nodes = def.nodes.map((n) => {
     switch (n.type) {
       case 'crm.trigger.manual':
+      case 'crm.trigger.schedule':
         return {
           ...n,
           parameters: {
             ...n.parameters,
             trigger_type: draft.trigger_type,
             trigger_offset_days: draft.trigger_offset_days,
+            run_date: draft.run_date,
+            run_time: draft.run_time,
           },
         }
       case 'crm.audience.filter':
@@ -166,6 +171,8 @@ function buildDefinitionFromLegacyDraft(draft: WorkflowEditorDraft): WorkflowDef
       parameters: {
         trigger_type: draft.trigger_type,
         trigger_offset_days: draft.trigger_offset_days,
+        run_date: draft.run_date,
+        run_time: draft.run_time,
       },
       position: positions[WORKFLOW_NODE.trigger] ?? baseNodes[0]!.position,
     },
@@ -217,6 +224,8 @@ export function resolveWorkflowDefinition(
   return buildDefinitionFromLegacyDraft({
     trigger_type: (campaign.trigger_type as CampaignTriggerType) ?? 'manual',
     trigger_offset_days: Number(campaign.trigger_offset_days ?? 0),
+    run_date: '',
+    run_time: '',
     audience_filters: (campaign.audience_filters ?? {}) as CampaignAudienceFilters,
     daily_send_limit: Number(campaign.daily_send_limit ?? 100),
     cooldown_days: Number(campaign.cooldown_days ?? 30),

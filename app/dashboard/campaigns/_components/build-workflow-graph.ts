@@ -11,9 +11,10 @@ import {
 } from '@/app/lib/workflows/edge-path'
 import { workflowEdgeMarkerEnd, workflowEdgeStroke } from '@/app/lib/workflows/workflow-edge-marker'
 import type { WorkflowDefinition, WorkflowEdge, WorkflowEdgeRouting } from '@/app/lib/workflows/types'
+import { triggerScheduleDisplayLabel, triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
 import {
   mergeLayoutPositions,
-  sendTimeLabel,
+  sendTimeDisplayLabel,
   workflowNodeIds,
   type WorkflowEditorDraft,
 } from '@/app/lib/campaigns/workflow-layout'
@@ -60,10 +61,15 @@ function kindFromType(type: string): WorkflowNodeKind {
 
 function subtitleForType(type: string, params: Record<string, unknown>): string {
   switch (type) {
-    case 'crm.trigger.manual':
-      return String(params.trigger_type ?? 'manual')
-    case 'crm.trigger.schedule':
-      return String(params.cron_expression ?? '0 8 * * *')
+    case 'crm.trigger.manual': {
+      const sched = triggerScheduleDisplayLabel(triggerScheduleFromParams(params))
+      return `${params.trigger_type ?? 'manual'} · ${sched}`
+    }
+    case 'crm.trigger.schedule': {
+      const sched = triggerScheduleDisplayLabel(triggerScheduleFromParams(params))
+      const cron = String(params.cron_expression ?? '')
+      return sched !== 'anytime' ? sched : cron || '0 8 * * *'
+    }
     case 'crm.audience.filter':
       return 'Filter CRM customers'
     case 'crm.data.supabase':
@@ -75,7 +81,7 @@ function subtitleForType(type: string, params: Record<string, unknown>): string 
     case 'crm.data.set':
       return 'manual'
     case 'crm.whatsapp.send':
-      return `WhatsApp · +${params.delay_days ?? 0}d · ${sendTimeLabel(String(params.send_time ?? '10:00'))}`
+      return `WhatsApp · +${params.delay_days ?? 0}d · ${sendTimeDisplayLabel(params.send_time != null ? String(params.send_time) : '')}`
     case 'crm.integration.waha': {
       const method = String(params.http_method ?? 'POST')
       const url = String(params.n8n_url ?? '')
@@ -159,7 +165,7 @@ function graphDefsFromDraft(
       nodeType: 'crm.trigger.manual',
       kind: 'trigger',
       title: 'Trigger',
-      subtitle: draft.trigger_type,
+      subtitle: `${draft.trigger_type} · ${triggerScheduleDisplayLabel({ run_date: draft.run_date, run_time: draft.run_time })}`,
     },
     {
       id: WORKFLOW_NODE.audience,
@@ -190,7 +196,7 @@ function graphDefsFromDraft(
       nodeType: 'crm.whatsapp.send',
       kind: 'step',
       title: `Step ${step.step_order}`,
-      subtitle: `WhatsApp · +${step.delay_days}d · ${sendTimeLabel(step.send_time)}`,
+      subtitle: `WhatsApp · +${step.delay_days}d · ${sendTimeDisplayLabel(step.send_time)}`,
     })
   }
 

@@ -5,6 +5,7 @@ import { CampaignAnalyticsCards } from '@/app/dashboard/campaigns/_components/Ca
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
 import type { AudienceDueSample, AudienceEligibleSample } from '@/app/lib/campaigns/audience-preview'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { sendTimeDisplayLabel } from '@/app/lib/campaigns/schedule'
 
 export type CampaignDetailPayload = {
   campaign: Record<string, unknown>
@@ -358,7 +359,7 @@ export function CampaignDetailContent(props: {
               <span className="font-semibold text-slate-900">Step {String(s.step_order)}</span>
               <span className="text-slate-600">
                 {' '}
-                · delay {String(s.delay_days)}d · send {String(s.send_time)?.slice(0, 5)}
+                · delay {String(s.delay_days)}d · send {sendTimeDisplayLabel(String(s.send_time ?? ''))}
               </span>
               <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700">{String(s.message_template)}</pre>
             </li>

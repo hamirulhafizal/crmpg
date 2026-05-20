@@ -68,7 +68,7 @@ export function stepFromNodeParameters(
   return {
     step_order: safeInt(p.step_order ?? fallbackOrder, 1, 1),
     delay_days: safeInt(p.delay_days, 0, 0),
-    send_time: sendTimeLabel(String(p.send_time ?? '10:00')),
+    send_time: sendTimeLabel(p.send_time != null ? String(p.send_time) : ''),
     message_template: String(p.message_template ?? ''),
     is_active: p.is_active !== false,
   }

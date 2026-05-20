@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
@@ -68,13 +69,6 @@ type StepInput = {
   is_active?: boolean
 }
 
-function normalizeSendTime(t: string | undefined): string {
-  const s = (t || '10:00').trim()
-  if (/^\d{2}:\d{2}:\d{2}$/.test(s)) return s
-  if (/^\d{2}:\d{2}$/.test(s)) return `${s}:00`
-  return '10:00:00'
-}
-
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -107,7 +101,10 @@ export async function POST(request: Request) {
       end_at: body.end_at ?? null,
     }
 
-    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, payload)
+    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, payload, {
+      timezone: typeof body.timezone === 'string' ? body.timezone : 'Asia/Kuala_Lumpur',
+      preserveStartAt: 'start_at' in body,
+    })
     if (workflowErr) {
       return NextResponse.json({ error: workflowErr }, { status: 400 })
     }
@@ -137,7 +134,7 @@ export async function POST(request: Request) {
       campaign_id: campaign.id,
       step_order: Number.isFinite(s.step_order) ? s.step_order : i + 1,
       delay_days: Math.max(0, Number(s.delay_days ?? 0)),
-      send_time: normalizeSendTime(s.send_time as string | undefined),
+      send_time: normalizeSendTimeForDb(s.send_time as string | undefined),
       message_template: String(s.message_template || ''),
       is_active: s.is_active !== false,
     }))

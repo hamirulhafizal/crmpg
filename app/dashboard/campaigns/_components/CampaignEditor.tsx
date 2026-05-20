@@ -6,9 +6,7 @@ import type { CampaignAudienceFilters, CampaignStatus, CampaignTriggerType } fro
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
 import { CampaignStepsEditor, type StepDraft } from '@/app/dashboard/campaigns/_components/CampaignStepsEditor'
 
-function sendTimeFromDb(s: string): string {
-  return s.length >= 5 ? s.slice(0, 5) : '10:00'
-}
+import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')

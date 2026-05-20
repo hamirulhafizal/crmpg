@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
@@ -142,7 +143,22 @@ export async function PATCH(request: Request, ctx: Ctx) {
       updates.workflow_layout = body.workflow_layout
     }
 
-    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, updates)
+    let campaignTimezone: string | undefined =
+      typeof body.timezone === 'string' ? body.timezone : undefined
+    if (body.workflow_definition != null && !campaignTimezone) {
+      const { data: existingTz } = await supabase
+        .from('campaigns')
+        .select('timezone')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      campaignTimezone = (existingTz?.timezone as string | undefined) ?? 'Asia/Kuala_Lumpur'
+    }
+
+    const workflowErr = applyWorkflowToCampaignPayload(body as Record<string, unknown>, updates, {
+      timezone: campaignTimezone,
+      preserveStartAt: 'start_at' in body,
+    })
     if (workflowErr) {
       return NextResponse.json({ error: workflowErr }, { status: 400 })
     }
@@ -180,10 +196,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
         campaign_id: id,
         step_order: Number.isFinite(Number(s.step_order)) ? Number(s.step_order) : i + 1,
         delay_days: Math.max(0, Number(s.delay_days ?? 0)),
-        send_time:
-          String(s.send_time || '10:00').length <= 5
-            ? `${String(s.send_time || '10:00')}:00`
-            : String(s.send_time),
+        send_time: normalizeSendTimeForDb(s.send_time as string | undefined),
         message_template: String(s.message_template || ''),
         is_active: s.is_active !== false,
       }))

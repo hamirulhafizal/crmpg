@@ -1,4 +1,5 @@
 import type { CampaignRow, CampaignStepRow } from '@/app/lib/campaigns/types'
+import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import { resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
@@ -49,7 +50,7 @@ export function buildCampaignWorkflowPlan(
     id: s.id,
     step_order: s.step_order,
     delay_days: s.delay_days,
-    send_time: s.send_time,
+    send_time: sendTimeFromDb(s.send_time),
     message_template: s.message_template,
     is_active: s.is_active,
   }))
@@ -66,7 +67,7 @@ export function buildCampaignWorkflowPlan(
         nodeId: n.id,
         stepOrder: Math.max(1, Number(p.step_order ?? 1)),
         delayDays: Math.max(0, Number(p.delay_days ?? 0)),
-        sendTime: String(p.send_time ?? '10:00').slice(0, 5),
+        sendTime: sendTimeFromDb(p.send_time != null ? String(p.send_time) : ''),
         messageTemplate: String(p.message_template ?? ''),
         isActive: p.is_active !== false,
       }

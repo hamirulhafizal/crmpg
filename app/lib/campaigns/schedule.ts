@@ -2,10 +2,53 @@
  * Schedule helpers using the campaign timezone string (IANA), default Malaysia.
  */
 
+/** True when a step uses a fixed clock time; false means send as soon as due ("now"). */
+export function isScheduledSendTime(sendTime: string | null | undefined): boolean {
+  return Boolean(String(sendTime ?? '').trim())
+}
+
+export function sendTimeDisplayLabel(sendTime: string | null | undefined): string {
+  const raw = String(sendTime ?? '').trim()
+  if (!raw) return 'now'
+  return raw.slice(0, 5)
+}
+
+/** Editor / API HH:MM from DB TIME or workflow parameter. Empty = immediate send. */
+export function sendTimeFromDb(sendTime: string | null | undefined): string {
+  const raw = String(sendTime ?? '').trim()
+  if (!raw) return ''
+  return raw.length >= 5 ? raw.slice(0, 5) : raw
+}
+
+/** Persist to campaign_steps.send_time — null when immediate. */
+export function normalizeSendTimeForDb(sendTime: string | null | undefined): string | null {
+  const s = String(sendTime ?? '').trim()
+  if (!s) return null
+  if (/^\d{2}:\d{2}:\d{2}$/.test(s)) return s
+  if (/^\d{1,2}:\d{2}$/.test(s)) {
+    const [h, m] = s.split(':')
+    return `${h!.padStart(2, '0')}:${m}:00`
+  }
+  return null
+}
+
 export function parseTimeToHm(sendTime: string): { h: number; m: number } {
   const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(sendTime.trim())
   if (!m) return { h: 10, m: 0 }
   return { h: Number(m[1]), m: Number(m[2]) }
+}
+
+function wallTimeHmInTz(d: Date, timeZone: string): { h: number; m: number } {
+  const localHm = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+  return {
+    h: Number(localHm.find((p) => p.type === 'hour')?.value),
+    m: Number(localHm.find((p) => p.type === 'minute')?.value),
+  }
 }
 
 /** Calendar date parts for `timeZone` at instant `d`. */
@@ -63,11 +106,19 @@ export function addCalendarDaysInTz(
 export function computeSendAt(
   anchor: Date,
   delayDays: number,
-  sendTime: string,
+  sendTime: string | null | undefined,
   timeZone: string
 ): Date {
   const tz = timeZone?.trim() || 'Asia/Kuala_Lumpur'
-  const { h, m } = parseTimeToHm(sendTime)
+
+  if (!isScheduledSendTime(sendTime)) {
+    if (delayDays === 0) return new Date(anchor.getTime())
+    const { y, mo, day } = addCalendarDaysInTz(anchor, delayDays, tz)
+    const { h, m } = wallTimeHmInTz(anchor, tz)
+    return zonedWallTimeToUtc(y, mo, day, h, m, tz)
+  }
+
+  const { h, m } = parseTimeToHm(sendTime!)
   const { y, mo, day } = addCalendarDaysInTz(anchor, delayDays, tz)
   return zonedWallTimeToUtc(y, mo, day, h, m, tz)
 }

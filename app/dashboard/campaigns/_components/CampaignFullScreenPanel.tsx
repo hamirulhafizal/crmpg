@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CampaignWorkflowModal } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 import { draftFromCampaignPayload } from '@/app/lib/campaigns/workflow-layout'
+import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { buildCampaignWorkflowPlan } from '@/app/lib/workflows/plan'
 import {
   applyWorkflowProgressEvent,
@@ -290,6 +291,8 @@ function ViewPanelInner({
     status?: string
     trigger_type?: string
     trigger_offset_days?: number
+    start_at?: string | null
+    timezone?: string | null
     audience_filters?: Record<string, unknown>
     daily_send_limit?: number
     cooldown_days?: number
@@ -303,7 +306,7 @@ function ViewPanelInner({
       id: String(s.id),
       step_order: Number(s.step_order),
       delay_days: Number(s.delay_days ?? 0),
-      send_time: String(s.send_time ?? '10:00'),
+      send_time: sendTimeFromDb(s.send_time != null ? String(s.send_time) : null),
       message_template: String(s.message_template ?? ''),
       is_active: s.is_active !== false,
     }))
@@ -408,7 +411,7 @@ function ViewPanelInner({
             id: String(s.id),
             step_order: Number(s.step_order),
             delay_days: Number(s.delay_days ?? 0),
-            send_time: String(s.send_time ?? '10:00'),
+            send_time: sendTimeFromDb(s.send_time != null ? String(s.send_time) : null),
             message_template: String(s.message_template ?? ''),
             is_active: s.is_active !== false,
           }))}

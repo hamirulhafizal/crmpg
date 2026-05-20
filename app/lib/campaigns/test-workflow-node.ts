@@ -6,7 +6,8 @@ import {
   resolveTagIdLabels,
 } from '@/app/lib/campaigns/audience-preview'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
-import { computeSendAt } from '@/app/lib/campaigns/schedule'
+import { computeSendAt, isScheduledSendTime, sendTimeDisplayLabel, sendTimeFromDb } from '@/app/lib/campaigns/schedule'
+import { triggerScheduleDisplayLabel, triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
 import { buildTemplateVariableMap, renderCampaignTemplate } from '@/app/lib/campaigns/template'
 import type { CampaignAudienceFilters, CampaignRow } from '@/app/lib/campaigns/types'
 import { customerWorkflowLabel } from '@/app/lib/campaigns/workflow-events'
@@ -89,7 +90,11 @@ export async function testWorkflowNode(opts: {
     switch (node.type) {
       case 'crm.trigger.schedule': {
         const cron = String(node.parameters?.cron_expression ?? '0 8 * * *')
+        const sched = triggerScheduleDisplayLabel(
+          triggerScheduleFromParams(node.parameters as Record<string, unknown>)
+        )
         logs.push(`Cron: ${cron}`)
+        logs.push(`Run schedule: ${sched}`)
         logs.push('CRM runs on manual test / external cron when campaign is active.')
         return {
           ok: true,
@@ -97,9 +102,12 @@ export async function testWorkflowNode(opts: {
           node_type: node.type,
           title: 'Schedule',
           duration_ms: Date.now() - started,
-          summary: `Cron ${cron}`,
+          summary: sched !== 'anytime' ? sched : `Cron ${cron}`,
           logs,
-          items: [{ label: 'Cron expression', detail: cron }],
+          items: [
+            { label: 'Cron expression', detail: cron },
+            { label: 'Run schedule', detail: sched },
+          ],
           metrics: { cron_expression: cron },
         }
       }
@@ -107,8 +115,13 @@ export async function testWorkflowNode(opts: {
       case 'crm.trigger.manual': {
         const triggerType = compiled.trigger_type
         const offset = compiled.trigger_offset_days
+        const sched = triggerScheduleDisplayLabel({
+          run_date: compiled.run_date,
+          run_time: compiled.run_time,
+        })
         logs.push(`Trigger type: ${triggerType}`)
         logs.push(`Offset days: ${offset}`)
+        logs.push(`Run schedule: ${sched}`)
         if (triggerType === 'manual') {
           logs.push('Enrollment sync runs on “Run test” or campaign cron when campaign is active.')
         } else {
@@ -120,11 +133,12 @@ export async function testWorkflowNode(opts: {
           node_type: node.type,
           title: 'Manual trigger',
           duration_ms: Date.now() - started,
-          summary: TRIGGER_LABELS[triggerType] ?? triggerType,
+          summary: sched !== 'anytime' ? sched : (TRIGGER_LABELS[triggerType] ?? triggerType),
           logs,
           items: [
             { label: 'Trigger type', detail: triggerType },
             { label: 'Offset (days)', detail: String(offset) },
+            { label: 'Run schedule', detail: sched },
             {
               label: 'Campaign window',
               detail:
@@ -133,7 +147,7 @@ export async function testWorkflowNode(opts: {
                   : 'No start/end limit',
             },
           ],
-          metrics: { trigger_type: triggerType, offset_days: offset },
+          metrics: { trigger_type: triggerType, offset_days: offset, run_schedule: sched },
         }
       }
 
@@ -271,13 +285,13 @@ export async function testWorkflowNode(opts: {
         const p = node.parameters ?? {}
         const stepOrder = Math.max(1, Number(p.step_order ?? 1))
         const delayDays = Math.max(0, Number(p.delay_days ?? 0))
-        const sendTime = String(p.send_time ?? '10:00').slice(0, 5)
+        const sendTime = sendTimeFromDb(p.send_time != null ? String(p.send_time) : '')
         const template = String(p.message_template ?? '')
         const isActive = p.is_active !== false
         const tz = opts.campaign?.timezone?.trim() || 'Asia/Kuala_Lumpur'
 
         logs.push(`Step order: ${stepOrder}`)
-        logs.push(`Delay: +${delayDays}d at ${sendTime} (${tz})`)
+        logs.push(`Delay: +${delayDays}d at ${sendTimeDisplayLabel(sendTime)} (${tz})`)
         logs.push(`Active: ${isActive ? 'yes' : 'no'}`)
 
         if (!isActive) {

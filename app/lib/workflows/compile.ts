@@ -1,10 +1,11 @@
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
+import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
+import { normalizeRunDate, normalizeRunTime } from '@/app/lib/campaigns/trigger-schedule'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
 import type { CompiledWorkflow, WorkflowDefinition } from '@/app/lib/workflows/types'
 
 function sendTimeLabel(t: unknown): string {
-  const s = String(t ?? '10:00')
-  return s.length >= 5 ? s.slice(0, 5) : '10:00'
+  return sendTimeFromDb(t != null ? String(t) : '')
 }
 
 export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWorkflow {
@@ -12,6 +13,8 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
 
   let trigger_type: CampaignTriggerType = 'manual'
   let trigger_offset_days = 0
+  let run_date = ''
+  let run_time = ''
   let audience_filters: CampaignAudienceFilters = {}
   let daily_send_limit = 100
   let cooldown_days = 30
@@ -27,6 +30,8 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
       case 'crm.trigger.schedule':
         trigger_type = (p.trigger_type as CampaignTriggerType) ?? 'manual'
         trigger_offset_days = Number(p.trigger_offset_days ?? 0)
+        run_date = normalizeRunDate(p.run_date as string | undefined)
+        run_time = normalizeRunTime(p.run_time as string | undefined)
         break
       case 'crm.audience.filter':
         audience_filters = (p.audience_filters as CampaignAudienceFilters) ?? {}
@@ -72,6 +77,8 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
   return {
     trigger_type,
     trigger_offset_days,
+    run_date,
+    run_time,
     audience_filters,
     daily_send_limit,
     cooldown_days,

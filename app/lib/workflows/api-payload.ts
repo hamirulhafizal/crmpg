@@ -1,4 +1,5 @@
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
+import { startAtFromTriggerSchedule } from '@/app/lib/campaigns/trigger-schedule'
 import { validateWorkflowDefinition } from '@/app/lib/workflows/validate'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
@@ -16,7 +17,8 @@ export function parseWorkflowDefinition(raw: unknown): WorkflowDefinition | null
 /** Apply workflow_definition from API body onto campaign insert/update payload. */
 export function applyWorkflowToCampaignPayload(
   body: Record<string, unknown>,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  opts?: { timezone?: string | null; preserveStartAt?: boolean }
 ): string | null {
   const raw = body.workflow_definition
   if (raw == null) return null
@@ -35,6 +37,11 @@ export function applyWorkflowToCampaignPayload(
   payload.audience_filters = compiled.audience_filters
   payload.daily_send_limit = compiled.daily_send_limit
   payload.cooldown_days = compiled.cooldown_days
+
+  if (!opts?.preserveStartAt) {
+    const tz = String(opts?.timezone ?? payload.timezone ?? body.timezone ?? 'Asia/Kuala_Lumpur')
+    payload.start_at = startAtFromTriggerSchedule(compiled.run_date, compiled.run_time, tz)
+  }
 
   return null
 }

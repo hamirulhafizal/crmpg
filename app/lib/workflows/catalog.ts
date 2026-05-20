@@ -13,6 +13,8 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
       properties: {
         trigger_type: { type: 'string', enum: ['manual', 'birthday', 'last_purchase', 'enrollment'] },
         trigger_offset_days: { type: 'number', minimum: 0 },
+        run_date: { type: 'string' },
+        run_time: { type: 'string' },
       },
     },
     handler_key: 'trigger',
@@ -106,7 +108,12 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
     icon: 'clock',
     parameter_schema: {
       type: 'object',
-      properties: { cron_expression: { type: 'string' }, display_name: { type: 'string' } },
+      properties: {
+        cron_expression: { type: 'string' },
+        display_name: { type: 'string' },
+        run_date: { type: 'string' },
+        run_time: { type: 'string' },
+      },
     },
     handler_key: 'trigger',
     n8n_type: 'n8n-nodes-base.scheduleTrigger',
@@ -240,7 +247,7 @@ export function getBuiltinNodeType(slug: string): WorkflowNodeTypeDescriptor | u
 export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): Record<string, unknown> {
   switch (slug) {
     case 'crm.trigger.manual':
-      return { trigger_type: 'manual', trigger_offset_days: 0 }
+      return { trigger_type: 'manual', trigger_offset_days: 0, run_date: '', run_time: '' }
     case 'crm.audience.filter':
       return { audience_filters: {} }
     case 'crm.enroll.queue':
@@ -256,7 +263,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
     case 'crm.flow.complete':
       return {}
     case 'crm.trigger.schedule':
-      return { cron_expression: '0 8 * * *', display_name: 'Schedule' }
+      return { cron_expression: '0 8 * * *', display_name: 'Schedule', run_date: '', run_time: '' }
     case 'crm.data.supabase':
       return { operation: 'getAll', table: 'customers', audience_filters: {} }
     case 'crm.flow.loop':
