@@ -15,7 +15,7 @@ type Supabase = ReturnType<typeof createServiceRoleClient>
 type EnrollmentRow = {
   id: string
   metadata?: Record<string, unknown> | null
-  created_at?: string
+  enrolled_at?: string
   last_step_sent?: number
 }
 
@@ -95,10 +95,10 @@ export async function reconcileSequentialQueue(
 ): Promise<void> {
   const { data, error } = await supabase
     .from('campaign_enrollments')
-    .select('id, metadata, created_at, last_step_sent')
+    .select('id, metadata, enrolled_at, last_step_sent')
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
-    .order('created_at', { ascending: true })
+    .order('enrolled_at', { ascending: true })
 
   if (error) throw error
   const rows = (data ?? []) as EnrollmentRow[]
@@ -107,7 +107,7 @@ export async function reconcileSequentialQueue(
 
   const keeper =
     inSlot.find((row) => (row.last_step_sent ?? 0) > 0) ??
-    inSlot.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0]
+    inSlot.sort((a, b) => String(a.enrolled_at).localeCompare(String(b.enrolled_at)))[0]
 
   for (const row of inSlot) {
     if (row.id === keeper?.id) continue
@@ -119,7 +119,7 @@ export async function reconcileSequentialQueue(
         metadata: metadataWithCustomerQueue((row.metadata ?? {}) as Record<string, unknown>, {
           status: 'waiting',
           position,
-          enrolled_at: String(row.created_at ?? new Date().toISOString()),
+          enrolled_at: String(row.enrolled_at ?? new Date().toISOString()),
         }),
       })
       .eq('id', row.id)
@@ -134,10 +134,10 @@ export async function promoteNextQueuedEnrollment(
 ): Promise<boolean> {
   const { data, error } = await supabase
     .from('campaign_enrollments')
-    .select('id, metadata, created_at')
+    .select('id, metadata, enrolled_at')
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
-    .order('created_at', { ascending: true })
+    .order('enrolled_at', { ascending: true })
 
   if (error) throw error
   const next = ((data ?? []) as EnrollmentRow[]).find((row) => isQueueWaiting(row.metadata))
@@ -150,7 +150,7 @@ export async function promoteNextQueuedEnrollment(
       next_send_at: isoNow,
       metadata: metadataWithCustomerQueue((next.metadata ?? {}) as Record<string, unknown>, {
         status: 'active',
-        enrolled_at: String(next.created_at ?? isoNow),
+        enrolled_at: String(next.enrolled_at ?? isoNow),
       }),
     })
     .eq('id', next.id)
