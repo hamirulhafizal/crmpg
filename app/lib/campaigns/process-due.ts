@@ -14,7 +14,7 @@ import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/camp
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
-import { buildTemplateVariableMap, renderCampaignTemplate } from '@/app/lib/campaigns/template'
+import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import type {
   CampaignAudienceFilters,
   CampaignRow,
@@ -249,7 +249,7 @@ async function syncEnrollmentsForCampaign(
     const { data: batch, error } = await supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes, sender_name, prefix, age, dob, email,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', campaign.user_id)
@@ -454,8 +454,7 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    const vars = buildTemplateVariableMap(customer as Record<string, unknown>)
-    const body = renderCampaignTemplate(nextStep.message_template, vars)
+    const body = renderCampaignTemplateForCustomer(nextStep.message_template, customer as Record<string, unknown>)
     summary.messages_attempted++
     sendIndex += 1
     const label = customerWorkflowLabel(customer)

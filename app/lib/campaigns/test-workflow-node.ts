@@ -8,7 +8,7 @@ import {
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime, sendTimeDisplayLabel, sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { triggerScheduleDisplayLabel, triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
-import { buildTemplateVariableMap, renderCampaignTemplate } from '@/app/lib/campaigns/template'
+import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import type { CampaignAudienceFilters, CampaignRow } from '@/app/lib/campaigns/types'
 import { customerWorkflowLabel } from '@/app/lib/campaigns/workflow-events'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
@@ -313,7 +313,7 @@ export async function testWorkflowNode(opts: {
           const { data: dueRows } = await opts.supabase
             .from('campaign_enrollments')
             .select(
-              `id, last_step_sent, next_send_at, customer:customers ( id, phone, name, save_name, pg_code, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes, customer_tags ( tag_id, tags ( slug ) ) )`
+              `id, last_step_sent, next_send_at, customer:customers ( id, phone, name, first_name, sender_name, save_name, pg_code, prefix, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes, customer_tags ( tag_id, tags ( slug ) ) )`
             )
             .eq('campaign_id', opts.campaign.id)
             .eq('status', 'active')
@@ -330,8 +330,7 @@ export async function testWorkflowNode(opts: {
             const raw = row.customer as CustomerForAudience | CustomerForAudience[] | null
             const c = Array.isArray(raw) ? raw[0] : raw
             if (!c?.phone) continue
-            const vars = buildTemplateVariableMap(c as Record<string, unknown>)
-            const body = renderCampaignTemplate(template, vars)
+            const body = renderCampaignTemplateForCustomer(template, c as Record<string, unknown>)
             items.push({
               label: customerWorkflowLabel(c),
               detail: body.slice(0, 160) + (body.length > 160 ? '…' : ''),
@@ -371,7 +370,7 @@ export async function testWorkflowNode(opts: {
         const { data: sampleRows } = await opts.supabase
           .from('customers')
           .select(
-            `id, phone, name, save_name, pg_code, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+            `id, phone, name, first_name, sender_name, save_name, pg_code, prefix, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
              customer_tags ( tag_id, tags ( slug ) )`
           )
           .eq('user_id', opts.userId)
@@ -382,8 +381,7 @@ export async function testWorkflowNode(opts: {
         for (const raw of sampleRows ?? []) {
           const c = raw as unknown as CustomerForAudience
           if (!customerMatchesFilters(c, filters)) continue
-          const vars = buildTemplateVariableMap(c as Record<string, unknown>)
-          const body = renderCampaignTemplate(template, vars)
+          const body = renderCampaignTemplateForCustomer(template, c as Record<string, unknown>)
           items.push({
             label: customerWorkflowLabel(c),
             detail: body.slice(0, 160) + (body.length > 160 ? '…' : ''),
