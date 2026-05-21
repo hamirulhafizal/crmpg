@@ -1,8 +1,30 @@
-import { formatLastPurchaseForTemplate } from '@/app/lib/customer-account-status'
+import {
+  formatLastPurchaseForTemplate,
+  formatRegistrationForTemplate,
+} from '@/app/lib/customer-account-status'
+
+/** Maps DB column names to automated-messages style placeholders, e.g. sender_name → SenderName. */
+const COLUMN_TO_TEMPLATE_VAR: Record<string, string> = {
+  pg_code: 'PGCode',
+  first_name: 'FirstName',
+  sender_name: 'SenderName',
+  save_name: 'SaveName',
+  dob: 'DOB',
+  last_purchase_at: 'LastPurchaseDate',
+  created_at: 'RegistrationDate',
+}
+
+export function customerColumnToTemplateVarName(col: string): string {
+  if (COLUMN_TO_TEMPLATE_VAR[col]) return COLUMN_TO_TEMPLATE_VAR[col]
+  return col
+    .split('_')
+    .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : ''))
+    .join('')
+}
 
 /**
- * Scalar / JSON columns on `public.customers` that can be used in
- * `{{column_name}}` placeholders (excluding `id` and `user_id`).
+ * Scalar / JSON columns on `public.customers` for `{VariableName}` placeholders
+ * (excluding `id` and `user_id`).
  *
  * Due-send loads `customer:customers (*)` so all present columns are available to templates.
  */
@@ -36,9 +58,13 @@ export const CUSTOMER_MESSAGE_TEMPLATE_COLUMNS = [
   'updated_at',
 ] as const
 
-const SPECIAL_TEMPLATE_KEYS = new Set(['name', 'first_name', 'last_purchase_at'])
+const SPECIAL_TEMPLATE_KEYS = new Set(['name', 'first_name', 'last_purchase_at', 'created_at'])
 
-const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
+/** Legacy `{{snake_case}}` placeholders (still supported when rendering). */
+const DOUBLE_PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
+
+/** Automated-messages style `{PascalCase}` placeholders. */
+const SINGLE_PLACEHOLDER = /\{([A-Za-z][A-Za-z0-9]*)\}/g
 
 function scalarToTemplateString(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -77,17 +103,34 @@ export function buildTemplateVariableMap(c: Record<string, unknown>): Record<str
       ? formatLastPurchaseForTemplate(c) || new Date(lastAt).toLocaleDateString()
       : ''
 
-  // `renderCampaignTemplate` lowercases keys; support `{{SenderName}}` → sendername.
-  vars.sendername = vars.sender_name
+  vars.LastPurchaseDate = vars.last_purchase_at
+
+  vars.RegistrationDate = formatRegistrationForTemplate(
+    c.original_data,
+    typeof c.created_at === 'string' ? c.created_at : undefined
+  )
+
+  for (const key of CUSTOMER_MESSAGE_TEMPLATE_COLUMNS) {
+    const varName = customerColumnToTemplateVarName(key)
+    if (vars[varName] === undefined) {
+      vars[varName] = vars[key] ?? ''
+    }
+  }
 
   return vars
 }
 
+function lookupTemplateVar(vars: Record<string, string>, key: string): string {
+  const direct = vars[key] ?? vars[key.toLowerCase()]
+  if (direct !== undefined) return direct
+
+  const snake = key
+    .replace(/([A-Z])/g, (_, ch: string) => `_${ch.toLowerCase()}`)
+    .replace(/^_/, '')
+  return vars[snake] ?? vars[snake.toLowerCase()] ?? ''
+}
+
 export function renderCampaignTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(PLACEHOLDER, (_, key: string) => {
-    const k = key.toLowerCase()
-    const direct = vars[key] ?? vars[k]
-    if (direct !== undefined) return direct
-    return ''
-  })
+  const withLegacy = template.replace(DOUBLE_PLACEHOLDER, (_, key: string) => lookupTemplateVar(vars, key))
+  return withLegacy.replace(SINGLE_PLACEHOLDER, (_, key: string) => lookupTemplateVar(vars, key))
 }

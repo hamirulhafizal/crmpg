@@ -65,6 +65,9 @@ export type CompiledWorkflow = {
   trigger_offset_days: number
   run_date: string
   run_time: string
+  run_frequency: 'daily' | 'weekly' | 'monthly'
+  run_weekday: number
+  run_day_of_month: number
   audience_filters: CampaignAudienceFilters
   daily_send_limit: number
   cooldown_days: number

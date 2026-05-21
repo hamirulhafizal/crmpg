@@ -12,7 +12,7 @@ import {
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
-import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan } from '@/app/lib/campaigns/trigger-schedule'
+import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
 import { buildTemplateVariableMap, renderCampaignTemplate } from '@/app/lib/campaigns/template'
 import type {
@@ -703,7 +703,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       const sched = getTriggerRunScheduleFromPlan(plan)
       cronLog(
         debugLines,
-        `skip campaign=${c.id} "${c.name}": outside trigger schedule (date=${sched.run_date || '—'} time=${sched.run_time || '—'})`
+        `skip campaign=${c.id} "${c.name}": outside trigger schedule (${triggerScheduleDisplayLabel(sched)})`
       )
       continue
     }

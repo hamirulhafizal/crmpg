@@ -1,6 +1,6 @@
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
-import { normalizeRunDate, normalizeRunTime } from '@/app/lib/campaigns/trigger-schedule'
+import { normalizeRunDate, normalizeRunTime, normalizeRunDayOfMonth, normalizeRunFrequency, normalizeRunWeekday } from '@/app/lib/campaigns/trigger-schedule'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
 import type { CompiledWorkflow, WorkflowDefinition } from '@/app/lib/workflows/types'
 
@@ -15,6 +15,9 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
   let trigger_offset_days = 0
   let run_date = ''
   let run_time = ''
+  let run_frequency: 'daily' | 'weekly' | 'monthly' = 'daily'
+  let run_weekday = 1
+  let run_day_of_month = 1
   let audience_filters: CampaignAudienceFilters = {}
   let daily_send_limit = 100
   let cooldown_days = 30
@@ -32,6 +35,9 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
         trigger_offset_days = Number(p.trigger_offset_days ?? 0)
         run_date = normalizeRunDate(p.run_date as string | undefined)
         run_time = normalizeRunTime(p.run_time as string | undefined)
+        run_frequency = normalizeRunFrequency(p.run_frequency)
+        run_weekday = normalizeRunWeekday(p.run_weekday)
+        run_day_of_month = normalizeRunDayOfMonth(p.run_day_of_month)
         break
       case 'crm.audience.filter':
         audience_filters = (p.audience_filters as CampaignAudienceFilters) ?? {}
@@ -79,6 +85,9 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
     trigger_offset_days,
     run_date,
     run_time,
+    run_frequency,
+    run_weekday,
+    run_day_of_month,
     audience_filters,
     daily_send_limit,
     cooldown_days,

@@ -134,7 +134,13 @@ export function CampaignWorkflowNodeInspector({
     return (
       <InspectorShell
         title="Trigger"
-        subtitle={`${draft.trigger_type} · ${triggerScheduleDisplayLabel({ run_date: draft.run_date, run_time: draft.run_time })}`}
+        subtitle={`${draft.trigger_type} · ${triggerScheduleDisplayLabel({
+          run_date: draft.run_date,
+          run_time: draft.run_time,
+          run_frequency: draft.run_frequency,
+          run_weekday: draft.run_weekday,
+          run_day_of_month: draft.run_day_of_month,
+        })}`}
         onClose={onClose}
       >
         <label className="field">
@@ -164,9 +170,15 @@ export function CampaignWorkflowNodeInspector({
         <div className="field">
           <span className="mb-1 block text-xs font-medium text-slate-700">When to run</span>
           <TriggerRunScheduleFields
-            schedule={{ run_date: draft.run_date, run_time: draft.run_time }}
+            schedule={{
+              run_date: draft.run_date,
+              run_time: draft.run_time,
+              run_frequency: draft.run_frequency ?? 'daily',
+              run_weekday: draft.run_weekday ?? 1,
+              run_day_of_month: draft.run_day_of_month ?? 1,
+            }}
             onChange={(partial) => patchSynced(partial)}
-            hint="Optional. Leave both off to run whenever cron or “Run test” fires."
+            hint="Optional. Leave both date/time off to run whenever cron or “Run test” fires on schedule days."
           />
         </div>
         {nodeTestFooter}

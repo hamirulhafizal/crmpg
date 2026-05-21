@@ -15,6 +15,9 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
         trigger_offset_days: { type: 'number', minimum: 0 },
         run_date: { type: 'string' },
         run_time: { type: 'string' },
+        run_frequency: { type: 'string', enum: ['daily', 'weekly', 'monthly'] },
+        run_weekday: { type: 'number', minimum: 0, maximum: 6 },
+        run_day_of_month: { type: 'number', minimum: 1, maximum: 31 },
       },
     },
     handler_key: 'trigger',
@@ -113,6 +116,9 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
         display_name: { type: 'string' },
         run_date: { type: 'string' },
         run_time: { type: 'string' },
+        run_frequency: { type: 'string', enum: ['daily', 'weekly', 'monthly'] },
+        run_weekday: { type: 'number', minimum: 0, maximum: 6 },
+        run_day_of_month: { type: 'number', minimum: 1, maximum: 31 },
       },
     },
     handler_key: 'trigger',
@@ -247,7 +253,7 @@ export function getBuiltinNodeType(slug: string): WorkflowNodeTypeDescriptor | u
 export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): Record<string, unknown> {
   switch (slug) {
     case 'crm.trigger.manual':
-      return { trigger_type: 'manual', trigger_offset_days: 0, run_date: '', run_time: '' }
+      return { trigger_type: 'manual', trigger_offset_days: 0, run_date: '', run_time: '', run_frequency: 'daily', run_weekday: 1, run_day_of_month: 1 }
     case 'crm.audience.filter':
       return { audience_filters: {} }
     case 'crm.enroll.queue':
@@ -263,7 +269,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
     case 'crm.flow.complete':
       return {}
     case 'crm.trigger.schedule':
-      return { cron_expression: '0 8 * * *', display_name: 'Schedule', run_date: '', run_time: '' }
+      return { cron_expression: '0 8 * * *', display_name: 'Schedule', run_date: '', run_time: '', run_frequency: 'daily', run_weekday: 1, run_day_of_month: 1 }
     case 'crm.data.supabase':
       return { operation: 'getAll', table: 'customers', audience_filters: {} }
     case 'crm.flow.loop':

@@ -165,7 +165,13 @@ function graphDefsFromDraft(
       nodeType: 'crm.trigger.manual',
       kind: 'trigger',
       title: 'Trigger',
-      subtitle: `${draft.trigger_type} · ${triggerScheduleDisplayLabel({ run_date: draft.run_date, run_time: draft.run_time })}`,
+      subtitle: `${draft.trigger_type} · ${triggerScheduleDisplayLabel({
+        run_date: draft.run_date,
+        run_time: draft.run_time,
+        run_frequency: draft.run_frequency,
+        run_weekday: draft.run_weekday,
+        run_day_of_month: draft.run_day_of_month,
+      })}`,
     },
     {
       id: WORKFLOW_NODE.audience,

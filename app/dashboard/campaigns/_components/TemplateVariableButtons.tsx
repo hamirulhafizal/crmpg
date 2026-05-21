@@ -1,13 +1,16 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { CUSTOMER_MESSAGE_TEMPLATE_COLUMNS } from '@/app/lib/campaigns/template'
+import {
+  CUSTOMER_MESSAGE_TEMPLATE_COLUMNS,
+  customerColumnToTemplateVarName,
+} from '@/app/lib/campaigns/template'
 
 export function TemplateVariableButtons({ compact }: { compact?: boolean }) {
   const [copied, setCopied] = useState<string | null>(null)
 
   const copy = useCallback(async (col: string) => {
-    const token = `{{${col}}}`
+    const token = `{${customerColumnToTemplateVarName(col)}}`
     try {
       await navigator.clipboard.writeText(token)
       setCopied(col)
@@ -25,6 +28,8 @@ export function TemplateVariableButtons({ compact }: { compact?: boolean }) {
       ) : null}
       <div className="mt-1.5 flex flex-wrap gap-1">
         {CUSTOMER_MESSAGE_TEMPLATE_COLUMNS.map((col) => {
+          const label = customerColumnToTemplateVarName(col)
+          const token = `{${label}}`
           const isCopied = copied === col
           return (
             <button
@@ -36,10 +41,10 @@ export function TemplateVariableButtons({ compact }: { compact?: boolean }) {
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300'
               }`}
-              title={`Copy {{${col}}}`}
-              aria-label={`Copy variable {{${col}}}`}
+              title={`Copy ${token}`}
+              aria-label={`Copy variable ${token}`}
             >
-              {isCopied ? 'Copied!' : `{{${col}}}`}
+              {isCopied ? 'Copied!' : token}
             </button>
           )
         })}

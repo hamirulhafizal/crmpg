@@ -1,5 +1,5 @@
 import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
-import { triggerScheduleFromStartAt } from '@/app/lib/campaigns/trigger-schedule'
+import { triggerScheduleFromStartAt, type TriggerRunFrequency } from '@/app/lib/campaigns/trigger-schedule'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { definitionToDraft, draftToDefinition, resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
@@ -26,6 +26,10 @@ export type WorkflowEditorDraft = {
   run_date: string
   /** Optional HH:MM — cron runs at this clock time (campaign timezone). */
   run_time: string
+  /** daily | weekly | monthly */
+  run_frequency: TriggerRunFrequency
+  run_weekday: number
+  run_day_of_month: number
   audience_filters: CampaignAudienceFilters
   daily_send_limit: number
   cooldown_days: number
