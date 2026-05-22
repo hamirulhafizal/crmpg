@@ -4,18 +4,69 @@ import { buildN8nMappingMaps, resolveCrmSlugForN8nType } from '@/app/lib/workflo
 import { isN8nNodeType } from '@/app/lib/workflows/n8n/detect'
 import { mergeCrmParameters } from '@/app/lib/workflows/n8n/import'
 import { assignStepOrdersToPastedNodes } from '@/app/lib/workflows/whatsapp-step'
-import type { WorkflowDefinition, WorkflowNodeInstance } from '@/app/lib/workflows/types'
+import type {
+  WorkflowDefinition,
+  WorkflowEdgeRouting,
+  WorkflowNodeInstance,
+} from '@/app/lib/workflows/types'
 
 export const WORKFLOW_CLIPBOARD_VERSION = 1 as const
+export const WORKFLOW_CLIPBOARD_STORAGE_KEY = 'crm-workflow-node-clipboard'
+
+export type WorkflowClipboardNode = {
+  /** Original canvas id — used to restore edges on paste. */
+  sourceId: string
+  type: string
+  position: { x: number; y: number }
+  parameters: Record<string, unknown>
+}
+
+export type WorkflowClipboardEdge = {
+  source: string
+  target: string
+  sourceHandle?: string
+  targetHandle?: string
+  routing?: WorkflowEdgeRouting
+  pathOffsetY?: number
+}
 
 export type WorkflowClipboardPayload = {
   crmWorkflowClipboard: true
   version: typeof WORKFLOW_CLIPBOARD_VERSION
-  nodes: Array<{
-    type: string
-    position: { x: number; y: number }
-    parameters: Record<string, unknown>
-  }>
+  nodes: WorkflowClipboardNode[]
+  edges?: WorkflowClipboardEdge[]
+}
+
+export function parseWorkflowClipboardJson(text: string): WorkflowClipboardPayload | null {
+  try {
+    const raw = JSON.parse(text) as unknown
+    if (isWorkflowClipboardPayload(raw)) return raw
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+export function persistWorkflowClipboard(payload: WorkflowClipboardPayload): void {
+  const json = JSON.stringify(payload)
+  try {
+    sessionStorage.setItem(WORKFLOW_CLIPBOARD_STORAGE_KEY, json)
+  } catch {
+    /* private mode / quota */
+  }
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(json).catch(() => {})
+  }
+}
+
+export function loadWorkflowClipboardFromStorage(): WorkflowClipboardPayload | null {
+  try {
+    const raw = sessionStorage.getItem(WORKFLOW_CLIPBOARD_STORAGE_KEY)
+    if (!raw) return null
+    return parseWorkflowClipboardJson(raw)
+  } catch {
+    return null
+  }
 }
 
 export function isWorkflowClipboardPayload(raw: unknown): raw is WorkflowClipboardPayload {
@@ -38,13 +89,31 @@ export function copyNodesFromDefinition(
         delete parameters.step_order
       }
       return {
+        sourceId: n.id,
         type: n.type,
         position: { x: n.position.x, y: n.position.y },
         parameters,
       }
     })
   if (nodes.length === 0) return null
-  return { crmWorkflowClipboard: true, version: WORKFLOW_CLIPBOARD_VERSION, nodes }
+
+  const edges = def.edges
+    .filter((e) => idSet.has(e.source) && idSet.has(e.target))
+    .map((e) => ({
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
+      routing: e.routing,
+      pathOffsetY: e.pathOffsetY,
+    }))
+
+  return {
+    crmWorkflowClipboard: true,
+    version: WORKFLOW_CLIPBOARD_VERSION,
+    nodes,
+    edges: edges.length > 0 ? edges : undefined,
+  }
 }
 
 const DEBUG_WORKFLOW =
@@ -102,7 +171,38 @@ export function pasteNodesIntoDefinition(
     pasted.push(node)
   }
 
-  let definition: WorkflowDefinition = { ...def, nodes: [...def.nodes, ...pasted] }
+  const idMap = new Map<string, string>()
+  for (let i = 0; i < payload.nodes.length; i++) {
+    const sourceId = payload.nodes[i]?.sourceId
+    const newId = newNodeIds[i]
+    if (sourceId && newId) idMap.set(sourceId, newId)
+  }
+
+  const pastedEdges =
+    payload.edges
+      ?.filter((e) => idMap.has(e.source) && idMap.has(e.target))
+      .map((e) => {
+        const source = idMap.get(e.source)!
+        const target = idMap.get(e.target)!
+        const sourceHandle = e.sourceHandle ?? 'main'
+        const targetHandle = e.targetHandle ?? 'main'
+        const id = `e-${source}-${target}${sourceHandle !== 'main' ? `-${sourceHandle}` : ''}`
+        return {
+          id,
+          source,
+          target,
+          sourceHandle,
+          targetHandle,
+          routing: e.routing,
+          pathOffsetY: e.pathOffsetY,
+        }
+      }) ?? []
+
+  let definition: WorkflowDefinition = {
+    ...def,
+    nodes: [...def.nodes, ...pasted],
+    edges: [...def.edges, ...pastedEdges],
+  }
   definition = assignStepOrdersToPastedNodes(definition, newNodeIds)
 
   for (const id of newNodeIds) {

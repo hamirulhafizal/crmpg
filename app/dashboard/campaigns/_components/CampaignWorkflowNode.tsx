@@ -177,6 +177,8 @@ function CampaignWorkflowNodeComponent({
 }: NodeProps<Node<WorkflowNodeData>>) {
   const meta = KIND_META[data.kind]
   const state = data.state
+  const verticalHandles =
+    sourcePosition === Position.Bottom || targetPosition === Position.Top
 
   const shell =
     data.selected && data.editable
@@ -224,14 +226,14 @@ function CampaignWorkflowNodeComponent({
             id="loop"
             type="source"
             position={sourcePosition ?? Position.Right}
-            style={{ top: '35%' }}
+            style={verticalHandles ? { left: '28%' } : { top: '35%' }}
             className="!h-2.5 !w-2.5 !border-2 !border-cyan-400 !bg-white"
           />
           <Handle
             id="done"
             type="source"
             position={sourcePosition ?? Position.Right}
-            style={{ top: '72%' }}
+            style={verticalHandles ? { left: '72%' } : { top: '72%' }}
             className="!h-2.5 !w-2.5 !border-2 !border-slate-400 !bg-white"
           />
         </>

@@ -95,8 +95,8 @@ function assignDoneBranchPositions(
     const sourcePos = sourceId ? positions[sourceId] : undefined
 
     if (vertical) {
-      const x = (sourcePos?.x ?? START_X) + NODE_W + H_GAP
-      const y = sourcePos?.y ?? START_Y + mainMaxIndex * (NODE_H + V_GAP)
+      const x = sourcePos?.x ?? START_X
+      const y = (sourcePos?.y ?? START_Y) + NODE_H + V_GAP
       positions[targetId] = { x, y }
     } else {
       const x =
@@ -138,7 +138,8 @@ function nodeEndX(pos: { x: number; y: number }): number {
 function refreshEdgeRouting(
   edges: WorkflowEdge[],
   positions: Record<string, { x: number; y: number }>,
-  mainIndex: Map<string, number>
+  mainIndex: Map<string, number>,
+  vertical = false
 ): WorkflowEdge[] {
   return edges.map((e) => {
     const src = positions[e.source]
@@ -155,7 +156,12 @@ function refreshEdgeRouting(
     const loopBack =
       explicitLoop ||
       backwardOnCanvas ||
-      shouldUseLoopBackRouting(nodeEndX(src), tgt.x, e.routing)
+      shouldUseLoopBackRouting(nodeEndX(src), tgt.x, e.routing, {
+        sourceY: src.y,
+        targetY: tgt.y,
+        sourceHandle: e.sourceHandle,
+        vertical,
+      })
 
     if (!loopBack) {
       const { routing: _r, pathOffsetY: _p, ...rest } = e
@@ -185,7 +191,7 @@ export function tidyWorkflowDefinition(
   assignOrphanPositions(def.nodes, positions, mainOrder, vertical)
 
   const mainIndex = new Map(mainOrder.map((id, i) => [id, i]))
-  const edges = refreshEdgeRouting(def.edges, positions, mainIndex)
+  const edges = refreshEdgeRouting(def.edges, positions, mainIndex, vertical)
 
   const nodes = def.nodes.map((n) => ({
     ...n,

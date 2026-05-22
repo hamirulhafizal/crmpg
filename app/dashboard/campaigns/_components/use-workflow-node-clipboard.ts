@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } fr
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import {
   copyNodesFromDefinition,
-  isWorkflowClipboardPayload,
+  loadWorkflowClipboardFromStorage,
+  parseWorkflowClipboardJson,
   pasteNodesIntoDefinition,
+  persistWorkflowClipboard,
   type WorkflowClipboardPayload,
 } from '@/app/lib/workflows/clipboard'
 import { removeNodeFromDefinition } from '@/app/lib/workflows/graph-mutate'
@@ -20,13 +22,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export function readWorkflowClipboardFromText(text: string): WorkflowClipboardPayload | null {
-  try {
-    const raw = JSON.parse(text) as unknown
-    if (isWorkflowClipboardPayload(raw)) return raw
-  } catch {
-    /* ignore */
-  }
-  return null
+  return parseWorkflowClipboardJson(text)
 }
 
 export function useWorkflowNodeClipboard({
@@ -71,7 +67,15 @@ export function useWorkflowNodeClipboard({
     }
     clipboardRef.current = payload
     pasteCountRef.current = 0
-    const label = selectedNodeIds.length === 1 ? 'Node copied' : `${selectedNodeIds.length} nodes copied`
+    persistWorkflowClipboard(payload)
+    const edgeNote =
+      payload.edges?.length && payload.edges.length > 0
+        ? ` (${payload.edges.length} connection${payload.edges.length === 1 ? '' : 's'})`
+        : ''
+    const label =
+      selectedNodeIds.length === 1
+        ? `Node copied${edgeNote} — paste in this or another workflow (Ctrl+V)`
+        : `${selectedNodeIds.length} nodes copied${edgeNote} — paste in this or another workflow (Ctrl+V)`
     onToast?.('success', label)
   }, [currentDefinition, selectedNodeIds, onToast])
 
@@ -159,32 +163,36 @@ export function useWorkflowNodeClipboard({
   )
 
   const pasteFromClipboard = useCallback(async () => {
+    const tryNodePayload = (payload: WorkflowClipboardPayload | null) => {
+      if (payload?.nodes.length) {
+        clipboardRef.current = payload
+        pasteNodesPayload(payload)
+        return true
+      }
+      return false
+    }
+
+    if (clipboardRef.current?.nodes.length && tryNodePayload(clipboardRef.current)) {
+      return
+    }
+
+    const fromStorage = loadWorkflowClipboardFromStorage()
+    if (fromStorage?.nodes.length && tryNodePayload(fromStorage)) {
+      return
+    }
+
     let text = ''
     try {
       text = await navigator.clipboard.readText()
     } catch {
-      if (clipboardRef.current?.nodes.length) {
-        pasteNodesPayload(clipboardRef.current)
-        return
-      }
-      onToast?.('error', 'Allow clipboard access to paste, or copy a node first (Ctrl+C)')
+      onToast?.('error', 'Allow clipboard access to paste, or copy nodes first (Ctrl+C)')
       return
     }
 
     const trimmed = text.trim()
     if (trimmed) {
       if (pasteWorkflowDefinition(trimmed)) return
-      const nodePayload = readWorkflowClipboardFromText(trimmed)
-      if (nodePayload?.nodes.length) {
-        clipboardRef.current = nodePayload
-        pasteNodesPayload(nodePayload)
-        return
-      }
-    }
-
-    if (clipboardRef.current?.nodes.length) {
-      pasteNodesPayload(clipboardRef.current)
-      return
+      if (tryNodePayload(readWorkflowClipboardFromText(trimmed))) return
     }
 
     onToast?.('error', 'Nothing to paste — copy a node (Ctrl+C) or workflow JSON')

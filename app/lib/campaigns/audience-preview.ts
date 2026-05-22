@@ -74,6 +74,50 @@ export function describeCampaignAudienceFilters(
   if (filters.last_purchase_days_gt != null && filters.last_purchase_days_gt > 0) {
     lines.push(`Last purchase older than: ${filters.last_purchase_days_gt} days`)
   }
+  if (filters.dob_is_today) {
+    lines.push('Date of birth: current date (day & month, Malaysia time)')
+  } else if (filters.dob_month != null && filters.dob_month >= 1 && filters.dob_month <= 12) {
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ]
+    const m = monthNames[filters.dob_month - 1] ?? String(filters.dob_month)
+    const from = filters.dob_day_from
+    const to = filters.dob_day_to
+    if (from != null || to != null) {
+      lines.push(`Birthday (month/day): ${m} ${from ?? 1}–${to ?? 31}`)
+    } else {
+      lines.push(`Birthday month: ${m} (year ignored)`)
+    }
+  }
+  if (filters.last_purchase_is_today) {
+    lines.push('Last purchase date: current date (Malaysia time)')
+  } else {
+    const lpFrom = filters.last_purchase_on_or_after?.trim()
+    const lpTo = filters.last_purchase_on_or_before?.trim()
+    if (lpFrom || lpTo) {
+      lines.push(`Last purchase date: ${lpFrom || '…'} → ${lpTo || '…'}`)
+    }
+  }
+  if (filters.register_is_today) {
+    lines.push('Register date: current date (Malaysia time)')
+  } else {
+    const regFrom = filters.register_on_or_after?.trim()
+    const regTo = filters.register_on_or_before?.trim()
+    if (regFrom || regTo) {
+      lines.push(`Register date: ${regFrom || '…'} → ${regTo || '…'}`)
+    }
+  }
   if (filters.segment_attributes && Object.keys(filters.segment_attributes).length > 0) {
     const bits = Object.entries(filters.segment_attributes)
       .filter(([, v]) => v != null)
@@ -103,7 +147,7 @@ export async function computeEligibleAudiencePreview(
     const { data: batch, error } = await supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', userId)

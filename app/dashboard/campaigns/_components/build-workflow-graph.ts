@@ -242,7 +242,8 @@ function edgesFromDefinition(
   def: WorkflowDefinition,
   nodeStates: Record<string, WorkflowNodeState>,
   editable: boolean,
-  positions: Record<string, { x: number; y: number }>
+  positions: Record<string, { x: number; y: number }>,
+  vertical: boolean
 ): Edge[] {
   const edgeList: WorkflowEdge[] =
     def.edges.length > 0
@@ -274,6 +275,7 @@ function edgesFromDefinition(
             sourceY: src.y,
             targetY: tgt.y,
             sourceHandle,
+            vertical,
           })
           ? 'loop-back'
           : 'default'
@@ -292,7 +294,7 @@ function edgesFromDefinition(
       targetHandle,
       type: edgeType(editable),
       animated: active,
-      data: { routing, pathOffsetY },
+      data: { routing, pathOffsetY, vertical },
       markerEnd: workflowEdgeMarkerEnd(stroke),
       style: {
         stroke,
@@ -325,7 +327,7 @@ export function buildWorkflowFlowGraph(opts: {
     .map((s) => s.step_order)
   const nodeIds = defs.map((d) => d.id)
   const legacyIds = workflowNodeIds(stepOrders)
-  const useVertical = opts.vertical && !opts.editable && !opts.draft.layout?.nodes && !opts.draft.definition
+  const useVertical = opts.vertical
 
   const positions =
     opts.draft.definition?.nodes?.length
@@ -359,7 +361,7 @@ export function buildWorkflowFlowGraph(opts: {
   }))
 
   const edges = opts.draft.definition?.nodes?.length
-    ? edgesFromDefinition(opts.draft.definition, opts.nodeStates, opts.editable, positions)
+    ? edgesFromDefinition(opts.draft.definition, opts.nodeStates, opts.editable, positions, useVertical)
     : defs.slice(0, -1).map((def, index) => {
         const targetId = defs[index + 1]!.id
         const sourceState = opts.nodeStates[def.id] ?? 'idle'

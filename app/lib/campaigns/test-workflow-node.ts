@@ -370,7 +370,7 @@ export async function testWorkflowNode(opts: {
         const { data: sampleRows } = await opts.supabase
           .from('customers')
           .select(
-            `id, phone, name, first_name, sender_name, save_name, pg_code, prefix, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+            `id, phone, name, first_name, sender_name, save_name, pg_code, prefix, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
              customer_tags ( tag_id, tags ( slug ) )`
           )
           .eq('user_id', opts.userId)

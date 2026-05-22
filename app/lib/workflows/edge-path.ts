@@ -12,6 +12,8 @@ export type LoopBackRoutingHint = {
   sourceY?: number
   targetY?: number
   sourceHandle?: string
+  /** Top/bottom handles: forward = down, loop-back = up to an earlier node. */
+  vertical?: boolean
 }
 
 /** True when the connection goes backward on the canvas (typical loop-back). */
@@ -24,6 +26,14 @@ export function shouldUseLoopBackRouting(
   if (explicit === 'loop-back') return true
   if (explicit === 'default') return false
   if (hint?.sourceHandle === 'done') return false
+
+  if (hint?.vertical) {
+    if (hint.sourceY != null && hint.targetY != null) {
+      return hint.targetY < hint.sourceY - 24
+    }
+    return false
+  }
+
   if (
     hint?.sourceY != null &&
     hint?.targetY != null &&

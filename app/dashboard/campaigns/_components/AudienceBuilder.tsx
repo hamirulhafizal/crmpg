@@ -6,7 +6,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 const STATUSES = ['temporary', 'freeze', 'active', 'free', 'inactive', 'unknown'] as const
 const ETHNICITIES = ['Malay', 'Chinese', 'Indian', 'Other'] as const
-
 type FlatTag = {
   slug: string
   label: string
@@ -339,7 +338,7 @@ export function AudienceBuilder({
 
   return (
     <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
-      <div>
+      <div id="audience-builder-tags">
         <label className="block text-sm font-medium text-slate-700">Tags (any match)</label>
         <div className="mt-1">
           <TagCatalogPicker
@@ -431,6 +430,77 @@ export function AudienceBuilder({
           value={value.location_contains ?? ''}
           onChange={(e) => onChange({ ...value, location_contains: e.target.value || undefined })}
         />
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-slate-900">
+        <span className="font-medium text-slate-700">Date of birth</span>
+        <select
+          className="rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+          value={value.dob_is_today ? 'today' : ''}
+          onChange={(e) => {
+            const isToday = e.target.value === 'today'
+            onChange({
+              ...value,
+              dob_is_today: isToday ? true : undefined,
+              dob_month: undefined,
+              dob_day_from: undefined,
+              dob_day_to: undefined,
+            })
+          }}
+        >
+          <option value="">Any</option>
+          <option value="today">Current date (day & month)</option>
+        </select>
+        <p className="text-xs text-slate-500">
+          Matches customers whose birthday is today in Malaysia time (e.g. 23/05 on 23 May). Year is
+          ignored — use this for daily birthday WhatsApp wishes when the campaign runs.
+        </p>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-slate-900">
+        <span className="font-medium text-slate-700">Last purchase date</span>
+        <select
+          className="rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+          value={value.last_purchase_is_today ? 'today' : ''}
+          onChange={(e) => {
+            const isToday = e.target.value === 'today'
+            onChange({
+              ...value,
+              last_purchase_is_today: isToday ? true : undefined,
+              last_purchase_on_or_after: undefined,
+              last_purchase_on_or_before: undefined,
+            })
+          }}
+        >
+          <option value="">Any</option>
+          <option value="today">Current date (today)</option>
+        </select>
+        <p className="text-xs text-slate-500">
+          Matches customers whose last purchase is today in Malaysia time (full calendar date).
+        </p>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-slate-900">
+        <span className="font-medium text-slate-700">Register date</span>
+        <select
+          className="rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+          value={value.register_is_today ? 'today' : ''}
+          onChange={(e) => {
+            const isToday = e.target.value === 'today'
+            onChange({
+              ...value,
+              register_is_today: isToday ? true : undefined,
+              register_on_or_after: undefined,
+              register_on_or_before: undefined,
+            })
+          }}
+        >
+          <option value="">Any</option>
+          <option value="today">Current date (today)</option>
+        </select>
+        <p className="text-xs text-slate-500">
+          Matches customers who registered today in Malaysia time (Date Register or account created date).
+        </p>
       </label>
 
       <label className="flex flex-col gap-1 text-sm">

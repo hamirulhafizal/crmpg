@@ -40,6 +40,7 @@ function BuilderCanvas({
   onTestNode,
   testingNodeId,
   fitDeps,
+  onOpenNodeProperties,
 }: {
   draft: WorkflowEditorDraft
   setDraft: Dispatch<SetStateAction<WorkflowEditorDraft>>
@@ -48,6 +49,7 @@ function BuilderCanvas({
   onTestNode?: (nodeId: string) => void
   testingNodeId?: string | null
   fitDeps: unknown[]
+  onOpenNodeProperties: (nodeId: string) => void
 }) {
   const { screenToFlowPosition } = useReactFlow()
 
@@ -133,6 +135,7 @@ function BuilderCanvas({
         fitDeps={fitDeps}
         onTestNode={onTestNode}
         testingNodeId={testingNodeId}
+        onOpenNodeProperties={onOpenNodeProperties}
       />
     </div>
   )
@@ -182,6 +185,11 @@ function CampaignWorkflowBuilderInner({
     if (!def?.nodes.some((n) => isN8nNodeType(String(n.type)))) return
     setDraft(definitionToDraft(def))
   }, [draft.definition, setDraft])
+
+  const openNodeProperties = useCallback((nodeId: string) => {
+    setSelectedNodeIds([nodeId])
+    setRightSidebarOpen(true)
+  }, [])
 
   const triggerNodeTest = useCallback((nodeId: string) => {
     setSelectedNodeIds([nodeId])
@@ -260,13 +268,13 @@ function CampaignWorkflowBuilderInner({
         />
         <WorkflowUndoButtons canUndo={canUndo} canRedo={canRedo} onUndo={undo} onRedo={redo} />
         <WorkflowN8nToolbar draft={draft} onDraftChange={setDraft} onToast={pushToast} />
-        <button
+        {/* <button
           type="button"
           onClick={() => setDraft((d) => addWorkflowStep(d))}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
         >
           + Step
-        </button>
+        </button> */}
         <button
           type="button"
           disabled={saving}
@@ -314,6 +322,7 @@ function CampaignWorkflowBuilderInner({
               setSelectedNodeIds={setSelectedNodeIds}
               onTestNode={triggerNodeTest}
               testingNodeId={testingNodeId}
+              onOpenNodeProperties={openNodeProperties}
               fitDeps={[
                 draft.definition?.nodes?.length ?? 0,
                 draft.steps.length,

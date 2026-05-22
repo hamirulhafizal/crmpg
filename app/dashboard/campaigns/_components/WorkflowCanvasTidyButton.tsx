@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { ControlButton, useReactFlow } from '@xyflow/react'
+import { useWorkflowCanvasTheme } from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { tidyWorkflowDefinition } from '@/app/lib/workflows/tidy-layout'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
@@ -36,6 +37,7 @@ export function WorkflowCanvasTidyButton({
   editable: boolean
   onTidyLayout: (def: WorkflowDefinition) => void
 }) {
+  const { isDark } = useWorkflowCanvasTheme()
   const { fitView } = useReactFlow()
 
   const handleTidy = useCallback(() => {
@@ -55,7 +57,11 @@ export function WorkflowCanvasTidyButton({
       onClick={handleTidy}
       title="Tidy up layout"
       aria-label="Tidy up layout"
-      className="!text-slate-700 hover:!text-slate-900"
+      className={
+        isDark
+          ? 'workflow-canvas-control-dark !text-white hover:!text-slate-200'
+          : 'workflow-canvas-control-light !text-slate-700 hover:!text-slate-900'
+      }
     >
       <BroomIcon className="h-[18px] w-[18px]" />
     </ControlButton>

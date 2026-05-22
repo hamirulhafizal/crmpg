@@ -10,7 +10,11 @@ import {
   type CustomerQueueMeta,
 } from '@/app/lib/campaigns/customer-queue'
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
-import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
+import {
+  CUSTOMER_EMBED_FOR_AUDIENCE_MATCH,
+  customerMatchesFilters,
+  type CustomerForAudience,
+} from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
@@ -248,10 +252,7 @@ async function syncEnrollmentsForCampaign(
   while (true) {
     const { data: batch, error } = await supabase
       .from('customers')
-      .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, original_data, is_monthly_buyer, is_friend, segment_attributes, sender_name, prefix, age, dob, email,
-         customer_tags ( tag_id, tags ( slug ) )`
-      )
+      .select(CUSTOMER_EMBED_FOR_AUDIENCE_MATCH)
       .eq('user_id', campaign.user_id)
       .range(offset, offset + CUSTOMER_PAGE - 1)
 
@@ -348,11 +349,85 @@ async function syncEnrollmentsForCampaign(
   onProgress?.({ type: 'node', nodeId: enrollId, state: 'complete' })
 }
 
-/** `customers(*)` avoids PostgREST 400 when prod schema is missing columns we list explicitly. */
+/** Pause active enrollments whose customer no longer matches the workflow audience (e.g. after filter change). */
+async function reconcileEnrollmentsToAudience(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  campaignId: string,
+  plan: CampaignWorkflowPlan,
+  debugLines?: string[],
+  onProgress?: CampaignWorkflowProgressHandler
+): Promise<number> {
+  if (!plan.audienceNodeId) return 0
+
+  const filters = plan.compiled.audience_filters
+  let offset = 0
+  let paused = 0
+
+  while (true) {
+    const { data: batch, error } = await supabase
+      .from('campaign_enrollments')
+      .select(`id, metadata, customer:customers (${CUSTOMER_EMBED_FOR_AUDIENCE_MATCH})`)
+      .eq('campaign_id', campaignId)
+      .eq('status', 'active')
+      .range(offset, offset + CUSTOMER_PAGE - 1)
+
+    if (error) {
+      cronLog(debugLines, `audience reconcile error campaign=${campaignId}: ${error.message}`)
+      break
+    }
+    const rows = batch ?? []
+    if (rows.length === 0) break
+
+    for (const raw of rows) {
+      const row = raw as {
+        id: string
+        metadata?: Record<string, unknown> | null
+        customer: CustomerForAudience | CustomerForAudience[] | null
+      }
+      const custRaw = row.customer
+      const customer = (Array.isArray(custRaw) ? custRaw[0] : custRaw) as CustomerForAudience | null
+      if (!customer || customerMatchesFilters(customer, filters)) continue
+
+      const { error: uErr } = await supabase
+        .from('campaign_enrollments')
+        .update({
+          status: 'paused',
+          next_send_at: null,
+          metadata: {
+            ...(row.metadata ?? {}),
+            audience_paused_at: new Date().toISOString(),
+            audience_pause_reason: 'no_longer_matches_filters',
+          },
+        })
+        .eq('id', row.id)
+
+      if (!uErr) {
+        paused++
+        const label = customerWorkflowLabel(customer)
+        cronLog(debugLines, `paused enrollment=${row.id} customer=${customer.id} (${label}): outside audience`)
+        onProgress?.({
+          type: 'log',
+          message: `Paused ${label} — no longer matches audience`,
+          level: 'info',
+        })
+      }
+    }
+
+    offset += CUSTOMER_PAGE
+    if (rows.length < CUSTOMER_PAGE) break
+  }
+
+  if (paused > 0) {
+    cronLog(debugLines, `audience reconcile campaign=${campaignId} paused=${paused}`)
+    onProgress?.({ type: 'log', message: `Paused ${paused} enrollment(s) outside current audience` })
+  }
+  return paused
+}
+
 const enrollmentDueSelect = `
       *,
       campaign:campaigns (*),
-      customer:customers (*)
+      customer:customers (${CUSTOMER_EMBED_FOR_AUDIENCE_MATCH})
     `
 
 type DueEnrollmentRow = {
@@ -392,6 +467,19 @@ async function processDueEnrollmentRows(
 
     if (!plan.enableDueSend) {
       cronLog(debugLines, `skip enrollment=${row.id}: workflow has no active WhatsApp nodes`)
+      continue
+    }
+
+    if (plan.audienceNodeId && !customerMatchesFilters(customer, plan.compiled.audience_filters)) {
+      cronLog(
+        debugLines,
+        `skip enrollment=${row.id}: customer=${customer.id} does not match audience filters`
+      )
+      onProgress?.({
+        type: 'log',
+        message: `Skipped ${customerWorkflowLabel(customer)} — not in target audience`,
+        level: 'info',
+      })
       continue
     }
 
@@ -726,6 +814,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     }
     await syncEnrollmentsForCampaign(supabase, c, steps, plan, summary, debugLines, progress)
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
+    await reconcileEnrollmentsToAudience(supabase, c.id, plan, debugLines, progress)
   }
 
   // Use a fresh instant after enrollment sync so rows inserted above with next_send_at ≈ "now"

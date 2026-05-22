@@ -18,6 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { buildWorkflowFlowGraph } from '@/app/dashboard/campaigns/_components/build-workflow-graph'
 import { campaignWorkflowNodeTypes } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNode'
+import { WorkflowCanvasLayoutToggle } from '@/app/dashboard/campaigns/_components/WorkflowMobileLayoutToggle'
 import { WorkflowCanvasTidyButton } from '@/app/dashboard/campaigns/_components/WorkflowCanvasTidyButton'
 import { WorkflowCanvasThemeToggle } from '@/app/dashboard/campaigns/_components/WorkflowCanvasThemeToggle'
 import { useWorkflowCanvasTheme } from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
@@ -61,6 +62,11 @@ export function WorkflowFlowCanvas({
   onTestNode,
   testingNodeId,
   onTidyLayout,
+  showCanvasTidy = true,
+  showMobileLayoutToggle = false,
+  onToggleMobileLayout,
+  mobileLayoutDisabled = false,
+  onOpenNodeProperties,
 }: {
   draft: WorkflowEditorDraft
   nodeStates: Record<string, WorkflowNodeState>
@@ -83,6 +89,14 @@ export function WorkflowFlowCanvas({
   onTestNode?: (nodeId: string) => void
   testingNodeId?: string | null
   onTidyLayout?: (def: WorkflowDefinition) => void
+  /** Desktop: broom tidy in canvas controls. */
+  showCanvasTidy?: boolean
+  /** Mobile: vertical/horizontal layout toggle in canvas controls. */
+  showMobileLayoutToggle?: boolean
+  onToggleMobileLayout?: () => void
+  mobileLayoutDisabled?: boolean
+  /** Double-click a node to select it and open the properties panel. */
+  onOpenNodeProperties?: (nodeId: string) => void
 }) {
   const { isDark } = useWorkflowCanvasTheme()
   const dotColor = isDark ? '#3a4358' : '#c4c9d4'
@@ -271,6 +285,9 @@ export function WorkflowFlowCanvas({
           onSelectNodes([node.id])
         }
       }}
+      onNodeDoubleClick={(_e, node) => {
+        onOpenNodeProperties?.(node.id)
+      }}
       onPaneClick={() => onSelectNodes([])}
       onNodeDragStop={onNodeDragStop}
       nodeTypes={campaignWorkflowNodeTypes}
@@ -297,7 +314,14 @@ export function WorkflowFlowCanvas({
       <Background variant={BackgroundVariant.Dots} gap={18} size={1.2} color={dotColor} />
       <Controls showInteractive={false} className="campaign-workflow-controls">
         <WorkflowCanvasThemeToggle />
-        {onTidyLayout ? (
+        {showMobileLayoutToggle && onToggleMobileLayout ? (
+          <WorkflowCanvasLayoutToggle
+            vertical={vertical}
+            disabled={mobileLayoutDisabled}
+            onToggle={onToggleMobileLayout}
+          />
+        ) : null}
+        {onTidyLayout && showCanvasTidy ? (
           <WorkflowCanvasTidyButton
             draft={draft}
             vertical={vertical}
@@ -315,8 +339,8 @@ export function WorkflowFlowCanvas({
           }`}
         >
           {editable
-            ? '▶ Test node · Ctrl+V paste · Ctrl+A select all · Ctrl+Z undo'
-            : 'Pan & zoom to explore'}
+            ? '▶ Test node · Double-click node for properties · Ctrl+V paste · Ctrl+A select all · Ctrl+Z undo'
+            : 'Double-click node for properties · Pan & zoom to explore'}
         </span>
       </Panel>
       <FitViewOnChange deps={fitDeps} />

@@ -1,4 +1,5 @@
-import type { CampaignRow, CampaignStepRow } from '@/app/lib/campaigns/types'
+import { audienceFiltersConfigured } from '@/app/lib/campaigns/audience'
+import type { CampaignAudienceFilters, CampaignRow, CampaignStepRow } from '@/app/lib/campaigns/types'
 import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
@@ -57,6 +58,10 @@ export function buildCampaignWorkflowPlan(
 
   const definition = resolveWorkflowDefinition(campaign, stepDrafts)
   const compiled = compileWorkflowDefinition(definition)
+  const columnFilters = (campaign.audience_filters ?? {}) as CampaignAudienceFilters
+  if (!audienceFiltersConfigured(compiled.audience_filters) && audienceFiltersConfigured(columnFilters)) {
+    compiled.audience_filters = columnFilters
+  }
   const ordered = topologicalOrder(definition)
 
   const whatsappFromGraph: WhatsappPlanNode[] = ordered

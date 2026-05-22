@@ -5,6 +5,7 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getSmoothStepPath,
+  Position,
   useReactFlow,
   type EdgeProps,
 } from '@xyflow/react'
@@ -35,13 +36,17 @@ export function WorkflowDeletableEdge({
   const dragRef = useRef<{ startOffset: number } | null>(null)
 
   const routing = (data?.routing as WorkflowEdgeRouting | undefined) ?? 'default'
-  const useLoopBack =
-    routing === 'loop-back' ||
-    shouldUseLoopBackRouting(sourceX, targetX, routing, {
-      sourceY,
-      targetY,
-      sourceHandle: sourceHandleId ?? undefined,
-    })
+  const verticalLayout =
+    Boolean(data?.vertical) ||
+    (sourcePosition === Position.Bottom && targetPosition === Position.Top)
+  const useLoopBack = verticalLayout
+    ? routing === 'loop-back'
+    : routing === 'loop-back' ||
+      shouldUseLoopBackRouting(sourceX, targetX, routing, {
+        sourceY,
+        targetY,
+        sourceHandle: sourceHandleId ?? undefined,
+      })
 
   const pathOffsetY =
     typeof data?.pathOffsetY === 'number' && Number.isFinite(data.pathOffsetY)
@@ -59,6 +64,7 @@ export function WorkflowDeletableEdge({
     targetX,
     targetY,
     targetPosition,
+    borderRadius: verticalLayout ? 10 : 8,
   })
 
   const edgePath = loop?.path ?? smoothPath

@@ -130,7 +130,7 @@ body {
 .campaign-workflow-shell--dark .workflow-chrome button:not([class*='bg-']) {
   border-color: var(--wf-border);
   color: var(--wf-text);
-  background: var(--wf-surface-muted);
+  /* background: var(--wf-surface-muted); */
 }
 
 .campaign-workflow-shell--dark header.workflow-chrome button:hover,
@@ -170,9 +170,58 @@ body {
 }
 
 .campaign-workflow-shell--dark .bg-slate-50,
+.campaign-workflow-shell--dark .bg-slate-50\/80,
 .campaign-workflow-shell--dark .bg-slate-100,
 .campaign-workflow-shell--dark .bg-white {
   background: var(--wf-surface-muted) !important;
+}
+
+.campaign-workflow-shell--dark #audience-builder-tags .bg-white {
+  background: white !important;
+}
+
+.campaign-workflow-shell--dark .border-slate-100 {
+  border-color: var(--wf-border) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header {
+  background: var(--wf-surface) !important;
+  border-color: var(--wf-border) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header .bg-amber-100 {
+  background: rgba(251, 191, 36, 0.2) !important;
+  color: #fcd34d !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header .bg-sky-100 {
+  background: rgba(56, 189, 248, 0.15) !important;
+  color: #7dd3fc !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header .border-violet-200 {
+  border-color: rgba(167, 139, 250, 0.45) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header .bg-violet-50 {
+  background: rgba(139, 92, 246, 0.2) !important;
+  color: #ddd6fe !important;
+}
+
+.campaign-workflow-shell--dark .workflow-header .bg-violet-50:hover {
+  background: rgba(139, 92, 246, 0.32) !important;
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button.workflow-canvas-control-dark,
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button.workflow-canvas-control-dark svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button.workflow-canvas-control-dark:hover,
+.campaign-workflow-shell--dark .campaign-workflow-controls .react-flow__controls-button.workflow-canvas-control-dark:hover svg {
+  color: #e2e8f0 !important;
+  stroke: #e2e8f0 !important;
 }
 
 .campaign-workflow-shell--dark .campaign-workflow-controls {

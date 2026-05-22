@@ -34,7 +34,11 @@ export function WorkflowCanvasThemeToggle() {
       onClick={toggleTheme}
       title={label}
       aria-label={label}
-      className="!text-slate-700 hover:!text-slate-900"
+      className={
+        isDark
+          ? 'workflow-canvas-control-dark !text-white hover:!text-slate-200'
+          : 'workflow-canvas-control-light !text-slate-700 hover:!text-slate-900'
+      }
     >
       {isDark ? <SunIcon className="h-[18px] w-[18px]" /> : <MoonIcon className="h-[18px] w-[18px]" />}
     </ControlButton>

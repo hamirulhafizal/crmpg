@@ -20,6 +20,23 @@ export type CampaignAudienceFilters = {
   location_contains?: string | null
   /** Minimum whole days since last purchase (based on column + original_data resolution in TS). */
   last_purchase_days_gt?: number | null
+  /** Match `customers.dob` day/month to Malaysia “today” when the campaign runs (year ignored). */
+  dob_is_today?: boolean | null
+  /** @deprecated Prefer `dob_is_today`. Manual month 1–12 (year ignored). */
+  dob_month?: number | null
+  /** @deprecated Inclusive day range within `dob_month`. */
+  dob_day_from?: number | null
+  dob_day_to?: number | null
+  /** Last purchase calendar date equals Malaysia “today” when the campaign runs. */
+  last_purchase_is_today?: boolean | null
+  /** Registration calendar date equals Malaysia “today” when the campaign runs. */
+  register_is_today?: boolean | null
+  /** @deprecated Prefer `last_purchase_is_today`. */
+  last_purchase_on_or_after?: string | null
+  last_purchase_on_or_before?: string | null
+  /** @deprecated Prefer `register_is_today`. */
+  register_on_or_after?: string | null
+  register_on_or_before?: string | null
   segment_attributes?: Record<string, unknown>
 }
 

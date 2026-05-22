@@ -86,22 +86,22 @@ export function WorkflowN8nToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <button
+      {/* <button
         type="button"
         onClick={loadJohorTemplate}
         className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100"
         title="Load n8n-style Johor bulk message workflow on canvas"
       >
         Johor template
-      </button>
-      <button
+      </button> */}
+      {/* <button
         type="button"
         onClick={() => fileRef.current?.click()}
         className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
         title="Import n8n workflow JSON file"
       >
         Import file
-      </button>
+      </button> */}
       <input
         ref={fileRef}
         type="file"
