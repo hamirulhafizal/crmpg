@@ -195,7 +195,7 @@ export function insertWhatsAppStepBeforeComplete(def: WorkflowDefinition): Workf
               step_order: order,
               delay_days: 0,
               send_time: '10:00',
-              message_template: 'Hello {{name}}, …',
+              message_template: 'Salam {SenderName}',
               is_active: true,
             },
           }

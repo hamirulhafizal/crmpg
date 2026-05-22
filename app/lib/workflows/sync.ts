@@ -2,7 +2,7 @@ import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaigns/workflow-layout'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
-import { createDefaultWorkflowDefinition, isEmptyWorkflowDefinition } from '@/app/lib/workflows/defaults'
+import { createLinearLegacyWorkflowDefinition, isEmptyWorkflowDefinition } from '@/app/lib/workflows/defaults'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
 import { normalizeN8nTypesInDefinition } from '@/app/lib/workflows/normalize-definition'
 import type { WorkflowDefinition, WorkflowEdge, WorkflowNodeInstance } from '@/app/lib/workflows/types'
@@ -146,7 +146,7 @@ function legacyStepOrderFromNodeId(nodeId: string): number | null {
 }
 
 function buildDefinitionFromLegacyDraft(draft: WorkflowEditorDraft): WorkflowDefinition {
-  const def = createDefaultWorkflowDefinition()
+  const def = createLinearLegacyWorkflowDefinition()
   const activeSteps = [...draft.steps]
     .filter((s) => s.is_active !== false)
     .sort((a, b) => a.step_order - b.step_order)

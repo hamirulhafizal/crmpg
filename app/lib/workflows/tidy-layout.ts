@@ -24,9 +24,14 @@ function isDoneBranchEdge(e: WorkflowEdge): boolean {
   return e.sourceHandle === 'done'
 }
 
+function isLoopBranchEdge(e: WorkflowEdge): boolean {
+  return e.sourceHandle === 'loop'
+}
+
 function isPrimaryEdge(e: WorkflowEdge): boolean {
   if (e.routing === 'loop-back') return false
   if (isDoneBranchEdge(e)) return false
+  if (isLoopBranchEdge(e)) return false
   return true
 }
 
@@ -101,11 +106,47 @@ function assignDoneBranchPositions(
     } else {
       const x =
         sourcePos != null
-          ? sourcePos.x
+          ? sourcePos.x + NODE_W + H_GAP
           : START_X + (mainMaxIndex + branchSlot) * (NODE_W + H_GAP)
-      const y = (sourcePos?.y ?? START_Y) + BRANCH_OFFSET
+      const y = (sourcePos?.y ?? START_Y) - BRANCH_OFFSET
       positions[targetId] = { x, y }
       branchSlot += 1
+    }
+  }
+}
+
+/** Step / wait chain from loop output 2 (bottom handle) — below loop, to the right. */
+function assignLoopBranchPositions(
+  def: WorkflowDefinition,
+  positions: Record<string, { x: number; y: number }>,
+  vertical: boolean
+): void {
+  const starts = def.edges.filter((e) => isLoopBranchEdge(e) && e.routing !== 'loop-back')
+  for (const startEdge of starts) {
+    const anchor = positions[startEdge.source]
+    if (!anchor) continue
+
+    let currentId: string | undefined = startEdge.target
+    let slot = 0
+    const seen = new Set<string>()
+
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId)
+      positions[currentId] = vertical
+        ? { x: anchor.x + NODE_W + H_GAP, y: anchor.y + slot * (NODE_H + V_GAP) }
+        : {
+            x: anchor.x + NODE_W + H_GAP + slot * (NODE_W + H_GAP),
+            y: anchor.y + BRANCH_OFFSET,
+          }
+      slot += 1
+      const next = def.edges.find(
+        (e) =>
+          e.source === currentId &&
+          e.routing !== 'loop-back' &&
+          !isDoneBranchEdge(e) &&
+          !isLoopBranchEdge(e)
+      )
+      currentId = next?.target
     }
   }
 }
@@ -173,7 +214,7 @@ function refreshEdgeRouting(
   })
 }
 
-/** Auto-layout nodes on a horizontal main row with done branches below and loop-back routing. */
+/** Auto-layout: main row, Done above loop (output 1), step/wait below (output 2), loop-back routing. */
 export function tidyWorkflowDefinition(
   def: WorkflowDefinition,
   options: TidyLayoutOptions = {}
@@ -188,6 +229,7 @@ export function tidyWorkflowDefinition(
 
   const positions = assignMainRowPositions(mainOrder, vertical)
   assignDoneBranchPositions(def, positions, mainOrder, vertical)
+  assignLoopBranchPositions(def, positions, vertical)
   assignOrphanPositions(def.nodes, positions, mainOrder, vertical)
 
   const mainIndex = new Map(mainOrder.map((id, i) => [id, i]))

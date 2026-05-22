@@ -263,7 +263,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
         step_order: 1,
         delay_days: 0,
         send_time: '10:00',
-        message_template: 'Hello {{name}}, …',
+        message_template: 'Salam {SenderName}',
         is_active: true,
       }
     case 'crm.flow.complete':
@@ -281,7 +281,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
         step_order: 1,
         delay_days: 0,
         send_time: '10:00',
-        message_template: 'Hello {{name}}, …',
+        message_template: 'Salam {SenderName}',
         is_active: true,
       }
     case 'crm.flow.wait':
