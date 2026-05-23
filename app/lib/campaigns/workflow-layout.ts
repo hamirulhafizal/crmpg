@@ -17,6 +17,11 @@ export type WorkflowEditorStep = {
   send_time: string
   message_template: string
   is_active?: boolean
+  enable_typing?: boolean
+  randomize_spaces?: boolean
+  gmail_fallback_enabled?: boolean
+  /** Step 1 only — email body when WhatsApp send fails (falls back to profile Gmail message if empty). */
+  gmail_fallback_template?: string
 }
 
 export type WorkflowEditorDraft = {

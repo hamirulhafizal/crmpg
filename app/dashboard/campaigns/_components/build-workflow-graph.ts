@@ -47,6 +47,8 @@ function kindFromType(type: string): WorkflowNodeKind {
       return 'transform'
     case 'crm.whatsapp.send':
       return 'step'
+    case 'crm.whatsapp.send_image':
+      return 'image'
     case 'crm.integration.waha':
       return 'http'
     case 'crm.flow.wait':
@@ -83,6 +85,11 @@ function subtitleForType(type: string, params: Record<string, unknown>): string 
       return 'manual'
     case 'crm.whatsapp.send':
       return `WhatsApp · +${params.delay_days ?? 0}d · ${sendTimeDisplayLabel(params.send_time != null ? String(params.send_time) : '')}`
+    case 'crm.whatsapp.send_image': {
+      const layers = Array.isArray(params.layers) ? params.layers.length : 0
+      const hasBg = Boolean(String(params.background_path ?? '').trim())
+      return `Image · ${layers} layer${layers === 1 ? '' : 's'}${hasBg ? '' : ' · no background'}`
+    }
     case 'crm.integration.waha': {
       const method = String(params.http_method ?? 'POST')
       const url = String(params.n8n_url ?? '')
@@ -115,6 +122,7 @@ function titleForNode(type: string, params: Record<string, unknown>): { title: s
   }
   switch (type) {
     case 'crm.whatsapp.send':
+    case 'crm.whatsapp.send_image':
       return {
         title: `Step ${params.step_order ?? '?'}`,
         subtitle: subtitleForType(type, params),

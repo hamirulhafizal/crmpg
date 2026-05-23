@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useWorkflowCanvasTheme } from '@/app/dashboard/campaigns/_components/workflow-canvas-theme'
 import { BUILTIN_WORKFLOW_NODE_TYPES } from '@/app/lib/workflows/catalog'
 import type { WorkflowNodeTypeDescriptor } from '@/app/lib/workflows/types'
@@ -28,6 +28,18 @@ export function WorkflowNodePalette({
   const { isDark } = useWorkflowCanvasTheme()
   const [types, setTypes] = useState<WorkflowNodeTypeDescriptor[]>(BUILTIN_WORKFLOW_NODE_TYPES)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+
+  const filteredTypes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return types
+    return types.filter((t) => {
+      const label = (t.label ?? '').toLowerCase()
+      const slug = (t.slug ?? '').toLowerCase()
+      const desc = (t.description ?? '').toLowerCase()
+      return label.includes(q) || slug.includes(q) || desc.includes(q)
+    })
+  }, [types, search])
 
   useEffect(() => {
     void (async () => {
@@ -50,12 +62,30 @@ export function WorkflowNodePalette({
       <div className="workflow-node-palette-header border-b border-slate-200 px-3 py-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nodes</h2>
         <p className="mt-0.5 text-[11px] text-slate-400">Drag or click to add</p>
+        <label className="mt-2.5 block">
+          <span className="sr-only">Search nodes</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search nodes…"
+            className={`input w-full rounded-lg border px-2.5 py-1.5 text-xs ${
+              isDark ? 'text-slate-100' : 'text-slate-900'
+            }`}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
       </div>
       <ul className="flex-1 overflow-y-auto p-2">
         {loading ? (
           <li className="px-2 py-4 text-center text-xs text-slate-400">Loading…</li>
+        ) : filteredTypes.length === 0 ? (
+          <li className="px-2 py-4 text-center text-xs text-slate-400">
+            {search.trim() ? `No nodes match “${search.trim()}”` : 'No nodes available'}
+          </li>
         ) : (
-          types.map((t) => (
+          filteredTypes.map((t) => (
             <li key={t.slug}>
               <button
                 type="button"

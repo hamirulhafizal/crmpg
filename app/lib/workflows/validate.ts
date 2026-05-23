@@ -1,3 +1,4 @@
+import { isCampaignSendStepType } from '@/app/lib/workflows/send-step-types'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export type WorkflowValidationIssue = { message: string; nodeId?: string }
@@ -28,9 +29,17 @@ export function validateWorkflowDefinition(def: WorkflowDefinition): WorkflowVal
     issues.push({ message: 'Workflow needs a trigger node' })
   }
 
-  const sends = def.nodes.filter((n) => n.type === 'crm.whatsapp.send')
+  const sends = def.nodes.filter((n) => isCampaignSendStepType(String(n.type)))
   if (sends.length === 0) {
-    issues.push({ message: 'Workflow needs at least one WhatsApp message node' })
+    issues.push({ message: 'Workflow needs at least one WhatsApp send step (message or image)' })
+  }
+  for (const n of def.nodes.filter((x) => x.type === 'crm.whatsapp.send_image')) {
+    if (!String(n.parameters?.background_path ?? '').trim()) {
+      issues.push({
+        message: 'WhatsApp image step needs a background upload',
+        nodeId: n.id,
+      })
+    }
   }
 
   for (const e of def.edges ?? []) {

@@ -11,6 +11,7 @@ type TagEmbed = { slug?: string } | { slug?: string }[] | null
 export type CustomerForAudience = {
   id: string
   phone: string | null
+  email?: string | null
   name: string | null
   first_name: string | null
   pg_code: string | null
@@ -202,6 +203,6 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
 
 /** PostgREST embed for audience matching (tags + fields used by {@link customerMatchesFilters}). */
 export const CUSTOMER_EMBED_FOR_AUDIENCE_MATCH = `
-  id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+  id, phone, email, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, prefix, age, sender_name,
   customer_tags ( tag_id, tags ( slug ) )
 `

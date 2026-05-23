@@ -1,3 +1,4 @@
+import { defaultImageStepParameters } from '@/app/lib/campaigns/image-step/defaults'
 import type { WorkflowNodeTypeDescriptor, WorkflowNodeTypeSlug } from '@/app/lib/workflows/types'
 
 /** Fallback catalog when DB is empty or unavailable. */
@@ -87,6 +88,32 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
     is_system: true,
     enabled: true,
     sort_order: 40,
+  },
+  {
+    slug: 'crm.whatsapp.send_image',
+    category: 'action',
+    label: 'WhatsApp image',
+    description: 'Send a personalized image with text overlays',
+    icon: 'image',
+    parameter_schema: {
+      type: 'object',
+      properties: {
+        step_order: { type: 'number', minimum: 1 },
+        delay_days: { type: 'number', minimum: 0 },
+        send_time: { type: 'string' },
+        caption_template: { type: 'string' },
+        is_active: { type: 'boolean' },
+        aspect_mode: { type: 'string', enum: ['square', 'fit', 'original'] },
+        layers: { type: 'array' },
+      },
+    },
+    handler_key: 'whatsapp_send_image',
+    n8n_type: 'n8n-nodes-base.httpRequest',
+    n8n_type_version: 4.2,
+    n8n_parameters: { method: 'POST', url: '', authentication: 'none' },
+    is_system: true,
+    enabled: true,
+    sort_order: 41,
   },
   {
     slug: 'crm.flow.complete',
@@ -265,7 +292,12 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
         send_time: '10:00',
         message_template: 'Salam {SenderName}',
         is_active: true,
+        enable_typing: true,
+        randomize_spaces: true,
+        gmail_fallback_enabled: false,
       }
+    case 'crm.whatsapp.send_image':
+      return defaultImageStepParameters(1)
     case 'crm.flow.complete':
       return {}
     case 'crm.trigger.schedule':
@@ -283,6 +315,9 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
         send_time: '10:00',
         message_template: 'Salam {SenderName}',
         is_active: true,
+        enable_typing: true,
+        randomize_spaces: true,
+        gmail_fallback_enabled: false,
       }
     case 'crm.flow.wait':
       return { wait_min_seconds: 60, wait_max_seconds: 120 }

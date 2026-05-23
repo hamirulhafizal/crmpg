@@ -1,6 +1,7 @@
 import { defaultParametersForType } from '@/app/lib/workflows/catalog'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
+import { isCampaignSendStepType } from '@/app/lib/workflows/send-step-types'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import type {
   WorkflowDefinition,
@@ -14,12 +15,37 @@ export function newWorkflowNodeId(prefix = 'node'): string {
   return `${prefix}-${Date.now()}-${idCounter}`
 }
 
+/** Next step_order for a new send step node (existing max + 1). */
+export function nextWhatsAppStepOrder(def: WorkflowDefinition): number {
+  let max = 0
+  for (const n of def.nodes) {
+    if (!isCampaignSendStepType(String(n.type))) continue
+    const fromParams = Number(n.parameters?.step_order ?? 0)
+    const legacy = /^step-(\d+)$/.exec(n.id)
+    const fromId = legacy ? Number(legacy[1]) : 0
+    max = Math.max(max, fromParams, fromId)
+  }
+  return Math.max(1, max + 1)
+}
+
 export function addNodeToDefinition(
   def: WorkflowDefinition,
   type: WorkflowNodeTypeSlug | string,
   position: { x: number; y: number }
 ): WorkflowDefinition {
   const id = newWorkflowNodeId(type.split('.').pop() ?? 'n')
+  let parameters = defaultParametersForType(type)
+  if (isCampaignSendStepType(String(type))) {
+    const order = nextWhatsAppStepOrder(def)
+    parameters = { ...parameters, step_order: order }
+    if (type === 'crm.whatsapp.send' || type === 'crm.integration.waha') {
+      parameters = {
+        ...parameters,
+        gmail_fallback_enabled: order === 1 ? parameters.gmail_fallback_enabled === true : false,
+        gmail_fallback_template: order === 1 ? String(parameters.gmail_fallback_template ?? '') : '',
+      }
+    }
+  }
   return {
     ...def,
     nodes: [
@@ -28,7 +54,7 @@ export function addNodeToDefinition(
         id,
         type,
         position,
-        parameters: defaultParametersForType(type),
+        parameters,
       },
     ],
   }

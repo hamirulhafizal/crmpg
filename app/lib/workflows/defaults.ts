@@ -120,6 +120,10 @@ export function createDefaultWorkflowDefinition(): WorkflowDefinition {
         send_time: '',
         message_template: 'Salam {SenderName}',
         is_active: true,
+        enable_typing: true,
+        randomize_spaces: true,
+        gmail_fallback_enabled: true,
+        gmail_fallback_template: '',
       },
     },
     {

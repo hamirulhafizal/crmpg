@@ -154,8 +154,16 @@ body {
   color: var(--wf-muted) !important;
 }
 
+.campaign-workflow-shell--dark .workflow-inspector-check input[type='checkbox'] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  accent-color: #3b82f6;
+  background-color: #1e293b;
+  border-color: #64748b;
+}
+
 .campaign-workflow-shell--dark .input,
-.campaign-workflow-shell--dark input,
+.campaign-workflow-shell--dark input:not([type='checkbox']):not([type='radio']),
 .campaign-workflow-shell--dark textarea,
 .campaign-workflow-shell--dark select {
   background: var(--wf-surface-muted) !important;

@@ -280,6 +280,78 @@ export async function testWorkflowNode(opts: {
         }
       }
 
+      case 'crm.whatsapp.send_image': {
+        const p = node.parameters ?? {}
+        const stepOrder = Math.max(1, Number(p.step_order ?? 1))
+        const delayDays = Math.max(0, Number(p.delay_days ?? 0))
+        const sendTime = sendTimeFromDb(p.send_time != null ? String(p.send_time) : '')
+        const isActive = p.is_active !== false
+        const hasBg = Boolean(String(p.background_path ?? '').trim())
+        const layers = Array.isArray(p.layers) ? p.layers.length : 0
+        const caption = String(p.caption_template ?? '')
+
+        logs.push(`Step order: ${stepOrder}`)
+        logs.push(`Delay: +${delayDays}d at ${sendTimeDisplayLabel(sendTime)}`)
+        logs.push(`Active: ${isActive ? 'yes' : 'no'}`)
+        logs.push(`Background: ${hasBg ? 'uploaded' : 'missing — upload before send'}`)
+        logs.push(`Text layers: ${layers}`)
+        logs.push(`Aspect: ${String(p.aspect_mode ?? 'square')}`)
+
+        if (!isActive) {
+          return {
+            ok: true,
+            node_id: opts.nodeId,
+            node_type: node.type,
+            title: `Step ${stepOrder}`,
+            duration_ms: Date.now() - started,
+            summary: 'Image step inactive',
+            logs,
+            items: [],
+            metrics: { step_order: stepOrder, is_active: false },
+          }
+        }
+
+        if (!hasBg) {
+          return {
+            ok: false,
+            node_id: opts.nodeId,
+            node_type: node.type,
+            title: `Step ${stepOrder}`,
+            duration_ms: Date.now() - started,
+            summary: 'Upload a background image first',
+            logs,
+            items: [],
+            metrics: { step_order: stepOrder },
+            error: 'Missing background image',
+          }
+        }
+
+        const filters = compiled.audience_filters
+        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters)
+        const sample = preview.sample[0]
+        if (sample) {
+          const cap = caption
+            ? renderCampaignTemplateForCustomer(caption, sample as Record<string, unknown>)
+            : '(no caption)'
+          items.push({
+            label: customerWorkflowLabel(sample),
+            detail: `Caption preview: ${cap.slice(0, 120)}${cap.length > 120 ? '…' : ''}`,
+          })
+        }
+
+        return {
+          ok: true,
+          node_id: opts.nodeId,
+          node_type: node.type,
+          title: `Step ${stepOrder}`,
+          duration_ms: Date.now() - started,
+          summary: `${layers} layer(s) · ${preview.matching_total} in audience (dry-run, not sent)`,
+          logs,
+          items,
+          metrics: { step_order: stepOrder, layers, matching_total: preview.matching_total },
+        }
+      }
+
       case 'crm.whatsapp.send':
       case 'crm.integration.waha': {
         const p = node.parameters ?? {}
@@ -293,6 +365,17 @@ export async function testWorkflowNode(opts: {
         logs.push(`Step order: ${stepOrder}`)
         logs.push(`Delay: +${delayDays}d at ${sendTimeDisplayLabel(sendTime)} (${tz})`)
         logs.push(`Active: ${isActive ? 'yes' : 'no'}`)
+        logs.push(`Typing before send: ${p.enable_typing !== false ? 'yes' : 'no'}`)
+        logs.push(`Randomize spacing: ${p.randomize_spaces !== false ? 'yes' : 'no'}`)
+        if (stepOrder === 1) {
+          logs.push(`Gmail fallback: ${p.gmail_fallback_enabled === true ? 'yes' : 'no'}`)
+          const gft = String(p.gmail_fallback_template ?? '').trim()
+          logs.push(
+            gft
+              ? `Gmail template: ${gft.length} chars (custom on step)`
+              : 'Gmail template: uses Profile Gmail message'
+          )
+        }
 
         if (!isActive) {
           return {

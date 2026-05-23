@@ -1,9 +1,38 @@
 import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaigns/workflow-layout'
 import { sendTimeLabel } from '@/app/lib/campaigns/workflow-layout'
 import { addNodeToDefinition, ensureExplicitEdges } from '@/app/lib/workflows/graph-mutate'
+import { isCampaignSendStepType } from '@/app/lib/workflows/send-step-types'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
 import { safeInt } from '@/app/lib/safe-number'
+import { whatsAppSendOptionsFromParameters } from '@/app/lib/campaigns/whatsapp-send-options'
+import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition, WorkflowNodeInstance } from '@/app/lib/workflows/types'
+
+function findWhatsAppNodeForStep(def: WorkflowDefinition, stepOrder: number): WorkflowNodeInstance | undefined {
+  return def.nodes.find(
+    (n) =>
+      isCampaignSendStepType(String(n.type)) &&
+      Number(n.parameters?.step_order ?? 0) === stepOrder
+  )
+}
+
+/** Build editor step rows from graph nodes (preserves anti-spam + Gmail fields). */
+export function editorStepsFromDefinition(def: WorkflowDefinition): WorkflowEditorStep[] {
+  const compiled = compileWorkflowDefinition(def)
+  return compiled.steps.map((s) => {
+    const node = findWhatsAppNodeForStep(def, s.step_order)
+    if (!node) {
+      return {
+        step_order: s.step_order,
+        delay_days: s.delay_days,
+        send_time: sendTimeLabel(s.send_time),
+        message_template: s.message_template,
+        is_active: s.is_active,
+      }
+    }
+    return stepFromNodeParameters(node)
+  })
+}
 
 const NODE_W = 220
 const GAP = 56
@@ -15,7 +44,7 @@ export function getMaxWhatsAppStepOrder(
 ): number {
   let max = 0
   for (const n of def.nodes) {
-    if (n.type === 'crm.whatsapp.send' || n.type === 'crm.integration.waha') {
+    if (isCampaignSendStepType(String(n.type))) {
       max = Math.max(max, Number(n.parameters?.step_order ?? 0))
     }
   }
@@ -44,12 +73,12 @@ export function assignStepOrdersToPastedNodes(
       .filter(
         (n) =>
           !idSet.has(n.id) &&
-          (n.type === 'crm.whatsapp.send' || n.type === 'crm.integration.waha')
+          isCampaignSendStepType(String(n.type))
       )
       .reduce((m, n) => Math.max(m, Number(n.parameters?.step_order ?? 0)), 0) + 1
 
   const nodes = def.nodes.map((n) => {
-    if (!idSet.has(n.id) || (n.type !== 'crm.whatsapp.send' && n.type !== 'crm.integration.waha')) return n
+    if (!idSet.has(n.id) || !isCampaignSendStepType(String(n.type))) return n
     const order = next
     next += 1
     return {
@@ -65,12 +94,27 @@ export function stepFromNodeParameters(
   fallbackOrder?: number
 ): WorkflowEditorStep {
   const p = node.parameters ?? {}
+  const order = safeInt(p.step_order ?? fallbackOrder, 1, 1)
+  if (node.type === 'crm.whatsapp.send_image') {
+    return {
+      step_order: order,
+      delay_days: safeInt(p.delay_days, 0, 0),
+      send_time: sendTimeLabel(p.send_time != null ? String(p.send_time) : ''),
+      message_template: String(p.caption_template ?? ''),
+      is_active: p.is_active !== false,
+    }
+  }
+  const opts = whatsAppSendOptionsFromParameters(p)
   return {
-    step_order: safeInt(p.step_order ?? fallbackOrder, 1, 1),
+    step_order: order,
     delay_days: safeInt(p.delay_days, 0, 0),
     send_time: sendTimeLabel(p.send_time != null ? String(p.send_time) : ''),
     message_template: String(p.message_template ?? ''),
     is_active: p.is_active !== false,
+    enable_typing: opts.enable_typing,
+    randomize_spaces: opts.randomize_spaces,
+    gmail_fallback_enabled: order === 1 ? opts.gmail_fallback_enabled : false,
+    gmail_fallback_template: order === 1 ? opts.gmail_fallback_template : undefined,
   }
 }
 
@@ -86,7 +130,7 @@ export function findStepIndexForWhatsAppNode(
     const idx = draft.steps.findIndex((s) => s.step_order === order)
     if (idx >= 0) return idx
   }
-  if (defNode?.type === 'crm.whatsapp.send' || defNode?.type === 'crm.integration.waha') {
+  if (defNode && isCampaignSendStepType(String(defNode.type)) && defNode.type !== 'crm.whatsapp.send_image') {
     const order = Number(defNode.parameters?.step_order ?? 0)
     if (order > 0) {
       return draft.steps.findIndex((s) => s.step_order === order)
@@ -102,7 +146,7 @@ export function linkWhatsAppStepInDraft(
 ): WorkflowEditorDraft {
   const def = draftToDefinition(draft)
   const node = def.nodes.find(
-    (n) => n.id === nodeId && (n.type === 'crm.whatsapp.send' || n.type === 'crm.integration.waha')
+    (n) => n.id === nodeId && isCampaignSendStepType(String(n.type)) && n.type !== 'crm.whatsapp.send_image'
   )
   if (!node) return draft
   if (findStepIndexForWhatsAppNode(nodeId, draft, node) >= 0) return draft
@@ -123,7 +167,7 @@ export function patchWhatsAppStepInDraft(
 ): WorkflowEditorDraft {
   const def = draftToDefinition(draft)
   const node = def.nodes.find(
-    (n) => n.id === nodeId && (n.type === 'crm.whatsapp.send' || n.type === 'crm.integration.waha')
+    (n) => n.id === nodeId && isCampaignSendStepType(String(n.type)) && n.type !== 'crm.whatsapp.send_image'
   )
   if (!node) return draft
 
@@ -141,6 +185,12 @@ export function patchWhatsAppStepInDraft(
         send_time: merged.send_time,
         message_template: merged.message_template,
         is_active: merged.is_active !== false,
+        enable_typing: merged.enable_typing !== false,
+        randomize_spaces: merged.randomize_spaces !== false,
+        gmail_fallback_enabled:
+          merged.step_order === 1 ? merged.gmail_fallback_enabled === true : false,
+        gmail_fallback_template:
+          merged.step_order === 1 ? String(merged.gmail_fallback_template ?? '') : '',
       },
     }
   })
@@ -156,13 +206,16 @@ export function patchWhatsAppStepInDraft(
     else steps.push(merged)
   }
 
-  return definitionToDraft(
-    draftToDefinition({
-      ...draft,
-      steps,
-      definition: { ...def, nodes },
-    })
-  )
+  const definition = draftToDefinition({
+    ...draft,
+    steps,
+    definition: { ...def, nodes },
+  })
+  return {
+    ...draft,
+    steps: editorStepsFromDefinition(definition),
+    definition,
+  }
 }
 
 /** Add a WhatsApp step node on the canvas (before Done) and sync draft.steps. */
@@ -197,6 +250,9 @@ export function insertWhatsAppStepBeforeComplete(def: WorkflowDefinition): Workf
               send_time: '10:00',
               message_template: 'Salam {SenderName}',
               is_active: true,
+              enable_typing: true,
+              randomize_spaces: true,
+              gmail_fallback_enabled: order === 1,
             },
           }
         : n

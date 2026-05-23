@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
 import { TriggerRunScheduleFields } from '@/app/dashboard/campaigns/_components/TriggerRunScheduleFields'
@@ -387,11 +388,19 @@ export function WhatsAppMessageFields({
   sendTime,
   messageTemplate,
   isActive,
+  enableTyping,
+  randomizeSpaces,
+  gmailFallbackEnabled,
+  gmailFallbackTemplate,
   onStepOrder,
   onDelayDays,
   onSendTime,
   onMessageTemplate,
   onIsActive,
+  onEnableTyping,
+  onRandomizeSpaces,
+  onGmailFallbackEnabled,
+  onGmailFallbackTemplate,
   showRemove,
   onRemove,
 }: {
@@ -400,14 +409,58 @@ export function WhatsAppMessageFields({
   sendTime: string
   messageTemplate: string
   isActive: boolean
+  enableTyping: boolean
+  randomizeSpaces: boolean
+  gmailFallbackEnabled: boolean
+  gmailFallbackTemplate: string
   onStepOrder: (n: number) => void
   onDelayDays: (n: number) => void
   onSendTime: (t: string) => void
   onMessageTemplate: (t: string) => void
   onIsActive: (v: boolean) => void
+  onEnableTyping: (v: boolean) => void
+  onRandomizeSpaces: (v: boolean) => void
+  onGmailFallbackEnabled: (v: boolean) => void
+  onGmailFallbackTemplate: (t: string) => void
   showRemove?: boolean
   onRemove?: () => void
 }) {
+  const [gmailPasswordOk, setGmailPasswordOk] = useState<boolean | null>(null)
+  const [profileGmailMessage, setProfileGmailMessage] = useState('')
+  const profilePrefillDone = useRef(false)
+
+  useEffect(() => {
+    profilePrefillDone.current = false
+  }, [stepOrder])
+
+  useEffect(() => {
+    if (stepOrder !== 1) return
+    let cancelled = false
+    void fetch('/api/waha/email-fallback')
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        const hasPass = Boolean(String(json.appPassword ?? '').trim())
+        const profileMsg = String(json.gmailMessage ?? '').trim()
+        setGmailPasswordOk(hasPass)
+        setProfileGmailMessage(profileMsg)
+        if (
+          profileMsg &&
+          !profilePrefillDone.current &&
+          !gmailFallbackTemplate.trim()
+        ) {
+          profilePrefillDone.current = true
+          onGmailFallbackTemplate(profileMsg)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGmailPasswordOk(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [stepOrder, gmailFallbackTemplate, onGmailFallbackTemplate])
+
   return (
     <>
       <InspectorField label="Step order">
@@ -432,11 +485,12 @@ export function WhatsAppMessageFields({
         label="Send time"
         hint="When off, the message sends as soon as the step is due (after the delay)."
       >
-        <label className="mb-2 flex items-center gap-2 text-sm text-slate-700">
+        <label className="workflow-inspector-check mb-2 flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
             checked={Boolean(sendTime)}
             onChange={(e) => onSendTime(e.target.checked ? sendTime || '10:00' : '')}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
           />
           Schedule at a fixed time
         </label>
@@ -460,12 +514,87 @@ export function WhatsAppMessageFields({
         />
         <TemplateVariableButtons compact />
       </InspectorField>
-      <label className="flex items-center gap-2 text-sm text-slate-700">
+      <InspectorField
+        label="Anti-spam"
+        hint="Makes automated sends look more human and reduces identical message patterns."
+      >
+        <label className="workflow-inspector-check mb-2 flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={enableTyping}
+            onChange={(e) => onEnableTyping(e.target.checked)}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
+          />
+          Show typing before send
+        </label>
+        <label className="workflow-inspector-check flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={randomizeSpaces}
+            onChange={(e) => onRandomizeSpaces(e.target.checked)}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
+          />
+          Randomize spacing in message
+        </label>
+      </InspectorField>
+      {stepOrder === 1 ? (
+        <InspectorField
+          label="Gmail fallback"
+          hint="If WhatsApp fails, email the customer using your Gmail app password from Profile."
+        >
+          <label className="workflow-inspector-check flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={gmailFallbackEnabled}
+              onChange={(e) => onGmailFallbackEnabled(e.target.checked)}
+              className="h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
+              disabled={gmailPasswordOk === false}
+            />
+            Use Gmail fallback when WhatsApp fails
+          </label>
+          {gmailPasswordOk === false ? (
+            <p className="hint">
+              Add a Gmail app password in{' '}
+              <a href="/profile" className="font-medium text-blue-600 hover:underline">
+                Profile
+              </a>{' '}
+              to enable fallback.
+            </p>
+          ) : gmailPasswordOk === true ? (
+            <p className="hint text-emerald-700">Gmail app password found on your profile.</p>
+          ) : (
+            <p className="hint">Checking profile Gmail settings…</p>
+          )}
+          {gmailFallbackEnabled ? (
+            <div className="mt-3 space-y-2">
+              <span className="block text-xs font-medium text-slate-700">Gmail fallback template</span>
+              <p className="hint">Email body sent when WhatsApp fails.</p>
+              <textarea
+                rows={5}
+                className="input font-mono text-xs text-black"
+                value={gmailFallbackTemplate}
+                onChange={(e) => onGmailFallbackTemplate(e.target.value)}
+              />
+              <TemplateVariableButtons compact />
+              {profileGmailMessage.trim() ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-blue-600 hover:underline"
+                  onClick={() => onGmailFallbackTemplate(profileGmailMessage)}
+                >
+                  Reset to Profile Gmail message
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </InspectorField>
+      ) : null}
+      <label className="workflow-inspector-check flex items-center gap-2 text-sm text-slate-700">
         <input
           type="checkbox"
           checked={isActive}
           onChange={(e) => onIsActive(e.target.checked)}
-          className="rounded border-slate-300"
+          className="h-4 w-4 shrink-0 rounded border-slate-300 accent-blue-600"
         />
         Active (include in sends)
       </label>

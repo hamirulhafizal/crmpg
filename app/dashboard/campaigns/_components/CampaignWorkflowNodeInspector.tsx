@@ -7,6 +7,8 @@ import { triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedul
 import { sendTimeDisplayLabel, sendTimeLabel } from '@/app/lib/campaigns/workflow-layout'
 import type { CampaignTriggerType } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
+import { WhatsAppImageStepEditor } from '@/app/dashboard/campaigns/_components/WhatsAppImageStepEditor'
+import { patchImageStepInDraft } from '@/app/lib/workflows/image-step-draft'
 import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { definitionToDraft, draftToDefinition } from '@/app/lib/workflows/sync'
 import { WorkflowNodeTestPanel } from '@/app/dashboard/campaigns/_components/WorkflowNodeTestPanel'
@@ -99,7 +101,9 @@ export function CampaignWorkflowNodeInspector({
               : null)
 
   const isWhatsAppType =
-    nodeType === 'crm.whatsapp.send' || nodeType === 'crm.integration.waha'
+    nodeType === 'crm.whatsapp.send' ||
+    nodeType === 'crm.integration.waha' ||
+    nodeType === 'crm.whatsapp.send_image'
 
   const stepIdx =
     selectedNodeId && isWhatsAppType ? findStepIndexForWhatsAppNode(selectedNodeId, draft, defNode) : -1
@@ -313,10 +317,29 @@ export function CampaignWorkflowNodeInspector({
     )
   }
 
+  if (nodeType === 'crm.whatsapp.send_image' && defNode) {
+    const imgParams = defNode.parameters ?? {}
+    const stepOrder = Math.max(1, Number(imgParams.step_order ?? 1))
+    return (
+      <InspectorShell
+        title={defNode.parameters?.display_name ? nodeDisplayTitle(defNode) : `Step ${stepOrder}`}
+        subtitle="WhatsApp image · personalized poster"
+        onClose={onClose}
+      >
+        <WhatsAppImageStepEditor
+          nodeId={selectedNodeId}
+          campaignId={campaignId}
+          parameters={imgParams}
+          onChange={(partial) => onChange(patchImageStepInDraft(draft, selectedNodeId, partial))}
+          onSaveTemplate={(params) => onChange(patchImageStepInDraft(draft, selectedNodeId, params))}
+        />
+        {nodeTestFooter}
+      </InspectorShell>
+    )
+  }
+
   if (isWhatsAppType && defNode) {
-    const linkedIdx = stepIdx >= 0 ? stepIdx : findStepIndexForWhatsAppNode(selectedNodeId, draft, defNode)
-    const step =
-      linkedIdx >= 0 ? draft.steps[linkedIdx]! : stepFromNodeParameters(defNode)
+    const step = stepFromNodeParameters(defNode)
 
     const updateStep = (partial: Partial<WorkflowEditorStep>) => {
       onChange(patchWhatsAppStepInDraft(draft, selectedNodeId, partial))
@@ -370,11 +393,19 @@ export function CampaignWorkflowNodeInspector({
           sendTime={sendTimeLabel(step.send_time)}
           messageTemplate={step.message_template}
           isActive={step.is_active !== false}
+          enableTyping={step.enable_typing !== false}
+          randomizeSpaces={step.randomize_spaces !== false}
+          gmailFallbackEnabled={step.gmail_fallback_enabled === true}
+          gmailFallbackTemplate={step.gmail_fallback_template ?? ''}
           onStepOrder={(n) => updateStep({ step_order: n })}
           onDelayDays={(n) => updateStep({ delay_days: n })}
           onSendTime={(t) => updateStep({ send_time: t })}
           onMessageTemplate={(t) => updateStep({ message_template: t })}
           onIsActive={(v) => updateStep({ is_active: v })}
+          onEnableTyping={(v) => updateStep({ enable_typing: v })}
+          onRandomizeSpaces={(v) => updateStep({ randomize_spaces: v })}
+          onGmailFallbackEnabled={(v) => updateStep({ gmail_fallback_enabled: v })}
+          onGmailFallbackTemplate={(t) => updateStep({ gmail_fallback_template: t })}
           showRemove={nodeType === 'crm.whatsapp.send' && (draft.steps.length > 1 || waCount > 1)}
           onRemove={nodeType === 'crm.whatsapp.send' ? removeStep : undefined}
         />

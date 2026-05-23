@@ -2,6 +2,7 @@ import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaigns/workflow-layout'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
+import { editorStepsFromDefinition } from '@/app/lib/workflows/whatsapp-step'
 import { createLinearLegacyWorkflowDefinition, isEmptyWorkflowDefinition } from '@/app/lib/workflows/defaults'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
 import { normalizeN8nTypesInDefinition } from '@/app/lib/workflows/normalize-definition'
@@ -29,13 +30,7 @@ export function definitionToDraft(def: WorkflowDefinition): WorkflowEditorDraft 
     audience_filters: compiled.audience_filters,
     daily_send_limit: compiled.daily_send_limit,
     cooldown_days: compiled.cooldown_days,
-    steps: compiled.steps.map((s) => ({
-      step_order: s.step_order,
-      delay_days: s.delay_days,
-      send_time: s.send_time,
-      message_template: s.message_template,
-      is_active: s.is_active,
-    })),
+    steps: editorStepsFromDefinition(normalized),
     layout: layoutFromDefinition(normalized),
     definition: normalized,
   }
@@ -86,6 +81,8 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
             cooldown_days: draft.cooldown_days,
           },
         }
+      case 'crm.whatsapp.send_image':
+        return n
       case 'crm.whatsapp.send':
       case 'crm.integration.waha': {
         const legacyOrder = legacyStepOrderFromNodeId(n.id)
@@ -101,6 +98,12 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
             send_time: step.send_time,
             message_template: step.message_template,
             is_active: step.is_active !== false,
+            enable_typing: step.enable_typing !== false,
+            randomize_spaces: step.randomize_spaces !== false,
+            gmail_fallback_enabled:
+              step.step_order === 1 ? step.gmail_fallback_enabled === true : false,
+            gmail_fallback_template:
+              step.step_order === 1 ? String(step.gmail_fallback_template ?? '') : '',
           },
         }
       }

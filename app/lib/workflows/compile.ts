@@ -69,6 +69,17 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
           node_id: node.id,
         })
         break
+      case 'crm.whatsapp.send_image':
+        if (p.is_active === false) break
+        steps.push({
+          step_order: Math.max(1, Number(p.step_order ?? steps.length + 1)),
+          delay_days: Math.max(0, Number(p.delay_days ?? 0)),
+          send_time: sendTimeLabel(p.send_time),
+          message_template: String(p.caption_template ?? ''),
+          is_active: p.is_active !== false,
+          node_id: node.id,
+        })
+        break
       default:
         break
     }

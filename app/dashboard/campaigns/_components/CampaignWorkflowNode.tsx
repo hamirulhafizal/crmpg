@@ -13,6 +13,7 @@ export type WorkflowNodeKind =
   | 'loop'
   | 'transform'
   | 'step'
+  | 'image'
   | 'http'
   | 'wait'
   | 'pass'
@@ -154,6 +155,19 @@ const KIND_META: Record<
           strokeLinecap="round"
           strokeLinejoin="round"
           d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
+      </svg>
+    ),
+  },
+  image: {
+    accent: 'border-l-teal-500',
+    iconBg: 'bg-teal-100 text-teal-800',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
         />
       </svg>
     ),

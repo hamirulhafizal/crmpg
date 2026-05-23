@@ -5,6 +5,7 @@ import { WORKFLOW_NODE } from '@/app/lib/campaigns/workflow-events'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import { resolveWorkflowDefinition } from '@/app/lib/workflows/sync'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
+import { isCampaignSendStepType } from '@/app/lib/workflows/send-step-types'
 import type { CompiledWorkflow, WorkflowDefinition, WorkflowNodeInstance } from '@/app/lib/workflows/types'
 
 export type WhatsappPlanNode = {
@@ -14,6 +15,7 @@ export type WhatsappPlanNode = {
   sendTime: string
   messageTemplate: string
   isActive: boolean
+  kind: 'text' | 'image'
 }
 
 export type CampaignWorkflowPlan = {
@@ -65,16 +67,18 @@ export function buildCampaignWorkflowPlan(
   const ordered = topologicalOrder(definition)
 
   const whatsappFromGraph: WhatsappPlanNode[] = ordered
-    .filter((n) => n.type === 'crm.whatsapp.send')
+    .filter((n) => isCampaignSendStepType(String(n.type)))
     .map((n) => {
       const p = n.parameters ?? {}
+      const isImage = n.type === 'crm.whatsapp.send_image'
       return {
         nodeId: n.id,
         stepOrder: Math.max(1, Number(p.step_order ?? 1)),
         delayDays: Math.max(0, Number(p.delay_days ?? 0)),
         sendTime: sendTimeFromDb(p.send_time != null ? String(p.send_time) : ''),
-        messageTemplate: String(p.message_template ?? ''),
+        messageTemplate: isImage ? String(p.caption_template ?? '') : String(p.message_template ?? ''),
         isActive: p.is_active !== false,
+        kind: isImage ? 'image' : 'text',
       }
     })
 

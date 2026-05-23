@@ -17,7 +17,14 @@ import {
 } from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
+import { sendCampaignEmailFallback, type GmailFallbackCustomer } from '@/app/lib/campaigns/gmail-fallback'
+import { sendCampaignImageStep } from '@/app/lib/campaigns/image-step/send'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
+import {
+  isImageStepNode,
+  whatsAppNodeForStep,
+  whatsAppSendOptionsForStep,
+} from '@/app/lib/campaigns/whatsapp-send-options'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import type {
   CampaignAudienceFilters,
@@ -542,7 +549,12 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    const body = renderCampaignTemplateForCustomer(nextStep.message_template, customer as Record<string, unknown>)
+    const stepNode = whatsAppNodeForStep(plan, nextStep.step_order)
+    const isImageStep = isImageStepNode(stepNode)
+    const body = renderCampaignTemplateForCustomer(
+      nextStep.message_template,
+      customer as Record<string, unknown>
+    )
     summary.messages_attempted++
     sendIndex += 1
     const label = customerWorkflowLabel(customer)
@@ -597,8 +609,54 @@ async function processDueEnrollmentRows(
       continue
     }
 
+    const sendOpts = whatsAppSendOptionsForStep(plan, nextStep.step_order)
+    let deliveryChannel: 'whatsapp' | 'email_fallback' = 'whatsapp'
+
     try {
-      await sendCampaignWhatsAppText(campaign.user_id, session, customer.phone, body)
+      try {
+        if (isImageStep && stepNode) {
+          const imageResult = await sendCampaignImageStep({
+            userId: campaign.user_id,
+            session,
+            phone: customer.phone,
+            parameters: stepNode.parameters ?? {},
+            customer: customer as Record<string, unknown>,
+          })
+          if (imageResult.caption) {
+            await supabase
+              .from('campaign_message_logs')
+              .update({ rendered_message: imageResult.caption })
+              .eq('id', logInsert.id)
+          }
+        } else {
+          await sendCampaignWhatsAppText(campaign.user_id, session, customer.phone, body, sendOpts)
+        }
+      } catch (waErr) {
+        if (!isImageStep && sendOpts.gmail_fallback_enabled) {
+          const emailOk = await sendCampaignEmailFallback(
+            campaign.user_id,
+            customer as GmailFallbackCustomer,
+            sendOpts.gmail_fallback_template
+          )
+          if (emailOk) {
+            deliveryChannel = 'email_fallback'
+            cronLog(
+              debugLines,
+              `gmail fallback sent campaign=${campaign.id} customer=${customer.id} step=${nextStep.step_order}`
+            )
+            onProgress?.({
+              type: 'log',
+              message: `Gmail fallback sent to ${label}`,
+              level: 'success',
+            })
+          } else {
+            throw waErr
+          }
+        } else {
+          throw waErr
+        }
+      }
+
       const sentAt = new Date().toISOString()
       await supabase
         .from('campaign_message_logs')
@@ -610,14 +668,20 @@ async function processDueEnrollmentRows(
         user_id: campaign.user_id,
         created_by: campaign.user_id,
         topic: 'campaign_automation',
-        channel: 'whatsapp_automation',
+        channel: deliveryChannel === 'email_fallback' ? 'email' : 'whatsapp_automation',
         outcome: 'sent',
-        notes: `Campaign “${campaign.name}” step ${nextStep.step_order}`,
+        notes:
+          deliveryChannel === 'email_fallback'
+            ? `Campaign “${campaign.name}” step ${nextStep.step_order} (Gmail fallback)`
+            : `Campaign “${campaign.name}” step ${nextStep.step_order}`,
         metadata: {
           campaign_id: campaign.id,
           campaign_step_id: nextStep.id,
           enrollment_id: row.id,
           campaign_message_log_id: logInsert.id,
+          delivery_channel: deliveryChannel,
+          enable_typing: sendOpts.enable_typing,
+          randomize_spaces: sendOpts.randomize_spaces,
         },
         idempotency_key: `campaign_send:${logInsert.id}`,
       })
