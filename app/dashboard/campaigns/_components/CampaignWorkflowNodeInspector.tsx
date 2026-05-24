@@ -1,5 +1,7 @@
 'use client'
 
+import type { Dispatch, SetStateAction } from 'react'
+import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 import type { WorkflowEditorDraft, WorkflowEditorStep } from '@/app/lib/campaigns/workflow-layout'
 import { TriggerRunScheduleFields } from '@/app/dashboard/campaigns/_components/TriggerRunScheduleFields'
 import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
@@ -41,12 +43,13 @@ const TRIGGERS: { value: CampaignTriggerType; label: string }[] = [
 type Props = {
   selectedNodeIds: string[]
   draft: WorkflowEditorDraft
-  onChange: (draft: WorkflowEditorDraft) => void
+  onChange: Dispatch<SetStateAction<WorkflowEditorDraft>>
   onClose: () => void
   campaignId?: string
   onToast?: (type: 'success' | 'error', text: string) => void
   nodeTestAutoRunKey?: number
   onNodeTestEnd?: () => void
+  onPathVisual?: (states: Record<string, WorkflowNodeState> | null) => void
 }
 
 export function CampaignWorkflowNodeInspector({
@@ -58,6 +61,7 @@ export function CampaignWorkflowNodeInspector({
   onToast,
   nodeTestAutoRunKey,
   onNodeTestEnd,
+  onPathVisual,
 }: Props) {
   const selectedNodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
 
@@ -131,6 +135,7 @@ export function CampaignWorkflowNodeInspector({
       onToast={onToast}
       autoRunKey={nodeTestAutoRunKey}
       onTestEnd={onNodeTestEnd}
+      onPathVisual={onPathVisual}
     />
   )
 
@@ -330,8 +335,12 @@ export function CampaignWorkflowNodeInspector({
           nodeId={selectedNodeId}
           campaignId={campaignId}
           parameters={imgParams}
-          onChange={(partial) => onChange(patchImageStepInDraft(draft, selectedNodeId, partial))}
-          onSaveTemplate={(params) => onChange(patchImageStepInDraft(draft, selectedNodeId, params))}
+          onChange={(partial) =>
+            onChange((d) => patchImageStepInDraft(d, selectedNodeId, partial))
+          }
+          onSaveTemplate={(params) =>
+            onChange((d) => patchImageStepInDraft(d, selectedNodeId, params))
+          }
         />
         {nodeTestFooter}
       </InspectorShell>

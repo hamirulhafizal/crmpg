@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WorkflowNodeTestResult } from '@/app/lib/campaigns/test-workflow-node'
+import {
+  allWorkflowNodeIds,
+  animateWorkflowPathTest,
+  workflowPathNodeIds,
+} from '@/app/lib/campaigns/workflow-node-test-visual'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
+import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 
 export function WorkflowNodeTestPanel({
   nodeId,
@@ -11,6 +17,7 @@ export function WorkflowNodeTestPanel({
   onToast,
   autoRunKey,
   onTestEnd,
+  onPathVisual,
 }: {
   nodeId: string
   draft: WorkflowEditorDraft
@@ -19,6 +26,8 @@ export function WorkflowNodeTestPanel({
   /** Increment to run test from canvas play button */
   autoRunKey?: number
   onTestEnd?: () => void
+  /** Updates canvas node glow while the path test runs */
+  onPathVisual?: (states: Record<string, WorkflowNodeState> | null) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<WorkflowNodeTestResult | null>(null)
@@ -26,25 +35,43 @@ export function WorkflowNodeTestPanel({
   const draftRef = useRef(draft)
   const onToastRef = useRef(onToast)
   const onTestEndRef = useRef(onTestEnd)
+  const onPathVisualRef = useRef(onPathVisual)
   draftRef.current = draft
   onToastRef.current = onToast
   onTestEndRef.current = onTestEnd
+  onPathVisualRef.current = onPathVisual
 
   const runTest = useCallback(async (options?: { toast?: boolean }) => {
     setLoading(true)
     setResult(null)
+
+    const currentDraft = draftRef.current
+    const pathIds = workflowPathNodeIds(currentDraft, nodeId)
+    const allIds = allWorkflowNodeIds(currentDraft)
+
+    const visual =
+      pathIds.length > 0 && onPathVisualRef.current
+        ? animateWorkflowPathTest(pathIds, allIds, (states) => onPathVisualRef.current?.(states))
+        : Promise.resolve()
+
     try {
       const url = campaignId
         ? `/api/campaigns/${campaignId}/test-node`
         : '/api/campaigns/test-node'
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ node_id: nodeId, draft: draftRef.current }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Test failed')
-      const data = json.data as WorkflowNodeTestResult
+
+      const [data] = await Promise.all([
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ node_id: nodeId, draft: currentDraft }),
+        }).then(async (res) => {
+          const json = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(json.error || 'Test failed')
+          return json.data as WorkflowNodeTestResult
+        }),
+        visual,
+      ])
+
       setResult(data)
       if (options?.toast !== false) {
         onToastRef.current?.(data.ok ? 'success' : 'error', data.summary)
@@ -91,7 +118,9 @@ export function WorkflowNodeTestPanel({
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Node output</p>
-          <p className="mt-0.5 text-[11px] text-slate-500">Dry-run this step (n8n-style). Does not send messages.</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Dry-run from the first node through this one (n8n-style). Does not send messages.
+          </p>
         </div>
         <button
           type="button"
@@ -125,6 +154,30 @@ export function WorkflowNodeTestPanel({
               {result.duration_ms}ms · {result.node_type}
             </p>
           </div>
+
+          {result.path_steps && result.path_steps.length > 1 ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Path ({result.path_steps.length} nodes)
+              </p>
+              <ol className="mt-1.5 space-y-1.5">
+                {result.path_steps.map((step, i) => (
+                  <li
+                    key={step.node_id}
+                    className={`flex gap-2 rounded-lg px-2 py-1.5 text-xs ${
+                      step.ok ? 'bg-slate-50 text-slate-800' : 'bg-red-50 text-red-900'
+                    }`}
+                  >
+                    <span className="shrink-0 font-mono text-[10px] text-slate-400">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{step.title}</p>
+                      <p className="text-[11px] text-slate-600">{step.summary}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
 
           {Object.keys(result.metrics).length > 0 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">

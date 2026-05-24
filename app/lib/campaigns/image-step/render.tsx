@@ -1,12 +1,9 @@
 import { ImageResponse } from 'next/og'
-import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
+import { resolveLayerText } from '@/app/lib/campaigns/image-step/layer-text'
+import { layerBoxTransformCss, layerEffectiveFontSize } from '@/app/lib/campaigns/image-step/layer-transform'
+import { layerTextBackgroundRgba } from '@/app/lib/campaigns/image-step/layer-style'
 import { outputDimensions, parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
-
-function layerToken(variable: string): string {
-  const v = variable.replace(/[{}]/g, '').trim()
-  return `{${v}}`
-}
 
 function alignToFlex(align: string): 'flex-start' | 'center' | 'flex-end' {
   if (align === 'left') return 'flex-start'
@@ -58,9 +55,11 @@ export async function renderCampaignImagePng(
           }}
         />
         {layers.map((layer) => {
-          const text = renderCampaignTemplateForCustomer(layerToken(layer.variable), customer)
+          const text = resolveLayerText(layer, customer)
           const left = (layer.x / 100) * width
           const top = (layer.y / 100) * height
+          const textBg = layerTextBackgroundRgba(layer)
+          const fontSize = layerEffectiveFontSize(layer)
           return (
             <div
               key={layer.id}
@@ -72,17 +71,38 @@ export async function renderCampaignImagePng(
                 display: 'flex',
                 maxWidth: width * 0.92,
                 justifyContent: alignToFlex(layer.align),
-                color: layer.color,
-                fontFamily: layer.font_family,
-                fontSize: layer.font_size,
-                fontWeight: layer.font_weight ?? 700,
-                textAlign: layer.align,
-                lineHeight: 1.15,
-                textShadow: '0 2px 8px rgba(0,0,0,0.55)',
-                whiteSpace: 'pre-wrap',
               }}
             >
-              {text}
+              <div
+                style={{
+                  display: 'flex',
+                  transform: layerBoxTransformCss(layer),
+                  transformOrigin: 'center center',
+                }}
+              >
+              <div
+                style={{
+                  display: 'flex',
+                  color: layer.color,
+                  fontFamily: layer.font_family,
+                  fontSize,
+                  fontWeight: layer.font_weight ?? 700,
+                  textAlign: layer.align,
+                  lineHeight: 1.15,
+                  textShadow: textBg ? undefined : '0 2px 8px rgba(0,0,0,0.55)',
+                  whiteSpace: 'pre-wrap',
+                  ...(textBg
+                    ? {
+                        backgroundColor: textBg,
+                        padding: '0.35em 0.65em',
+                        borderRadius: Math.round(fontSize * 0.12),
+                      }
+                    : {}),
+                }}
+              >
+                {text}
+              </div>
+              </div>
             </div>
           )
         })}

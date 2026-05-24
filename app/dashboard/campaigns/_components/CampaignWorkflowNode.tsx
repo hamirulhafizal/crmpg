@@ -195,12 +195,12 @@ function CampaignWorkflowNodeComponent({
     sourcePosition === Position.Bottom || targetPosition === Position.Top
 
   const shell =
-    data.selected && data.editable
+    data.selected && data.editable && state === 'idle'
       ? 'border-violet-400 shadow-lg shadow-violet-100/80 ring-2 ring-violet-300/60'
       : state === 'active'
-        ? 'border-sky-400 shadow-lg shadow-sky-100/80 ring-2 ring-sky-300/50'
+        ? 'workflow-node-running border-sky-300 shadow-[0_0_0_1px_rgba(56,189,248,0.45),0_0_22px_6px_rgba(56,189,248,0.35)] ring-2 ring-sky-400/70'
         : state === 'complete'
-          ? 'border-emerald-300 shadow-md shadow-emerald-50'
+          ? 'border-emerald-400 shadow-[0_0_12px_2px_rgba(52,211,153,0.25)] ring-1 ring-emerald-300/60'
           : 'border-slate-200 shadow-sm'
 
   return (
@@ -211,6 +211,13 @@ function CampaignWorkflowNodeComponent({
         <span className="absolute right-2 top-2 flex h-2.5 w-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-70" />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-500" />
+        </span>
+      ) : null}
+      {state === 'complete' ? (
+        <span className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
         </span>
       ) : null}
 

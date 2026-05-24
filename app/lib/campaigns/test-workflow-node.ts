@@ -14,13 +14,23 @@ import { customerWorkflowLabel } from '@/app/lib/campaigns/workflow-events'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import { buildCampaignWorkflowPlan } from '@/app/lib/workflows/plan'
+import { workflowPathToNode } from '@/app/lib/workflows/graph-order'
 import { draftToDefinition } from '@/app/lib/workflows/sync'
-import type { WorkflowDefinition, WorkflowNodeInstance } from '@/app/lib/workflows/types'
+import type { CompiledWorkflow, WorkflowDefinition, WorkflowNodeInstance } from '@/app/lib/workflows/types'
 
 export type WorkflowNodeTestItem = {
   label: string
   detail?: string
   meta?: Record<string, string | number | null>
+}
+
+export type WorkflowPathTestStep = {
+  node_id: string
+  node_type: string
+  title: string
+  ok: boolean
+  summary: string
+  duration_ms: number
 }
 
 export type WorkflowNodeTestResult = {
@@ -34,6 +44,8 @@ export type WorkflowNodeTestResult = {
   items: WorkflowNodeTestItem[]
   metrics: Record<string, number | string | boolean | null>
   error?: string
+  /** Present when test ran trigger → … → selected node */
+  path_steps?: WorkflowPathTestStep[]
 }
 
 function findNode(def: WorkflowDefinition, nodeId: string): WorkflowNodeInstance | undefined {
@@ -65,8 +77,8 @@ export async function testWorkflowNode(opts: {
 }): Promise<WorkflowNodeTestResult> {
   const started = Date.now()
   const def = draftToDefinition(opts.draft)
-  const node = findNode(def, opts.nodeId)
-  if (!node) {
+  const target = findNode(def, opts.nodeId)
+  if (!target) {
     return {
       ok: false,
       node_id: opts.nodeId,
@@ -81,7 +93,70 @@ export async function testWorkflowNode(opts: {
     }
   }
 
+  const path = workflowPathToNode(def, opts.nodeId)
   const compiled = compileWorkflowDefinition(def)
+
+  if (path.length > 1) {
+    const pathSteps: WorkflowPathTestStep[] = []
+    const allLogs: string[] = [`Path test: ${path.length} node(s) from trigger → ${nodeDisplayTitleFromParams(target)}`]
+    let allOk = true
+    let lastItems: WorkflowNodeTestItem[] = []
+    const combinedMetrics: Record<string, number | string | boolean | null> = {
+      path_nodes_run: path.length,
+    }
+
+    for (let i = 0; i < path.length; i++) {
+      const node = path[i]!
+      const step = await testSingleWorkflowNode(opts, node, compiled)
+      pathSteps.push({
+        node_id: step.node_id,
+        node_type: step.node_type,
+        title: step.title,
+        ok: step.ok,
+        summary: step.summary,
+        duration_ms: step.duration_ms,
+      })
+      allLogs.push(`—— [${i + 1}/${path.length}] ${step.title} ——`)
+      allLogs.push(...step.logs)
+      if (!step.ok) allOk = false
+      Object.assign(combinedMetrics, step.metrics)
+      if (node.id === opts.nodeId) lastItems = step.items
+    }
+
+    const last = pathSteps[pathSteps.length - 1]!
+    return {
+      ok: allOk,
+      node_id: opts.nodeId,
+      node_type: String(target.type),
+      title: nodeDisplayTitleFromParams(target),
+      duration_ms: Date.now() - started,
+      summary: `Ran ${path.length} nodes → ${last.summary}`,
+      logs: allLogs,
+      items: lastItems,
+      metrics: combinedMetrics,
+      path_steps: pathSteps,
+      error: allOk ? undefined : last.summary,
+    }
+  }
+
+  return testSingleWorkflowNode(opts, target, compiled)
+}
+
+async function testSingleWorkflowNode(
+  opts: {
+    supabase: SupabaseClient
+    userId: string
+    nodeId: string
+    draft: WorkflowEditorDraft
+    campaign?: Pick<
+      CampaignRow,
+      'id' | 'timezone' | 'status' | 'start_at' | 'end_at'
+    > | null
+  },
+  node: WorkflowNodeInstance,
+  compiled: CompiledWorkflow
+): Promise<WorkflowNodeTestResult> {
+  const started = Date.now()
   const logs: string[] = []
   const items: WorkflowNodeTestItem[] = []
   const metrics: Record<string, number | string | boolean | null> = {}
@@ -98,7 +173,7 @@ export async function testWorkflowNode(opts: {
         logs.push('CRM runs on manual test / external cron when campaign is active.')
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: 'Schedule',
           duration_ms: Date.now() - started,
@@ -129,7 +204,7 @@ export async function testWorkflowNode(opts: {
         }
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: 'Manual trigger',
           duration_ms: Date.now() - started,
@@ -175,7 +250,7 @@ export async function testWorkflowNode(opts: {
 
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: 'Audience',
           duration_ms: Date.now() - started,
@@ -226,7 +301,7 @@ export async function testWorkflowNode(opts: {
 
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: 'Enroll',
           duration_ms: Date.now() - started,
@@ -246,7 +321,7 @@ export async function testWorkflowNode(opts: {
           logs.push(`Operation: ${op}`)
           return {
             ok: true,
-            node_id: opts.nodeId,
+            node_id: node.id,
             node_type: node.type,
             title: nodeDisplayTitleFromParams(node),
             duration_ms: Date.now() - started,
@@ -266,7 +341,7 @@ export async function testWorkflowNode(opts: {
         logs.push(`${preview.matching_total} match (Get Many / audience)`)
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: nodeDisplayTitleFromParams(node),
           duration_ms: Date.now() - started,
@@ -300,7 +375,7 @@ export async function testWorkflowNode(opts: {
         if (!isActive) {
           return {
             ok: true,
-            node_id: opts.nodeId,
+            node_id: node.id,
             node_type: node.type,
             title: `Step ${stepOrder}`,
             duration_ms: Date.now() - started,
@@ -314,7 +389,7 @@ export async function testWorkflowNode(opts: {
         if (!hasBg) {
           return {
             ok: false,
-            node_id: opts.nodeId,
+            node_id: node.id,
             node_type: node.type,
             title: `Step ${stepOrder}`,
             duration_ms: Date.now() - started,
@@ -341,7 +416,7 @@ export async function testWorkflowNode(opts: {
 
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: `Step ${stepOrder}`,
           duration_ms: Date.now() - started,
@@ -380,7 +455,7 @@ export async function testWorkflowNode(opts: {
         if (!isActive) {
           return {
             ok: true,
-            node_id: opts.nodeId,
+            node_id: node.id,
             node_type: node.type,
             title: `Step ${stepOrder}`,
             duration_ms: Date.now() - started,
@@ -429,7 +504,7 @@ export async function testWorkflowNode(opts: {
 
           return {
             ok: true,
-            node_id: opts.nodeId,
+            node_id: node.id,
             node_type: node.type,
             title: `Step ${stepOrder}`,
             duration_ms: Date.now() - started,
@@ -478,7 +553,7 @@ export async function testWorkflowNode(opts: {
 
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: `Step ${stepOrder}`,
           duration_ms: Date.now() - started,
@@ -486,6 +561,101 @@ export async function testWorkflowNode(opts: {
           logs,
           items,
           metrics: { ...metrics, step_order: stepOrder },
+        }
+      }
+
+      case 'crm.flow.loop': {
+        const batchSize = Math.max(1, Number(node.parameters?.batch_size ?? 1))
+        const cooldown = Math.max(0, Number(node.parameters?.cooldown_days ?? 0))
+        const displayName = nodeDisplayTitleFromParams(node)
+        logs.push(`Batch size: ${batchSize} customer(s) per loop iteration`)
+        logs.push(`Cooldown between batches: ${cooldown} day(s)`)
+        logs.push('Downstream WhatsApp steps run per batch until enrollments complete')
+
+        let activeEnrollments = 0
+        if (opts.campaign?.id) {
+          const { count } = await opts.supabase
+            .from('campaign_enrollments')
+            .select('id', { count: 'exact', head: true })
+            .eq('campaign_id', opts.campaign.id)
+            .eq('status', 'active')
+          activeEnrollments = count ?? 0
+          logs.push(`${activeEnrollments} active enrollment(s) would enter the loop`)
+          metrics.active_enrollments = activeEnrollments
+        } else {
+          logs.push('Save campaign to see live enrollment counts')
+        }
+
+        metrics.batch_size = batchSize
+        metrics.cooldown_days = cooldown
+
+        return {
+          ok: true,
+          node_id: node.id,
+          node_type: node.type,
+          title: displayName,
+          duration_ms: Date.now() - started,
+          summary: opts.campaign?.id
+            ? `Batch ${batchSize} · ${activeEnrollments} active enrollment(s)`
+            : `Batch ${batchSize} · cooldown ${cooldown}d`,
+          logs,
+          items: [],
+          metrics,
+        }
+      }
+
+      case 'crm.flow.wait': {
+        const delayDays = Math.max(0, Number(node.parameters?.delay_days ?? 0))
+        const sendTime = sendTimeFromDb(
+          node.parameters?.send_time != null ? String(node.parameters.send_time) : ''
+        )
+        const tz = opts.campaign?.timezone?.trim() || 'Asia/Kuala_Lumpur'
+        logs.push(`Wait: +${delayDays} day(s)`)
+        logs.push(`Send window: ${sendTimeDisplayLabel(sendTime)} (${tz})`)
+        logs.push('Next step in the loop runs after this delay for each customer')
+
+        return {
+          ok: true,
+          node_id: node.id,
+          node_type: node.type,
+          title: nodeDisplayTitleFromParams(node),
+          duration_ms: Date.now() - started,
+          summary: `Wait +${delayDays}d · ${sendTimeDisplayLabel(sendTime)}`,
+          logs,
+          items: [],
+          metrics: { delay_days: delayDays },
+        }
+      }
+
+      case 'crm.flow.pass': {
+        logs.push('Pass — continues to the next node in the loop without changing data')
+        return {
+          ok: true,
+          node_id: node.id,
+          node_type: node.type,
+          title: nodeDisplayTitleFromParams(node),
+          duration_ms: Date.now() - started,
+          summary: 'Loop continue',
+          logs,
+          items: [],
+          metrics: {},
+        }
+      }
+
+      case 'crm.data.set': {
+        const fields = node.parameters?.fields
+        const count = Array.isArray(fields) ? fields.length : 0
+        logs.push(`Set node: ${count} field assignment(s) (visual only in CRM)`)
+        return {
+          ok: true,
+          node_id: node.id,
+          node_type: node.type,
+          title: nodeDisplayTitleFromParams(node),
+          duration_ms: Date.now() - started,
+          summary: count > 0 ? `${count} field(s)` : 'No fields configured',
+          logs,
+          items: [],
+          metrics: { field_count: count },
         }
       }
 
@@ -504,14 +674,16 @@ export async function testWorkflowNode(opts: {
         }
 
         const plan = buildCampaignWorkflowPlan(
-          { workflow_definition: def } as CampaignRow & { workflow_definition: WorkflowDefinition },
+          {
+            workflow_definition: draftToDefinition(opts.draft),
+          } as CampaignRow & { workflow_definition: WorkflowDefinition },
           []
         )
         const lastStep = plan.whatsappNodes.filter((w) => w.isActive).sort((a, b) => b.stepOrder - a.stepOrder)[0]
 
         return {
           ok: true,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: node.type,
           title: 'Done',
           duration_ms: Date.now() - started,
@@ -529,7 +701,7 @@ export async function testWorkflowNode(opts: {
       default:
         return {
           ok: false,
-          node_id: opts.nodeId,
+          node_id: node.id,
           node_type: String(node.type),
           title: String(node.type),
           duration_ms: Date.now() - started,
@@ -544,7 +716,7 @@ export async function testWorkflowNode(opts: {
     const msg = e instanceof Error ? e.message : 'Test failed'
     return {
       ok: false,
-      node_id: opts.nodeId,
+      node_id: node.id,
       node_type: String(node.type),
       title: String(node.type),
       duration_ms: Date.now() - started,

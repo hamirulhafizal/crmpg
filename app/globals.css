@@ -339,4 +339,22 @@ body {
       opacity: 1;
     }
   }
+
+  @keyframes workflow-node-glow {
+    0%,
+    100% {
+      box-shadow:
+        0 0 0 1px rgba(56, 189, 248, 0.45),
+        0 0 18px 4px rgba(56, 189, 248, 0.28);
+    }
+    50% {
+      box-shadow:
+        0 0 0 1px rgba(56, 189, 248, 0.65),
+        0 0 28px 10px rgba(56, 189, 248, 0.42);
+    }
+  }
+
+  .workflow-node-running {
+    animation: workflow-node-glow 1.15s ease-in-out infinite;
+  }
 }

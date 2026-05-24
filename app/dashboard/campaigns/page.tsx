@@ -382,7 +382,7 @@ function CampaignsListInner() {
                                 </svg>
                               </ActionIcon>
                             </button>
-                            <button
+                            {/* <button
                               type="button"
                               disabled={busy === r.id}
                               onClick={() => replacePanel({ edit: r.id })}
@@ -399,7 +399,7 @@ function CampaignsListInner() {
                                   />
                                 </svg>
                               </ActionIcon>
-                            </button>
+                            </button> */}
                             {r.status !== 'active' ? (
                               <button
                                 type="button"

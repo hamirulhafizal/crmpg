@@ -1,4 +1,11 @@
-import type { ImageAspectMode, ImageStepParameters, ImageTextAlign, ImageTextLayer } from '@/app/lib/campaigns/image-step/types'
+import { clampLayerScale, clampRotation } from '@/app/lib/campaigns/image-step/layer-transform'
+import type {
+  ImageAspectMode,
+  ImageLayerKind,
+  ImageStepParameters,
+  ImageTextAlign,
+  ImageTextLayer,
+} from '@/app/lib/campaigns/image-step/types'
 
 function clampPct(n: number): number {
   if (!Number.isFinite(n)) return 0
@@ -13,6 +20,7 @@ function parseAlign(v: unknown): ImageTextAlign {
 function parseLayer(raw: unknown, index: number, seenIds: Set<string>): ImageTextLayer | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
+  const layer_kind: ImageLayerKind = o.layer_kind === 'static' ? 'static' : 'variable'
   const variable = String(o.variable ?? 'SenderName').replace(/[{}]/g, '').trim() || 'SenderName'
   let id = String(o.id ?? '').trim()
   if (!id || seenIds.has(id)) {
@@ -21,14 +29,22 @@ function parseLayer(raw: unknown, index: number, seenIds: Set<string>): ImageTex
   seenIds.add(id)
   return {
     id,
+    layer_kind,
     variable,
+    static_text: layer_kind === 'static' ? String(o.static_text ?? '') : undefined,
     x: clampPct(Number(o.x ?? 50)),
     y: clampPct(Number(o.y ?? 50)),
+    rotation: clampRotation(Number(o.rotation ?? 0)),
+    scale: clampLayerScale(Number(o.scale ?? 1)),
+    flip_x: o.flip_x === true,
+    flip_y: o.flip_y === true,
     font_family: String(o.font_family ?? 'Arial, sans-serif'),
     font_size: Math.max(8, Math.min(200, Number(o.font_size ?? 48))),
     color: String(o.color ?? '#ffffff'),
     align: parseAlign(o.align),
     font_weight: Number(o.font_weight ?? 700),
+    text_background_color: String(o.text_background_color ?? '#000000'),
+    text_background_opacity: Math.min(100, Math.max(0, Number(o.text_background_opacity ?? 0))),
   }
 }
 

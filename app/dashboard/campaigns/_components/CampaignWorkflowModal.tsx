@@ -253,6 +253,9 @@ function CampaignWorkflowView(props: Props) {
   const savedSnapshot = useRef(JSON.stringify(initialDraft))
   const [nodeTestAutoRunKey, setNodeTestAutoRunKey] = useState(0)
   const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
+  const [nodeTestVisual, setNodeTestVisual] = useState<Record<string, WorkflowNodeState> | null>(
+    null
+  )
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true)
   const { theme } = useWorkflowCanvasTheme()
@@ -296,11 +299,22 @@ function CampaignWorkflowView(props: Props) {
     (nodeId: string) => {
       setSelectedNodeIds([nodeId])
       setTestingNodeId(nodeId)
+      setNodeTestVisual(null)
       setNodeTestAutoRunKey((k) => k + 1)
       if (isMobile) setMobileTab('node')
     },
     [isMobile]
   )
+
+  const onNodeTestEnd = useCallback(() => {
+    setTestingNodeId(null)
+    window.setTimeout(() => setNodeTestVisual(null), 900)
+  }, [])
+
+  const displayNodeStates = useMemo(() => {
+    if (!nodeTestVisual) return nodeStates
+    return { ...nodeStates, ...nodeTestVisual }
+  }, [nodeStates, nodeTestVisual])
 
   useEffect(() => {
     if (initialDraft) savedSnapshot.current = JSON.stringify(initialDraft)
@@ -383,7 +397,7 @@ function CampaignWorkflowView(props: Props) {
       isMobile,
       mobileVerticalLayout,
       draft.steps.length,
-      JSON.stringify(nodeStates),
+      JSON.stringify(displayNodeStates),
       selectedNodeIds.join(','),
       editable,
       leftSidebarOpen,
@@ -394,7 +408,7 @@ function CampaignWorkflowView(props: Props) {
       isMobile,
       mobileVerticalLayout,
       draft.steps.length,
-      nodeStates,
+      displayNodeStates,
       selectedNodeIds,
       editable,
       leftSidebarOpen,
@@ -686,7 +700,7 @@ function CampaignWorkflowView(props: Props) {
               <WorkflowCanvasDropZone setDraft={setDraft}>
                 <WorkflowFlowCanvas
                   draft={draft}
-                  nodeStates={nodeStates}
+                  nodeStates={displayNodeStates}
                   editable={editable}
                   selectedNodeIds={selectedNodeIds}
                   onSelectNodes={setSelectedNodeIds}
@@ -714,7 +728,7 @@ function CampaignWorkflowView(props: Props) {
               <div className="h-full min-h-[240px] w-full flex-1">
                 <WorkflowFlowCanvas
                   draft={draft}
-                  nodeStates={nodeStates}
+                  nodeStates={displayNodeStates}
                   editable={editable}
                   selectedNodeIds={selectedNodeIds}
                   onSelectNodes={setSelectedNodeIds}
@@ -763,7 +777,8 @@ function CampaignWorkflowView(props: Props) {
                 campaignId={campaignId}
                 onToast={pushToast}
                 nodeTestAutoRunKey={nodeTestAutoRunKey}
-                onNodeTestEnd={() => setTestingNodeId(null)}
+                onNodeTestEnd={onNodeTestEnd}
+                onPathVisual={setNodeTestVisual}
               />
             ) : null}
           </aside>
@@ -786,7 +801,8 @@ function CampaignWorkflowView(props: Props) {
                     campaignId={campaignId}
                     onToast={pushToast}
                     nodeTestAutoRunKey={nodeTestAutoRunKey}
-                    onNodeTestEnd={() => setTestingNodeId(null)}
+                    onNodeTestEnd={onNodeTestEnd}
+                    onPathVisual={setNodeTestVisual}
                   />
                 </div>
               ) : null}

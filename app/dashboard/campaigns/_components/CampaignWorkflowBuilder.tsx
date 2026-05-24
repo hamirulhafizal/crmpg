@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type DragEvent, type SetStateAction } from 'react'
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react'
 import { CampaignWorkflowNodeInspector } from '@/app/dashboard/campaigns/_components/CampaignWorkflowNodeInspector'
+import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 import { WorkflowFlowCanvas } from '@/app/dashboard/campaigns/_components/WorkflowFlowCanvas'
 import { WorkflowN8nToolbar } from '@/app/dashboard/campaigns/_components/WorkflowN8nToolbar'
 import { useWorkflowNodeClipboard } from '@/app/dashboard/campaigns/_components/use-workflow-node-clipboard'
@@ -39,6 +40,7 @@ function BuilderCanvas({
   setSelectedNodeIds,
   onTestNode,
   testingNodeId,
+  nodeStates,
   fitDeps,
   onOpenNodeProperties,
 }: {
@@ -48,6 +50,7 @@ function BuilderCanvas({
   setSelectedNodeIds: Dispatch<SetStateAction<string[]>>
   onTestNode?: (nodeId: string) => void
   testingNodeId?: string | null
+  nodeStates: Record<string, WorkflowNodeState>
   fitDeps: unknown[]
   onOpenNodeProperties: (nodeId: string) => void
 }) {
@@ -121,7 +124,7 @@ function BuilderCanvas({
     <div className="relative h-full min-h-[320px] flex-1" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <WorkflowFlowCanvas
         draft={draft}
-        nodeStates={{}}
+        nodeStates={nodeStates}
         editable
         selectedNodeIds={selectedNodeIds}
         onSelectNodes={setSelectedNodeIds}
@@ -173,6 +176,13 @@ function CampaignWorkflowBuilderInner({
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [nodeTestAutoRunKey, setNodeTestAutoRunKey] = useState(0)
   const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
+  const [nodeTestVisual, setNodeTestVisual] = useState<Record<string, WorkflowNodeState> | null>(
+    null
+  )
+  const displayNodeStates = useMemo(() => {
+    if (!nodeTestVisual) return {}
+    return nodeTestVisual
+  }, [nodeTestVisual])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true)
@@ -194,7 +204,13 @@ function CampaignWorkflowBuilderInner({
   const triggerNodeTest = useCallback((nodeId: string) => {
     setSelectedNodeIds([nodeId])
     setTestingNodeId(nodeId)
+    setNodeTestVisual(null)
     setNodeTestAutoRunKey((k) => k + 1)
+  }, [])
+
+  const onNodeTestEnd = useCallback(() => {
+    setTestingNodeId(null)
+    window.setTimeout(() => setNodeTestVisual(null), 900)
   }, [])
 
   const addNodeFromPalette = useCallback((typeSlug: string) => {
@@ -322,11 +338,13 @@ function CampaignWorkflowBuilderInner({
               setSelectedNodeIds={setSelectedNodeIds}
               onTestNode={triggerNodeTest}
               testingNodeId={testingNodeId}
+              nodeStates={displayNodeStates}
               onOpenNodeProperties={openNodeProperties}
               fitDeps={[
                 draft.definition?.nodes?.length ?? 0,
                 draft.steps.length,
                 selectedNodeIds.join(','),
+                JSON.stringify(displayNodeStates),
                 leftSidebarOpen,
                 rightSidebarOpen,
                 theme,
@@ -348,7 +366,8 @@ function CampaignWorkflowBuilderInner({
             onClose={() => setSelectedNodeIds([])}
             onToast={pushToast}
             nodeTestAutoRunKey={nodeTestAutoRunKey}
-            onNodeTestEnd={() => setTestingNodeId(null)}
+            onNodeTestEnd={onNodeTestEnd}
+            onPathVisual={setNodeTestVisual}
           />
         </WorkflowCollapsibleSidebar>
       </div>

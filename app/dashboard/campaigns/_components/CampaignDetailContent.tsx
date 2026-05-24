@@ -95,7 +95,7 @@ export function CampaignDetailContent(props: {
                 </ToolbarIcon>
               </button>
             ) : null}
-            <button
+            {/* <button
               type="button"
               onClick={onEdit}
               title="Edit campaign"
@@ -111,8 +111,8 @@ export function CampaignDetailContent(props: {
                   />
                 </svg>
               </ToolbarIcon>
-            </button>
-            {onTestRun ? (
+            </button> */}
+            {/* {onTestRun ? (
               <button
                 type="button"
                 disabled={testRunBusy || c.status !== 'active'}
@@ -163,7 +163,7 @@ export function CampaignDetailContent(props: {
                   </ToolbarIcon>
                 )}
               </button>
-            ) : null}
+            ) : null} */}
             <button
               type="button"
               onClick={onRefresh}

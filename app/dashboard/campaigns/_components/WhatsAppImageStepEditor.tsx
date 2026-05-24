@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
+import { ImageTemplatePreview } from '@/app/dashboard/campaigns/_components/ImageTemplatePreview'
 import { WhatsAppImageStepDialog } from '@/app/dashboard/campaigns/_components/WhatsAppImageStepDialog'
 import { InspectorField } from '@/app/dashboard/campaigns/_components/workflow-node-parameter-forms'
 import { sendTimeDisplayLabel } from '@/app/lib/campaigns/workflow-layout'
@@ -52,14 +53,14 @@ export function WhatsAppImageStepEditor({ nodeId, campaignId, parameters, onChan
     <>
       <InspectorField label="Image template">
         <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
-          {thumbUrl ? (
-            <img src={thumbUrl} alt="" className="aspect-video w-full object-cover opacity-90" />
-          ) : (
-            <div className="flex aspect-video items-center justify-center bg-slate-800 px-4 text-center text-sm text-slate-400">
-              No background yet
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
+          <ImageTemplatePreview
+            key={`${parsed.background_path ?? ''}-${(parsed.layers ?? []).map((l) => `${l.id}:${l.x}:${l.y}:${l.rotation ?? 0}:${l.scale ?? 1}:${l.font_size}`).join('|')}`}
+            parameters={parsed}
+            backgroundUrl={thumbUrl}
+            maxHeightPx={220}
+            className="mx-auto w-full opacity-95"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-2 p-3">
             <div className="min-w-0 text-white">
               <p className="text-xs font-medium text-white/90">

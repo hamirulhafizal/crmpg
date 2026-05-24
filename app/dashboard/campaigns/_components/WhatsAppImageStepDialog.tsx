@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
+import { newStaticTextLayer, newVariableTextLayer } from '@/app/lib/campaigns/image-step/defaults'
+import { isStaticLayer, layerListLabel } from '@/app/lib/campaigns/image-step/layer-text'
+import { previewCanvasLayout } from '@/app/lib/campaigns/image-step/preview-canvas'
 import {
-  IMAGE_FONT_OPTIONS,
   IMAGE_VARIABLE_OPTIONS,
   type ImageAspectMode,
+  type ImageLayerKind,
   type ImageStepParameters,
   type ImageTextLayer,
 } from '@/app/lib/campaigns/image-step/types'
-import { newImageTextLayer } from '@/app/lib/campaigns/image-step/defaults'
+import { ImageTextLayersCanvas } from '@/app/dashboard/campaigns/_components/ImageTextLayersCanvas'
 import { InspectorField } from '@/app/dashboard/campaigns/_components/workflow-node-parameter-forms'
 import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
 
@@ -42,11 +45,10 @@ export function WhatsAppImageStepDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [dragLayerId, setDragLayerId] = useState<string | null>(null)
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
 
   const canvasRef = useRef<HTMLDivElement>(null)
-  const isDraggingRef = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const resetFromProps = useCallback(() => {
     const p = parseImageStepParameters(initialParameters)
@@ -54,7 +56,6 @@ export function WhatsAppImageStepDialog({
     setLocalLayers(cloneLayers(p.layers ?? []))
     setSelectedLayerId(p.layers?.[0]?.id ?? null)
     setUploadError(null)
-    setDragLayerId(null)
   }, [initialParameters])
 
   useEffect(() => {
@@ -105,10 +106,31 @@ export function WhatsAppImageStepDialog({
     })
   }
 
-  const addLayer = () => {
-    const layer = newImageTextLayer()
+  const addVariableLayer = () => {
+    const layer = newVariableTextLayer()
     setLocalLayers((prev) => [...prev, layer])
     setSelectedLayerId(layer.id)
+  }
+
+  const addStaticLayer = () => {
+    const layer = newStaticTextLayer()
+    setLocalLayers((prev) => [...prev, layer])
+    setSelectedLayerId(layer.id)
+  }
+
+  const duplicateLayer = (id: string) => {
+    setLocalLayers((prev) => {
+      const src = prev.find((l) => l.id === id)
+      if (!src) return prev
+      const copy: ImageTextLayer = {
+        ...src,
+        id: `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        x: Math.min(95, src.x + 4),
+        y: Math.min(95, src.y + 4),
+      }
+      setSelectedLayerId(copy.id)
+      return [...prev, copy]
+    })
   }
 
   const onUpload = async (file: File) => {
@@ -136,59 +158,15 @@ export function WhatsAppImageStepDialog({
     }
   }
 
-  const onCanvasPointerDown = (layerId: string, e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setSelectedLayerId(layerId)
-    const target = e.currentTarget
-    target.setPointerCapture(e.pointerId)
-    isDraggingRef.current = true
-    setDragLayerId(layerId)
-
-    const el = canvasRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return
-      const x = ((ev.clientX - rect.left) / rect.width) * 100
-      const y = ((ev.clientY - rect.top) / rect.height) * 100
-      setLocalLayers((prev) =>
-        prev.map((l) =>
-          l.id === layerId
-            ? { ...l, x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) }
-            : l
-        )
-      )
-    }
-
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return
-      isDraggingRef.current = false
-      setDragLayerId(null)
-      try {
-        target.releasePointerCapture(ev.pointerId)
-      } catch {
-        /* released */
-      }
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-    }
-
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
-  }
-
   const handleSave = () => {
     onSave({ ...draft, layers: cloneLayers(localLayers) })
     onClose()
   }
 
   const aspect = draft.aspect_mode ?? 'square'
-  const aspectClass =
-    aspect === 'square' ? 'aspect-square' : aspect === 'fit' ? 'aspect-[4/5]' : 'aspect-[3/4]'
+  const canvasW = draft.canvas_width ?? 1080
+  const canvasH = draft.canvas_height ?? 1080
+  const previewLayout = previewCanvasLayout(aspect, canvasW, canvasH)
 
   const selectedLayer = localLayers.find((l) => l.id === selectedLayerId) ?? localLayers[0] ?? null
 
@@ -222,7 +200,7 @@ export function WhatsAppImageStepDialog({
                   Edit image template
                 </h2>
                 <p className="mt-0.5 text-sm text-slate-500">
-                  Upload a background, place variables, and adjust fonts. Save when done.
+                  Select text on the canvas to move, resize, rotate, and style it — like Canva.
                 </p>
               </div>
               <button
@@ -241,12 +219,13 @@ export function WhatsAppImageStepDialog({
               <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-end gap-3">
-                    <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                      Background
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium text-slate-700">Background</span>
                       <input
+                        ref={fileInputRef}
                         type="file"
                         accept="image/jpeg,image/png,image/webp,image/gif"
-                        className="max-w-[220px] text-xs text-slate-600"
+                        className="sr-only"
                         disabled={uploading}
                         onChange={(e) => {
                           const f = e.target.files?.[0]
@@ -254,82 +233,114 @@ export function WhatsAppImageStepDialog({
                           e.target.value = ''
                         }}
                       />
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {(['square', 'fit', 'original'] as ImageAspectMode[]).map((mode) => (
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
-                          key={mode}
                           type="button"
-                          className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize ${
-                            aspect === mode
-                              ? 'border-teal-600 bg-teal-50 text-teal-800'
-                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                          }`}
-                          onClick={() => patchDraft({ aspect_mode: mode })}
+                          disabled={uploading}
+                          onClick={() => fileInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-900 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {mode}
+                          <svg
+                            className="h-4 w-4 shrink-0 text-teal-600"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                            />
+                          </svg>
+                          {uploading ? 'Uploading…' : previewUrl ? 'Change image' : 'Upload image'}
                         </button>
-                      ))}
+                        {draft.background_path ? (
+                          <span className="max-w-[140px] truncate text-xs text-slate-500" title={draft.background_path}>
+                            Image set
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">JPG, PNG, WebP, GIF · max 10MB</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-wrap gap-2">
+                        {(['square', 'fit', 'original'] as ImageAspectMode[]).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium capitalize ${
+                              aspect === mode
+                                ? 'border-teal-600 bg-teal-50 text-teal-800'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                            onClick={() => patchDraft({ aspect_mode: mode })}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-500">{previewLayout.description}</p>
                     </div>
                   </div>
                   {uploading ? <p className="text-sm text-slate-500">Uploading…</p> : null}
                   {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
 
-                  <div
-                    ref={canvasRef}
-                    className={`relative w-full overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-900 ${aspectClass} max-h-[min(52vh,520px)] ${
-                      dragLayerId ? 'cursor-grabbing' : ''
-                    }`}
-                    style={{ touchAction: 'none' }}
+                  <ImageTextLayersCanvas
+                    canvasRef={canvasRef}
+                    key={`canvas-${aspect}-${canvasW}-${canvasH}`}
+                    layers={localLayers}
+                    selectedLayerId={selectedLayerId}
+                    onSelectLayer={setSelectedLayerId}
+                    onUpdateLayer={updateLayer}
+                    onDuplicateLayer={duplicateLayer}
+                    onRemoveLayer={removeLayer}
+                    className="relative mx-auto w-full max-w-full overflow-hidden rounded-xl border-2 border-slate-300 bg-slate-950 shadow-inner"
+                    style={{
+                      touchAction: 'none',
+                      aspectRatio: previewLayout.aspectRatio,
+                      maxHeight: 'min(52vh, 560px)',
+                    }}
                   >
                     {previewUrl ? (
                       <img
                         src={previewUrl}
                         alt=""
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full pointer-events-none"
+                        style={{ objectFit: previewLayout.imageObjectFit }}
                         draggable={false}
                       />
                     ) : (
-                      <div className="flex h-full min-h-[280px] items-center justify-center p-8 text-center text-sm text-slate-400">
+                      <div className="flex h-full min-h-[280px] items-center justify-center p-8 text-center text-sm text-slate-400 pointer-events-none">
                         Upload a background image to start designing
                       </div>
                     )}
-                    {localLayers.map((layer) => (
-                      <div
-                        key={layer.id}
-                        onPointerDown={(e) => onCanvasPointerDown(layer.id, e)}
-                        className={`absolute max-w-[92%] -translate-x-1/2 -translate-y-1/2 cursor-grab select-none px-1 touch-none rounded ring-offset-1 ${
-                          selectedLayerId === layer.id ? 'ring-2 ring-teal-400' : ''
-                        }`}
-                        style={{
-                          left: `${layer.x}%`,
-                          top: `${layer.y}%`,
-                          color: layer.color,
-                          fontFamily: layer.font_family,
-                          fontSize: `${Math.max(12, layer.font_size * 0.42)}px`,
-                          fontWeight: layer.font_weight ?? 700,
-                          textAlign: layer.align,
-                          textShadow: '0 2px 10px rgba(0,0,0,0.65)',
-                          whiteSpace: 'pre-wrap',
-                          zIndex: dragLayerId === layer.id ? 30 : selectedLayerId === layer.id ? 20 : 10,
-                        }}
-                      >
-                        {`{${layer.variable}}`}
-                      </div>
-                    ))}
-                  </div>
+                  </ImageTextLayersCanvas>
 
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-teal-700 hover:underline"
-                    onClick={addLayer}
-                  >
-                    + Add text layer
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-medium text-teal-800 hover:bg-teal-100"
+                      onClick={addVariableLayer}
+                    >
+                      + Customer variable
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      onClick={addStaticLayer}
+                    >
+                      + Fixed text
+                    </button>
+                  </div>
                 </div>
 
                 <aside className="space-y-4">
-                  <InspectorField label="Text layers" hint="Select a layer to edit font and color.">
+                  <InspectorField
+                    label="Text layers"
+                    hint="Canvas: drag to move, corners to resize, handle below to rotate."
+                  >
                     {localLayers.length === 0 ? (
                       <p className="text-sm text-slate-500">No layers yet. Add one on the canvas.</p>
                     ) : (
@@ -346,7 +357,9 @@ export function WhatsAppImageStepDialog({
                               }`}
                             >
                               <span className="font-medium">{`Layer ${idx + 1}`}</span>
-                              <span className="font-mono text-xs text-slate-500">{`{${layer.variable}}`}</span>
+                              <span className="max-w-[120px] truncate text-xs text-slate-500">
+                                {layerListLabel(layer)}
+                              </span>
                             </button>
                           </li>
                         ))}
@@ -368,73 +381,99 @@ export function WhatsAppImageStepDialog({
                           Remove
                         </button>
                       </div>
-                      <label className="block text-xs text-slate-600">
-                        Variable
-                        <select
-                          className="input mt-1 w-full text-black"
-                          value={selectedLayer.variable}
-                          onChange={(e) => updateLayer(selectedLayer.id, { variable: e.target.value })}
-                        >
-                          {IMAGE_VARIABLE_OPTIONS.map((v) => (
-                            <option key={v} value={v}>{`{${v}}`}</option>
+                      <fieldset className="space-y-2">
+                        <legend className="text-xs font-medium text-slate-600">Text source</legend>
+                        <div className="flex gap-2">
+                          {(['variable', 'static'] as ImageLayerKind[]).map((kind) => (
+                            <button
+                              key={kind}
+                              type="button"
+                              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                                (selectedLayer.layer_kind ?? 'variable') === kind
+                                  ? 'border-teal-600 bg-teal-50 text-teal-900'
+                                  : 'border-slate-200 bg-white text-slate-600'
+                              }`}
+                              onClick={() =>
+                                updateLayer(selectedLayer.id, {
+                                  layer_kind: kind,
+                                  ...(kind === 'static'
+                                    ? { static_text: selectedLayer.static_text ?? 'Your text' }
+                                    : {}),
+                                })
+                              }
+                            >
+                              {kind === 'variable' ? 'Customer field' : 'Fixed text'}
+                            </button>
                           ))}
-                        </select>
-                      </label>
-                      <label className="block text-xs text-slate-600">
-                        Font family
-                        <select
-                          className="input mt-1 w-full text-black"
-                          value={selectedLayer.font_family}
-                          onChange={(e) => updateLayer(selectedLayer.id, { font_family: e.target.value })}
-                        >
-                          {IMAGE_FONT_OPTIONS.map((f) => (
-                            <option key={f.value} value={f.value}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block text-xs text-slate-600">
-                        Font size ({selectedLayer.font_size}px on send)
-                        <input
-                          type="range"
-                          min={12}
-                          max={120}
-                          step={1}
-                          className="mt-2 w-full accent-teal-600"
-                          value={selectedLayer.font_size}
-                          onChange={(e) =>
-                            updateLayer(selectedLayer.id, {
-                              font_size: Math.max(12, Number(e.target.value) || 48),
-                            })
-                          }
-                        />
-                      </label>
-                      <label className="block text-xs text-slate-600">
-                        Color
-                        <input
-                          type="color"
-                          className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-slate-300"
-                          value={selectedLayer.color}
-                          onChange={(e) => updateLayer(selectedLayer.id, { color: e.target.value })}
-                        />
-                      </label>
-                      <label className="block text-xs text-slate-600">
-                        Align
-                        <select
-                          className="input mt-1 w-full text-black"
-                          value={selectedLayer.align}
-                          onChange={(e) =>
-                            updateLayer(selectedLayer.id, {
-                              align: e.target.value as ImageTextLayer['align'],
-                            })
-                          }
-                        >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </label>
+                        </div>
+                      </fieldset>
+                      {isStaticLayer(selectedLayer) ? (
+                        <label className="block text-xs text-slate-600">
+                          Your text
+                          <textarea
+                            rows={2}
+                            className="input mt-1 w-full text-sm text-black"
+                            value={selectedLayer.static_text ?? ''}
+                            placeholder="e.g. Tahniah! Promo istimewa"
+                            onChange={(e) =>
+                              updateLayer(selectedLayer.id, { static_text: e.target.value })
+                            }
+                          />
+                        </label>
+                      ) : (
+                        <label className="block text-xs text-slate-600">
+                          Customer variable
+                          <select
+                            className="input mt-1 w-full text-black"
+                            value={selectedLayer.variable}
+                            onChange={(e) => updateLayer(selectedLayer.id, { variable: e.target.value })}
+                          >
+                            {IMAGE_VARIABLE_OPTIONS.map((v) => (
+                              <option key={v} value={v}>{`{${v}}`}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <p className="text-xs text-slate-500">
+                        Font, size, color, and alignment are on the floating toolbar above the
+                        selected text. Use corner handles to resize and the round handle to rotate.
+                      </p>
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                        <span className="block text-xs font-medium text-slate-600">Text background</span>
+                        <label className="block text-xs text-slate-500">
+                          Background color
+                          <input
+                            type="color"
+                            className="mt-1 h-9 w-full cursor-pointer rounded-lg border border-slate-300"
+                            value={selectedLayer.text_background_color ?? '#000000'}
+                            onChange={(e) =>
+                              updateLayer(selectedLayer.id, {
+                                text_background_color: e.target.value,
+                                text_background_opacity:
+                                  (selectedLayer.text_background_opacity ?? 0) > 0
+                                    ? selectedLayer.text_background_opacity
+                                    : 70,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="block text-xs text-slate-500">
+                          Transparency ({selectedLayer.text_background_opacity ?? 0}% — 0 = off)
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            className="mt-2 w-full accent-teal-600"
+                            value={selectedLayer.text_background_opacity ?? 0}
+                            onChange={(e) =>
+                              updateLayer(selectedLayer.id, {
+                                text_background_opacity: Number(e.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
                     </div>
                   ) : null}
 
