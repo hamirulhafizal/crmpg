@@ -26,6 +26,7 @@ import {
   storedFollowUpResumeFromApi,
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
+import { computeAgeFromDob } from '@/app/lib/customer-dob'
 
 /** Above full-screen shells (e.g. schedule calendar z-[60]) and typical z-50 modals. */
 const Z_CUSTOMER_MODAL_OVERLAY = 'z-[1000]'
@@ -1167,7 +1168,15 @@ export function CustomerEditModalShell({
                     <input
                       type="date"
                       value={draft.dob || ''}
-                      onChange={(e) => setDraft({ ...draft, dob: e.target.value })}
+                      onChange={(e) => {
+                        const dob = e.target.value
+                        const computedAge = computeAgeFromDob(dob)
+                        setDraft({
+                          ...draft,
+                          dob,
+                          ...(computedAge != null ? { age: computedAge } : {}),
+                        })
+                      }}
                       className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>

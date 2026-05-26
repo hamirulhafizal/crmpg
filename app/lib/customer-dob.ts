@@ -1,6 +1,36 @@
 /** Parsed calendar month (1–12) and day (1–31) from a customer `dob` value. */
 export type DobMonthDay = { month: number; day: number }
 
+/** Full calendar date from `customers.dob`. */
+export type DobYmd = { year: number; month: number; day: number }
+
+const MONTH_NAME_TO_NUM: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+}
+
 /**
  * Extract month/day from `customers.dob` (year ignored).
  * Matches birthday automation and customers list filters.
@@ -22,38 +52,77 @@ export function parseCustomerDobMonthDay(dob: unknown): DobMonthDay | null {
   if (m2) {
     const monthName = String(m2[1]).toLowerCase()
     const day = Number(m2[2])
-    const monthMap: Record<string, number> = {
-      jan: 1,
-      january: 1,
-      feb: 2,
-      february: 2,
-      mar: 3,
-      march: 3,
-      apr: 4,
-      april: 4,
-      may: 5,
-      jun: 6,
-      june: 6,
-      jul: 7,
-      july: 7,
-      aug: 8,
-      august: 8,
-      sep: 9,
-      sept: 9,
-      september: 9,
-      oct: 10,
-      october: 10,
-      nov: 11,
-      november: 11,
-      dec: 12,
-      december: 12,
-    }
-    const month = monthMap[monthName]
+    const month = MONTH_NAME_TO_NUM[monthName]
     if (!month || !Number.isFinite(day)) return null
     return { month, day }
   }
 
   return null
+}
+
+/** Parse full birth date (year included) from `customers.dob`. */
+export function parseCustomerDobYmd(dob: unknown): DobYmd | null {
+  if (!dob) return null
+  const s = typeof dob === 'string' ? dob.trim() : String(dob).trim()
+  if (!s) return null
+
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m1) {
+    const year = Number(m1[1])
+    const month = Number(m1[2])
+    const day = Number(m1[3])
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+    return { year, month, day }
+  }
+
+  const m2 = s.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{4})/)
+  if (m2) {
+    const month = MONTH_NAME_TO_NUM[String(m2[1]).toLowerCase()]
+    const day = Number(m2[2])
+    const year = Number(m2[3])
+    if (!month || !Number.isFinite(day) || !Number.isFinite(year)) return null
+    return { year, month, day }
+  }
+
+  const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (m3) {
+    const day = Number(m3[1])
+    const month = Number(m3[2])
+    const year = Number(m3[3])
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+    return { year, month, day }
+  }
+
+  return null
+}
+
+/**
+ * Age in full years on Malaysia “today”, using birthday rule (not yet had birthday this year → minus 1).
+ */
+export function computeAgeFromDob(dob: unknown, now: Date = new Date()): number | null {
+  const birth = parseCustomerDobYmd(dob)
+  if (!birth) return null
+
+  const [refY, refM, refD] = getMalaysiaTodayYmd(now).split('-').map(Number)
+  let age = refY - birth.year
+  if (refM < birth.month || (refM === birth.month && refD < birth.day)) {
+    age -= 1
+  }
+  if (!Number.isFinite(age) || age < 0 || age > 150) return null
+  return age
+}
+
+/** Prefer live age from DOB; fall back to stored `age` when DOB is missing. */
+export function displayCustomerAge(
+  dob: unknown,
+  storedAge: number | string | null | undefined,
+  now: Date = new Date()
+): number | null {
+  const fromDob = computeAgeFromDob(dob, now)
+  if (fromDob != null) return fromDob
+  if (storedAge === null || storedAge === undefined || storedAge === '') return null
+  const n = typeof storedAge === 'number' ? storedAge : Number(String(storedAge).trim())
+  return Number.isFinite(n) ? n : null
 }
 
 const MALAYSIA_TZ = 'Asia/Kuala_Lumpur'

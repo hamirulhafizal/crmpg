@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 // GET /api/customers/[id] - Get single customer
@@ -78,7 +79,11 @@ export async function PUT(
     const updateData: any = {}
     
     if (body.name !== undefined) updateData.name = body.name
-    if (body.dob !== undefined) updateData.dob = body.dob
+    if (body.dob !== undefined) {
+      updateData.dob = body.dob
+      const computedAge = computeAgeFromDob(body.dob)
+      if (computedAge != null) updateData.age = computedAge
+    }
     if (body.email !== undefined) updateData.email = body.email
     if (body.phone !== undefined) updateData.phone = body.phone
     if (body.location !== undefined) updateData.location = body.location

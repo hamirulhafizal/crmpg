@@ -32,6 +32,7 @@ import {
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
+import { displayCustomerAge } from '@/app/lib/customer-dob'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -2116,7 +2117,9 @@ function CustomersPage() {
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.phone || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.gender || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.ethnicity || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800">{customer.age || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {displayCustomerAge(customer.dob, customer.age) ?? '-'}
+                        </td>
                         <td className="px-4 py-3 text-sm text-slate-800">
                           {customer.dob
                             ? (() => {

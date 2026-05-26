@@ -9,6 +9,7 @@ import {
   getRegistrationUtcYmd,
   parseDirectDebitSubscriptionFromOriginalData,
 } from '@/app/lib/customer-account-status'
+import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | null {
@@ -380,7 +381,8 @@ export async function GET(request: Request) {
 
       if (ageMin != null || ageMax != null) {
         filtered = filtered.filter((c: any) => {
-          const rawAge = c?.age
+          const fromDob = computeAgeFromDob(c?.dob)
+          const rawAge = fromDob ?? c?.age
           if (rawAge === null || rawAge === undefined || rawAge === '') return false
           const n = typeof rawAge === 'number' ? rawAge : Number(String(rawAge).trim())
           if (!Number.isFinite(n)) return false
@@ -578,16 +580,20 @@ export async function POST(request: Request) {
           customer.is_profile_verified === true || customer.is_profile_verified === 'true' ? 'Yes' : 'No'
       }
 
+      const dob =
+        customer.dob || customer['D.O.B.'] || customer['D.O.B'] || customer.DOB || null
+      const ageFromDob = dob ? computeAgeFromDob(dob) : null
+
       return {
         user_id: user.id,
         name: customer.name || customer.Name || null,
-        dob: customer.dob || customer['D.O.B.'] || customer['D.O.B'] || customer.DOB || null,
+        dob,
         email: customer.email || customer.Email || null,
         phone: customer.phone || customer.Phone || null,
         location: customer.location || customer.Location || null,
         gender: customer.Gender || customer.gender || null,
         ethnicity: customer.Ethnicity || customer.ethnicity || null,
-        age: customer.Age || customer.age || null,
+        age: ageFromDob ?? customer.Age ?? customer.age ?? null,
         prefix: customer.Prefix || customer.prefix || null,
         first_name: customer.FirstName || customer.first_name || customer.FirstName || null,
         sender_name: customer.SenderName || customer.sender_name || customer.SenderName || null,

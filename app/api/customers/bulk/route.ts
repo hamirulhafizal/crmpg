@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { computeAgeFromDob } from '@/app/lib/customer-dob'
 
 // Helper function to parse and normalize date strings to ISO format (YYYY-MM-DD)
 function parseDate(dateValue: any): string | null {
@@ -162,6 +163,7 @@ export async function POST(request: Request) {
       const parsedDob = parseDate(dobValue)
 
       const pgCode = customer.PGCode || customer.pg_code || customer.PGCode || null
+      const ageFromDob = parsedDob ? computeAgeFromDob(parsedDob) : null
 
       return {
         user_id: user.id,
@@ -172,7 +174,7 @@ export async function POST(request: Request) {
         location: customer.location || customer.Location || null,
         gender: customer.Gender || customer.gender || null,
         ethnicity: customer.Ethnicity || customer.ethnicity || null,
-        age: customer.Age || customer.age || null,
+        age: ageFromDob ?? customer.Age ?? customer.age ?? null,
         prefix: customer.Prefix || customer.prefix || null,
         first_name: customer.FirstName || customer.first_name || customer.FirstName || null,
         sender_name: customer.SenderName || customer.sender_name || customer.SenderName || null,
