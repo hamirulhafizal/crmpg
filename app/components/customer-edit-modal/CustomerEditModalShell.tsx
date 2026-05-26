@@ -87,6 +87,16 @@ const parseProfileVerified = (originalData: unknown): boolean | null => {
   return null
 }
 
+/** WhatsApp save name: `{sender} - {pgCode}` (matches common CRM convention). */
+function saveNameFromSenderAndPg(senderName: string, pgCode: string): string {
+  const sender = senderName.trim()
+  const pg = pgCode.trim()
+  if (!sender && !pg) return ''
+  if (!sender) return pg
+  if (!pg) return sender
+  return `${sender} - ${pg}`
+}
+
 export interface Customer {
   id: string
   name: string | null
@@ -1046,6 +1056,81 @@ export function CustomerEditModalShell({
                   </p>
                 </div>
 
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Sender Name</label>
+                    <input
+                      type="text"
+                      value={draft.sender_name || ''}
+                      onChange={(e) => {
+                        const sender_name = e.target.value
+                        setDraft({
+                          ...draft,
+                          sender_name,
+                          save_name: saveNameFromSenderAndPg(sender_name, draft.pg_code || ''),
+                          is_friend: true,
+                        })
+                      }}
+                      placeholder="e.g. Pn Haszelina, Tn Azamuddin"
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Save Name</label>
+                    <input
+                      type="text"
+                      value={draft.save_name || ''}
+                      onChange={(e) => setDraft({ ...draft, save_name: e.target.value })}
+                      placeholder="Auto-filled from sender name and PG code"
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Updates automatically when you change Sender Name (format: Name - PG code).
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2 flex flex-wrap items-center gap-x-6 gap-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.is_married}
+                        onChange={(e) => setDraft({ ...draft, is_married: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                      />
+                      <span className="text-sm font-medium text-slate-700">Married</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!draft.is_friend}
+                        onChange={(e) => setDraft({ ...draft, is_friend: e.target.checked })}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                      />
+                      <span className="text-sm font-medium text-slate-700">Friend</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={parseProfileVerified(draft.original_data) === true}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            original_data: {
+                              ...(draft.original_data || {}),
+                              'Profile Verified': e.target.checked ? 'Yes' : 'No',
+                            },
+                          })
+                        }
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                      />
+                      <span className="text-sm font-medium text-slate-700">Profile verified</span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
@@ -1133,70 +1218,20 @@ export function CustomerEditModalShell({
                     <input
                       type="text"
                       value={draft.pg_code || ''}
-                      onChange={(e) => setDraft({ ...draft, pg_code: e.target.value })}
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Sender Name</label>
-                    <input
-                      type="text"
-                      value={draft.sender_name || ''}
-                      onChange={(e) => setDraft({ ...draft, sender_name: e.target.value })}
-                      placeholder="e.g. Pn Haszelina, Tn Azamuddin"
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Save Name</label>
-                    <input
-                      type="text"
-                      value={draft.save_name || ''}
-                      onChange={(e) => setDraft({ ...draft, save_name: e.target.value })}
-                      placeholder="e.g. PG00113237 - Pn Haszelina"
-                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!draft.is_married}
-                      onChange={(e) => setDraft({ ...draft, is_married: e.target.checked })}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Married</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!draft.is_friend}
-                      onChange={(e) => setDraft({ ...draft, is_friend: e.target.checked })}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-                    />
-                    <span className="text-sm font-medium text-slate-700">Friend</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={parseProfileVerified(draft.original_data) === true}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const pg_code = e.target.value
+                        const sender = draft.sender_name?.trim() ?? ''
                         setDraft({
                           ...draft,
-                          original_data: {
-                            ...(draft.original_data || {}),
-                            'Profile Verified': e.target.checked ? 'Yes' : 'No',
-                          },
+                          pg_code,
+                          ...(sender
+                            ? { save_name: saveNameFromSenderAndPg(draft.sender_name || '', pg_code) }
+                            : {}),
                         })
-                      }
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
+                      }}
+                      className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    <span className="text-sm font-medium text-slate-700">Profile verified</span>
-                  </label>
+                  </div>
 
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Rank</label>
