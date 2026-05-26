@@ -61,6 +61,9 @@ export function describeCampaignAudienceFilters(
   if (filters.is_friend != null) {
     lines.push(`Friend flag: ${filters.is_friend ? 'yes' : 'no'}`)
   }
+  if (filters.profile_verified != null) {
+    lines.push(`Profile verified: ${filters.profile_verified ? 'yes' : 'no'}`)
+  }
   if (filters.gender?.trim()) {
     lines.push(`Gender: ${filters.gender.trim()}`)
   }

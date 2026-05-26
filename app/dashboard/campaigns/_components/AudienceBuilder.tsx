@@ -384,7 +384,7 @@ export function AudienceBuilder({
         <p className="mt-1 text-xs text-slate-500">Matches customers whose ethnicity is any of the selected values.</p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-slate-700">Monthly buyer</span>
           <select
@@ -420,6 +420,29 @@ export function AudienceBuilder({
             <option value="yes">Yes</option>
             <option value="no">No</option>
           </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-slate-900">
+          <span className="font-medium text-slate-700">Profile verified</span>
+          <select
+            className="rounded-xl border border-slate-300 px-3 py-2 text-slate-900"
+            value={
+              value.profile_verified === undefined ? '' : value.profile_verified ? 'yes' : 'no'
+            }
+            onChange={(e) => {
+              const v = e.target.value
+              onChange({
+                ...value,
+                profile_verified: v === '' ? undefined : v === 'yes',
+              })
+            }}
+          >
+            <option value="">Any</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+          <p className="text-xs text-slate-500">
+            Matches the customer&apos;s Profile Verified field (account verified profile).
+          </p>
         </label>
       </div>
 

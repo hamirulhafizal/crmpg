@@ -14,6 +14,8 @@ export type CampaignAudienceFilters = {
   account_status?: Array<'temporary' | 'freeze' | 'active' | 'free' | 'inactive' | 'unknown'>
   is_monthly_buyer?: boolean | null
   is_friend?: boolean | null
+  /** `original_data["Profile Verified"]` — yes / no / unset on customer record */
+  profile_verified?: boolean | null
   gender?: string | null
   /** Any match (OR) — values from customers.ethnicity: Malay, Chinese, Indian, Other */
   ethnicities?: Array<'Malay' | 'Chinese' | 'Indian' | 'Other'>

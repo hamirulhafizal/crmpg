@@ -8,28 +8,10 @@ import {
   getRegistrationUtcMonthDate,
   getRegistrationUtcYmd,
   parseDirectDebitSubscriptionFromOriginalData,
+  parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
-
-function parseProfileVerifiedFromOriginalData(originalData: unknown): boolean | null {
-  const data = normalizeCustomerOriginalData(originalData)
-  if (!data) return null
-  const raw = data['Profile Verified']
-  if (raw === undefined || raw === null || raw === '') return null
-  if (raw === true) return true
-  if (raw === false) return false
-  if (typeof raw === 'string') {
-    const v = raw.trim().toLowerCase()
-    if (['true', 'yes', 'y', '1'].includes(v)) return true
-    if (['false', 'no', 'n', '0'].includes(v)) return false
-  }
-  if (typeof raw === 'number') {
-    if (raw === 1) return true
-    if (raw === 0) return false
-  }
-  return null
-}
 
 function deriveCustomerSource(originalData: unknown, segmentAttributes: unknown): string {
   const seg =

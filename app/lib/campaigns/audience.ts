@@ -2,6 +2,7 @@ import {
   getAccountStatusKey,
   getLastPurchaseUtcYmd,
   getRegistrationUtcYmd,
+  parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
@@ -107,6 +108,14 @@ export function customerMatchesFilters(c: CustomerForAudience, filters: Campaign
   if (filters.is_friend != null) {
     if (Boolean(c.is_friend) !== filters.is_friend) return false
   }
+  if (filters.profile_verified != null) {
+    const verified = parseProfileVerifiedFromOriginalData(c.original_data)
+    if (filters.profile_verified) {
+      if (verified !== true) return false
+    } else if (verified !== false) {
+      return false
+    }
+  }
   if (filters.gender) {
     if ((c.gender || '').toLowerCase() !== filters.gender.toLowerCase()) return false
   }
@@ -187,6 +196,7 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
   if ((f.account_status ?? []).length > 0) return true
   if (f.is_monthly_buyer != null) return true
   if (f.is_friend != null) return true
+  if (f.profile_verified != null) return true
   if (f.gender?.trim()) return true
   if ((f.ethnicities ?? []).length > 0) return true
   if (f.location_contains?.trim()) return true
