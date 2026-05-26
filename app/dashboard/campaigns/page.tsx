@@ -9,6 +9,10 @@ import {
   CampaignFullScreenPanel,
   type CampaignPanelMode,
 } from '@/app/dashboard/campaigns/_components/CampaignFullScreenPanel'
+import {
+  buildCampaignPanelPath,
+  panelModeFromSearchParams,
+} from '@/app/lib/campaigns/campaign-panel-url'
 
 type Row = {
   id: string
@@ -34,15 +38,6 @@ function ActionIcon({
       {children}
     </span>
   )
-}
-
-function panelModeFromSearchParams(sp: URLSearchParams): CampaignPanelMode | null {
-  if (sp.get('new') === '1') return 'create'
-  const edit = sp.get('edit')
-  if (edit) return { edit }
-  const view = sp.get('view')
-  if (view) return { view }
-  return null
 }
 
 function TableSkeleton() {
@@ -128,10 +123,10 @@ function CampaignsListInner() {
         return
       }
       if ('edit' in next) {
-        router.replace(`/dashboard/campaigns?edit=${encodeURIComponent(next.edit)}`, { scroll: false })
+        router.replace(buildCampaignPanelPath(next), { scroll: false })
         return
       }
-      router.replace(`/dashboard/campaigns?view=${encodeURIComponent(next.view)}`, { scroll: false })
+      router.replace(buildCampaignPanelPath(next), { scroll: false })
     },
     [router]
   )

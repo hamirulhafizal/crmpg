@@ -16,6 +16,8 @@ export type CampaignAudienceFilters = {
   is_friend?: boolean | null
   /** `original_data["Profile Verified"]` — yes / no / unset on customer record */
   profile_verified?: boolean | null
+  /** `original_data["Direct Debit Subscription"]` — yes / no / unset on customer record */
+  direct_debit?: boolean | null
   gender?: string | null
   /** Any match (OR) — values from customers.ethnicity: Malay, Chinese, Indian, Other */
   ethnicities?: Array<'Malay' | 'Chinese' | 'Indian' | 'Other'>

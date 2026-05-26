@@ -2,6 +2,7 @@ import {
   getAccountStatusKey,
   getLastPurchaseUtcYmd,
   getRegistrationUtcYmd,
+  parseDirectDebitSubscriptionFromOriginalData,
   parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
@@ -116,6 +117,14 @@ export function customerMatchesFilters(c: CustomerForAudience, filters: Campaign
       return false
     }
   }
+  if (filters.direct_debit != null) {
+    const subscribed = parseDirectDebitSubscriptionFromOriginalData(c.original_data)
+    if (filters.direct_debit) {
+      if (subscribed !== true) return false
+    } else if (subscribed !== false) {
+      return false
+    }
+  }
   if (filters.gender) {
     if ((c.gender || '').toLowerCase() !== filters.gender.toLowerCase()) return false
   }
@@ -197,6 +206,7 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
   if (f.is_monthly_buyer != null) return true
   if (f.is_friend != null) return true
   if (f.profile_verified != null) return true
+  if (f.direct_debit != null) return true
   if (f.gender?.trim()) return true
   if ((f.ethnicities ?? []).length > 0) return true
   if (f.location_contains?.trim()) return true

@@ -1,7 +1,13 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  mergeWorkflowIntoSearchParams,
+  selectedNodeFromSearchParams,
+  workflowOpenFromSearchParams,
+} from '@/app/lib/campaigns/campaign-panel-url'
 import { CampaignWorkflowModal } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
 import { draftFromCampaignPayload } from '@/app/lib/campaigns/workflow-layout'
 import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
@@ -27,10 +33,11 @@ import type {
   CampaignStepRow,
   CampaignTriggerType,
 } from '@/app/lib/campaigns/types'
+import type { CampaignPanelMode } from '@/app/lib/campaigns/campaign-panel-url'
 
 const Z_PANEL = 'z-[950]'
 
-export type CampaignPanelMode = 'create' | { edit: string } | { view: string }
+export type { CampaignPanelMode }
 
 type Props = {
   panelMode: CampaignPanelMode | null
@@ -277,9 +284,47 @@ function ViewPanelInner({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<CampaignDetailPayload | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [testRunBusy, setTestRunBusy] = useState(false)
-  const [workflowOpen, setWorkflowOpen] = useState(false)
+  const workflowFromUrl = workflowOpenFromSearchParams(searchParams)
+  const nodeFromUrl = selectedNodeFromSearchParams(searchParams)
+  const [workflowOpen, setWorkflowOpen] = useState(workflowFromUrl)
   const [workflowUi, setWorkflowUi] = useState(() => createInitialWorkflowUi([]))
+  const skipNextUrlSync = useRef(false)
+
+  const syncWorkflowInUrl = useCallback(
+    (open: boolean, nodeId?: string | null) => {
+      const next = mergeWorkflowIntoSearchParams(searchParams, {
+        workflow: open,
+        node: open ? nodeId : null,
+      })
+      const q = next.toString()
+      router.replace(q ? `/dashboard/campaigns?${q}` : '/dashboard/campaigns', { scroll: false })
+    },
+    [router, searchParams]
+  )
+
+  useEffect(() => {
+    if (skipNextUrlSync.current) {
+      skipNextUrlSync.current = false
+      return
+    }
+    setWorkflowOpen(workflowFromUrl)
+  }, [workflowFromUrl])
+
+  const openWorkflow = useCallback(
+    (nodeId?: string | null) => {
+      setWorkflowOpen(true)
+      syncWorkflowInUrl(true, nodeId ?? nodeFromUrl)
+    },
+    [syncWorkflowInUrl, nodeFromUrl]
+  )
+
+  const closeWorkflow = useCallback(() => {
+    setWorkflowOpen(false)
+    syncWorkflowInUrl(false)
+  }, [syncWorkflowInUrl])
 
   const stepOrders = useMemo(() => {
     const steps = (payload?.steps ?? []) as Array<{ step_order: number; is_active?: boolean }>
@@ -349,7 +394,7 @@ function ViewPanelInner({
   const cName = payload?.campaign && typeof payload.campaign === 'object' ? String((payload.campaign as { name?: string }).name ?? '') : ''
 
   const runTestWithWorkflow = useCallback(async () => {
-    setWorkflowOpen(true)
+    openWorkflow()
     setWorkflowUi(createInitialWorkflowUi(stepOrders, workflowNodeIds))
     setTestRunBusy(true)
     try {
@@ -367,7 +412,7 @@ function ViewPanelInner({
     } finally {
       setTestRunBusy(false)
     }
-  }, [id, stepOrders, workflowNodeIds, load, pushToast])
+  }, [id, stepOrders, workflowNodeIds, load, pushToast, openWorkflow])
 
   return (
     <>
@@ -381,7 +426,7 @@ function ViewPanelInner({
           <CampaignDetailContent
             payload={payload}
             onEdit={() => onNavigateEdit(id)}
-            onOpenWorkflow={() => setWorkflowOpen(true)}
+            onOpenWorkflow={() => openWorkflow()}
             onRefresh={() => {
               void load().then((ok) => {
                 if (ok) pushToast('success', 'Refreshed.')
@@ -396,8 +441,14 @@ function ViewPanelInner({
       {payload && camp ? (
         <CampaignWorkflowModal
           open={workflowOpen}
-          onClose={() => setWorkflowOpen(false)}
+          onClose={closeWorkflow}
           campaignId={id}
+          urlSelectedNodeId={nodeFromUrl}
+          onUrlSelectionChange={(nodeId) => {
+            if (!workflowOpen) return
+            skipNextUrlSync.current = true
+            syncWorkflowInUrl(true, nodeId)
+          }}
           editable
           initialDraft={workflowDraft ?? undefined}
           onSaved={() => {

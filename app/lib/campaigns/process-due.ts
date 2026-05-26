@@ -110,7 +110,7 @@ function audienceFiltersSummary(f: CampaignAudienceFilters): string {
   const ids = (f.tag_ids ?? []).map(String).filter(Boolean)
   const acct = (f.account_status ?? []).length
   const eth = (f.ethnicities ?? []).join(',') || '—'
-  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} ethnicities=${eth} is_friend=${f.is_friend ?? '—'} profile_verified=${f.profile_verified ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'}`
+  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} ethnicities=${eth} is_friend=${f.is_friend ?? '—'} profile_verified=${f.profile_verified ?? '—'} direct_debit=${f.direct_debit ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'}`
 }
 
 async function logCampaignPipelineDiagnostics(

@@ -91,6 +91,10 @@ type Props = {
   initialDraft?: WorkflowEditorDraft
   onSaved?: () => void
   pushToast?: (type: 'success' | 'error', text: string) => void
+  /** Deep-link: pre-select a canvas node from `?node=` */
+  urlSelectedNodeId?: string | null
+  /** Keep `?node=` in sync when a single node is selected on the canvas */
+  onUrlSelectionChange?: (nodeId: string | null) => void
 }
 
 function useIsMobile() {
@@ -237,6 +241,8 @@ function CampaignWorkflowView(props: Props) {
     initialDraft,
     onSaved,
     pushToast,
+    urlSelectedNodeId,
+    onUrlSelectionChange,
   } = props
 
   const isMobile = useIsMobile()
@@ -319,6 +325,36 @@ function CampaignWorkflowView(props: Props) {
   useEffect(() => {
     if (initialDraft) savedSnapshot.current = JSON.stringify(initialDraft)
   }, [initialDraft])
+
+  const definitionNodeIds = useMemo(() => {
+    const def = draft.definition?.nodes?.length
+      ? (draft.definition as WorkflowDefinition)
+      : draftToDefinition(draft)
+    return new Set(def.nodes.map((n) => n.id))
+  }, [draft])
+
+  const prevSelectionForUrlRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!open || !urlSelectedNodeId?.trim()) return
+    const id = urlSelectedNodeId.trim()
+    if (!definitionNodeIds.has(id)) return
+    setSelectedNodeIds([id])
+    prevSelectionForUrlRef.current = id
+    if (!isMobile) setRightSidebarOpen(true)
+  }, [open, urlSelectedNodeId, definitionNodeIds, isMobile])
+
+  useEffect(() => {
+    if (!open) {
+      prevSelectionForUrlRef.current = null
+      return
+    }
+    if (!onUrlSelectionChange) return
+    const nodeId = selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
+    if (nodeId === prevSelectionForUrlRef.current) return
+    prevSelectionForUrlRef.current = nodeId
+    onUrlSelectionChange(nodeId)
+  }, [open, selectedNodeIds, onUrlSelectionChange])
 
   const isDirty = editable && JSON.stringify(draft) !== savedSnapshot.current
 
