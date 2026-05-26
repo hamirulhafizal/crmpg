@@ -100,11 +100,15 @@ function CampaignsListInner() {
   const searchParams = useSearchParams()
   const { user, loading } = useAuth()
   const [rows, setRows] = useState<Row[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [importBusy, setImportBusy] = useState(false)
   const [listLoading, setListLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastSeqRef = useRef(0)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const panelMode = useMemo(() => panelModeFromSearchParams(searchParams), [searchParams])
 
@@ -143,7 +147,13 @@ function CampaignsListInner() {
         const res = await fetch('/api/campaigns')
         const json = await res.json()
         if (!res.ok) throw new Error(json.error || 'Failed')
-        setRows(json.data ?? [])
+        const nextRows = (json.data ?? []) as Row[]
+        setRows(nextRows)
+        setSelectedIds((prev) => {
+          if (prev.size === 0) return prev
+          const ids = new Set(nextRows.map((r) => r.id))
+          return new Set(Array.from(prev).filter((id) => ids.has(id)))
+        })
       } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : 'Failed')
       }
@@ -160,7 +170,9 @@ function CampaignsListInner() {
         const json = await res.json()
         if (cancelled) return
         if (!res.ok) throw new Error(json.error || 'Failed')
-        setRows(json.data ?? [])
+        const nextRows = (json.data ?? []) as Row[]
+        setRows(nextRows)
+        setSelectedIds(new Set())
       } catch (e: unknown) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed')
       } finally {
@@ -222,6 +234,11 @@ function CampaignsListInner() {
         throw new Error(json.error || 'Failed')
       }
       setRows((prev) => prev.filter((r) => r.id !== id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       pushToast('success', 'Campaign deleted.')
       if (panelMode && panelMode !== 'create') {
         const panelId = 'edit' in panelMode ? panelMode.edit : panelMode.view
@@ -307,16 +324,151 @@ function CampaignsListInner() {
               <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Campaigns</h1>
               <p className="mt-1 text-sm text-slate-600">Multi-step WhatsApp automation for your CRM audience.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => replacePanel('create')}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New campaign
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  e.target.value = ''
+                  void (async () => {
+                    setImportBusy(true)
+                    setErr(null)
+                    try {
+                      const text = await file.text()
+                      const payload = JSON.parse(text)
+                      const res = await fetch('/api/campaigns/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                      })
+                      const json = await res.json()
+                      if (!res.ok) throw new Error(json.error || 'Import failed')
+                      const summary = json.data as {
+                        imported: number
+                        failed: number
+                        total: number
+                        warnings?: Array<{ warning: string }>
+                      }
+                      pushToast(
+                        'success',
+                        `Imported ${summary.imported}/${summary.total} campaigns` +
+                          (summary.failed > 0 ? ` (${summary.failed} failed)` : '') +
+                          ((summary.warnings?.length ?? 0) > 0
+                            ? ` (${summary.warnings?.length} warning${(summary.warnings?.length ?? 0) === 1 ? '' : 's'})`
+                            : '')
+                      )
+                      refetchList()
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : 'Import failed'
+                      setErr(msg)
+                      pushToast('error', msg)
+                    } finally {
+                      setImportBusy(false)
+                    }
+                  })()
+                }}
+              />
+              <button
+                type="button"
+                disabled={bulkBusy || importBusy}
+                onClick={() => {
+                  void (async () => {
+                    setBulkBusy(true)
+                    setErr(null)
+                    try {
+                      const res = await fetch('/api/campaigns/export', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ include_all: true }),
+                      })
+                      const json = await res.json()
+                      if (!res.ok) throw new Error(json.error || 'Export failed')
+                      const blob = new Blob([JSON.stringify(json.data, null, 2)], {
+                        type: 'application/json',
+                      })
+                      const a = document.createElement('a')
+                      a.href = URL.createObjectURL(blob)
+                      a.download = String(json.file_name || 'campaigns-export.json')
+                      document.body.appendChild(a)
+                      a.click()
+                      a.remove()
+                      URL.revokeObjectURL(a.href)
+                      pushToast('success', `Exported ${Number(json.count ?? 0)} campaigns`)
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : 'Export failed'
+                      setErr(msg)
+                      pushToast('error', msg)
+                    } finally {
+                      setBulkBusy(false)
+                    }
+                  })()
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Export all
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy || importBusy || selectedIds.size === 0}
+                onClick={() => {
+                  void (async () => {
+                    setBulkBusy(true)
+                    setErr(null)
+                    try {
+                      const res = await fetch('/api/campaigns/export', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+                      })
+                      const json = await res.json()
+                      if (!res.ok) throw new Error(json.error || 'Export failed')
+                      const blob = new Blob([JSON.stringify(json.data, null, 2)], {
+                        type: 'application/json',
+                      })
+                      const a = document.createElement('a')
+                      a.href = URL.createObjectURL(blob)
+                      a.download = String(json.file_name || 'campaigns-selected-export.json')
+                      document.body.appendChild(a)
+                      a.click()
+                      a.remove()
+                      URL.revokeObjectURL(a.href)
+                      pushToast('success', `Exported ${Number(json.count ?? 0)} selected campaigns`)
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : 'Export failed'
+                      setErr(msg)
+                      pushToast('error', msg)
+                    } finally {
+                      setBulkBusy(false)
+                    }
+                  })()
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Export selected ({selectedIds.size})
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy || importBusy}
+                onClick={() => importInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {importBusy ? 'Importing…' : 'Import JSON'}
+              </button>
+              <button
+                type="button"
+                onClick={() => replacePanel('create')}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New campaign
+              </button>
+            </div>
           </div>
 
           {err ? (
@@ -330,6 +482,17 @@ function CampaignsListInner() {
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
+                    <th className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={rows.length > 0 && selectedIds.size === rows.length}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(new Set(rows.map((r) => r.id)))
+                          else setSelectedIds(new Set())
+                        }}
+                        aria-label="Select all campaigns"
+                      />
+                    </th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Trigger</th>
@@ -342,13 +505,28 @@ function CampaignsListInner() {
                 <tbody className="divide-y divide-slate-100">
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                         No campaigns yet. Create one to start enrolling customers.
                       </td>
                     </tr>
                   ) : (
                     rows.map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50/80">
+                        <td className="px-3 py-3 align-top">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(r.id)}
+                            onChange={(e) =>
+                              setSelectedIds((prev) => {
+                                const next = new Set(prev)
+                                if (e.target.checked) next.add(r.id)
+                                else next.delete(r.id)
+                                return next
+                              })
+                            }
+                            aria-label={`Select campaign ${r.name}`}
+                          />
+                        </td>
                         <td className="px-4 py-3 font-medium text-slate-900">
                           <button
                             type="button"
