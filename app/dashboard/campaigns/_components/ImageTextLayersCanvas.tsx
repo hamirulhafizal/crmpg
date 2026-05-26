@@ -20,7 +20,9 @@ type Props = {
   onUpdateLayer: (id: string, partial: Partial<ImageTextLayer>) => void
   onDuplicateLayer: (id: string) => void
   onRemoveLayer: (id: string) => void
-  canvasRef: React.RefObject<HTMLDivElement | null>
+  canvasRef?: React.RefObject<HTMLDivElement | null>
+  /** Non-interactive preview — same layer markup as the editor canvas. */
+  readOnly?: boolean
   className?: string
   style?: React.CSSProperties
   children?: React.ReactNode
@@ -316,11 +318,15 @@ export function ImageTextLayersCanvas({
   onUpdateLayer,
   onDuplicateLayer,
   onRemoveLayer,
-  canvasRef,
+  canvasRef: canvasRefProp,
+  readOnly = false,
   className = '',
   style,
   children,
 }: Props) {
+  const internalCanvasRef = useRef<HTMLDivElement | null>(null)
+  const canvasRef = canvasRefProp ?? internalCanvasRef
+
   const gestureRef = useRef<{
     kind: GestureKind
     layerId: string
@@ -352,6 +358,7 @@ export function ImageTextLayersCanvas({
   }
 
   useEffect(() => {
+    if (readOnly) return
     const onMove = (ev: PointerEvent) => {
       const g = gestureRef.current
       if (!g) return
@@ -399,7 +406,7 @@ export function ImageTextLayersCanvas({
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
     }
-  }, [layers, onUpdateLayer, endGesture, canvasRef])
+  }, [layers, onUpdateLayer, endGesture, canvasRef, readOnly])
 
   const startGesture = (
     kind: GestureKind,
@@ -437,23 +444,23 @@ export function ImageTextLayersCanvas({
       ref={canvasRef}
       className={className}
       style={style}
-      onPointerDown={() => onSelectLayer(null)}
+      onPointerDown={readOnly ? undefined : () => onSelectLayer(null)}
     >
       {children}
       {layers.map((layer) => {
-        const selected = selectedLayerId === layer.id
+        const selected = !readOnly && selectedLayerId === layer.id
         const preview = layerPreviewText(layer)
         return (
           <div
             key={layer.id}
-            className="absolute touch-none"
+            className={readOnly ? 'pointer-events-none absolute' : 'absolute touch-none'}
             style={{
               left: `${layer.x}%`,
               top: `${layer.y}%`,
               transform: 'translate(-50%, -50%)',
               zIndex: selected ? 30 : 10,
             }}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={readOnly ? undefined : (e) => e.stopPropagation()}
           >
             <div
               className="relative"
@@ -487,16 +494,24 @@ export function ImageTextLayersCanvas({
                 ) : null}
 
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onPointerDown={(e) => {
-                    onSelectLayer(layer.id)
-                    startGesture('move', layer.id, e)
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`cursor-grab select-none px-1 active:cursor-grabbing ${
-                    selected ? '' : 'hover:ring-1 hover:ring-white/40 rounded'
-                  }`}
+                  role={readOnly ? undefined : 'button'}
+                  tabIndex={readOnly ? undefined : 0}
+                  onPointerDown={
+                    readOnly
+                      ? undefined
+                      : (e) => {
+                          onSelectLayer(layer.id)
+                          startGesture('move', layer.id, e)
+                        }
+                  }
+                  onClick={readOnly ? undefined : (e) => e.stopPropagation()}
+                  className={
+                    readOnly
+                      ? 'select-none px-1'
+                      : `cursor-grab select-none px-1 active:cursor-grabbing ${
+                          selected ? '' : 'hover:ring-1 hover:ring-white/40 rounded'
+                        }`
+                  }
                   style={layerCanvasTextStyle(layer)}
                 >
                   {preview}

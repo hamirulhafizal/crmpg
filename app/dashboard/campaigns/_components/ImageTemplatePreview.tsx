@@ -1,80 +1,91 @@
 'use client'
 
-import { layerPreviewText } from '@/app/lib/campaigns/image-step/layer-text'
-import { layerCanvasTextStyle } from '@/app/lib/campaigns/image-step/layer-style'
-import { layerBoxTransformCss } from '@/app/lib/campaigns/image-step/layer-transform'
-import { previewCanvasLayout } from '@/app/lib/campaigns/image-step/preview-canvas'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ImageTextLayersCanvas } from '@/app/dashboard/campaigns/_components/ImageTextLayersCanvas'
+import {
+  previewCanvasLayout,
+  resolvePreviewCanvasDimensions,
+} from '@/app/lib/campaigns/image-step/preview-canvas'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
 
 type Props = {
   parameters: ImageStepParameters
   backgroundUrl: string | null
-  /** Approximate preview height in px — used to scale fonts. */
-  maxHeightPx?: number
+  /** Max width of the design surface in px (height follows send aspect ratio). */
+  maxWidthPx?: number
   className?: string
   emptyLabel?: string
 }
 
-/** Mini canvas: background + text layers (matches editor / send layout). */
+const noop = () => {}
+
+/**
+ * Mini canvas — reuses the editor layer renderer so campaign detail / inspector match the dialog.
+ */
 export function ImageTemplatePreview({
   parameters,
   backgroundUrl,
-  maxHeightPx = 220,
+  maxWidthPx = 320,
   className = '',
   emptyLabel = 'No background yet',
 }: Props) {
-  const aspect = parameters.aspect_mode ?? 'square'
-  const canvasW = parameters.canvas_width ?? 1080
-  const canvasH = parameters.canvas_height ?? 1080
-  const layout = previewCanvasLayout(aspect, canvasW, canvasH)
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    setNaturalSize(null)
+  }, [backgroundUrl, parameters.background_path])
+
+  const onBackgroundLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+  }, [])
+
+  const aspectMode = parameters.aspect_mode ?? 'square'
+  const designDims = useMemo(
+    () => resolvePreviewCanvasDimensions(parameters, naturalSize),
+    [parameters, naturalSize]
+  )
+
+  const layout = useMemo(
+    () => previewCanvasLayout(aspectMode, designDims.width, designDims.height),
+    [aspectMode, designDims.width, designDims.height]
+  )
+
   const layers = parameters.layers ?? []
-  const fontScale = Math.min(0.45, Math.max(0.1, (maxHeightPx / canvasH) * 0.92))
-  const hasBackground = Boolean(parameters.background_path?.trim())
 
   return (
-    <div
-      className={`relative w-full overflow-hidden bg-slate-950 ${className}`}
-      style={{
-        aspectRatio: layout.aspectRatio,
-        maxHeight: maxHeightPx,
-      }}
-    >
-      {backgroundUrl ? (
-        <img
-          src={backgroundUrl}
-          alt=""
-          className="absolute inset-0 h-full w-full pointer-events-none"
-          style={{ objectFit: layout.imageObjectFit }}
-          draggable={false}
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-800 px-4 text-center text-sm text-slate-400">
-          {emptyLabel}
-        </div>
-      )}
-      {hasBackground
-        ? layers.map((layer) => (
-            <div
-              key={layer.id}
-              className="pointer-events-none absolute max-w-[92%]"
-              style={{
-                left: `${layer.x}%`,
-                top: `${layer.y}%`,
-                transform: 'translate(-50%, -50%)',
-                zIndex: 10,
-              }}
-            >
-              <div
-                style={{
-                  transform: layerBoxTransformCss(layer),
-                  transformOrigin: 'center center',
-                }}
-              >
-                <div style={layerCanvasTextStyle(layer, fontScale)}>{layerPreviewText(layer)}</div>
-              </div>
-            </div>
-          ))
-        : null}
+    <div className={className} style={{ width: '100%', maxWidth: maxWidthPx }}>
+      <ImageTextLayersCanvas
+        readOnly
+        layers={layers}
+        selectedLayerId={null}
+        onSelectLayer={noop}
+        onUpdateLayer={noop}
+        onDuplicateLayer={noop}
+        onRemoveLayer={noop}
+        className="relative mx-auto w-full overflow-hidden bg-slate-950"
+        style={{
+          aspectRatio: layout.aspectRatio,
+          maxHeight: 'min(52vh, 560px)',
+        }}
+      >
+        {backgroundUrl ? (
+          <img
+            src={backgroundUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full pointer-events-none"
+            style={{ objectFit: layout.imageObjectFit }}
+            draggable={false}
+            onLoad={onBackgroundLoad}
+          />
+        ) : (
+          <div className="absolute inset-0 flex min-h-[120px] items-center justify-center bg-slate-800 px-4 text-center text-sm text-slate-400">
+            {emptyLabel}
+          </div>
+        )}
+      </ImageTextLayersCanvas>
     </div>
   )
 }

@@ -57,8 +57,8 @@ export function WhatsAppImageStepEditor({ nodeId, campaignId, parameters, onChan
             key={`${parsed.background_path ?? ''}-${(parsed.layers ?? []).map((l) => `${l.id}:${l.x}:${l.y}:${l.rotation ?? 0}:${l.scale ?? 1}:${l.font_size}`).join('|')}`}
             parameters={parsed}
             backgroundUrl={thumbUrl}
-            maxHeightPx={220}
-            className="mx-auto w-full opacity-95"
+            maxWidthPx={320}
+            className="rounded-xl opacity-95"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between gap-2 p-3">

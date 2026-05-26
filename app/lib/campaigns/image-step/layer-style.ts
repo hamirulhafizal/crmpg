@@ -30,13 +30,14 @@ export function layerTextBackgroundRgba(layer: ImageTextLayer): string | null {
 /** CSS styles for editor canvas preview. */
 export function layerCanvasTextStyle(
   layer: ImageTextLayer,
-  scale = 0.42
+  scale = 0.42,
+  minFontPx = 12
 ): CSSProperties {
   const bg = layerTextBackgroundRgba(layer)
   return {
     color: layer.color,
     fontFamily: layer.font_family,
-    fontSize: `${Math.max(12, layer.font_size * scale)}px`,
+    fontSize: `${Math.max(minFontPx, layer.font_size * scale)}px`,
     fontWeight: layer.font_weight ?? 700,
     textAlign: layer.align,
     textShadow: bg ? 'none' : '0 2px 10px rgba(0,0,0,0.65)',

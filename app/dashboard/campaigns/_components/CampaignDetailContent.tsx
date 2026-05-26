@@ -1,8 +1,10 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { CampaignAnalyticsCards } from '@/app/dashboard/campaigns/_components/CampaignAnalyticsCards'
+import { CampaignStepPreview } from '@/app/dashboard/campaigns/_components/CampaignStepPreview'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
+import { buildCampaignStepDisplays } from '@/app/lib/campaigns/step-display'
 import type { AudienceDueSample, AudienceEligibleSample } from '@/app/lib/campaigns/audience-preview'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { sendTimeDisplayLabel } from '@/app/lib/campaigns/schedule'
@@ -67,6 +69,15 @@ export function CampaignDetailContent(props: {
     payload.stats.sent + payload.stats.failed > 0
       ? Math.round((payload.stats.sent / (payload.stats.sent + payload.stats.failed)) * 1000) / 10
       : null
+
+  const stepDisplays = useMemo(
+    () =>
+      buildCampaignStepDisplays(
+        payload.steps as Array<Record<string, unknown>>,
+        payload.campaign.workflow_definition
+      ),
+    [payload.steps, payload.campaign]
+  )
 
   return (
     <div className="space-y-8 pb-16">
@@ -354,14 +365,20 @@ export function CampaignDetailContent(props: {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-lg font-semibold text-slate-900">Steps</h3>
         <ol className="space-y-3">
-          {(payload.steps as Array<Record<string, unknown>>).map((s) => (
-            <li key={String(s.id)} className="rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm">
-              <span className="font-semibold text-slate-900">Step {String(s.step_order)}</span>
+          {stepDisplays.map((s, i) => (
+            <li
+              key={`step-${s.step_order}-${i}`}
+              className="rounded-xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm"
+            >
+              <span className="font-semibold text-slate-900">Step {s.step_order}</span>
               <span className="text-slate-600">
                 {' '}
-                · delay {String(s.delay_days)}d · send {sendTimeDisplayLabel(String(s.send_time ?? ''))}
+                · delay {s.delay_days}d · send {sendTimeDisplayLabel(s.send_time)}
               </span>
-              <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700">{String(s.message_template)}</pre>
+              {!s.is_active ? (
+                <span className="ml-2 text-xs font-medium text-amber-700">(inactive)</span>
+              ) : null}
+              <CampaignStepPreview step={s} />
             </li>
           ))}
         </ol>
