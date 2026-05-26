@@ -1,11 +1,13 @@
 import {
+  formatRunTimeAmPm,
   parseTimeToHm,
   sendTimeFromDb,
   wallDatePartsInTz,
   zonedWallTimeToUtc,
 } from '@/app/lib/campaigns/schedule'
-import type { CampaignRow } from '@/app/lib/campaigns/types'
+import type { CampaignRow, CampaignTriggerType } from '@/app/lib/campaigns/types'
 import type { CampaignWorkflowPlan } from '@/app/lib/workflows/plan'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 export type TriggerRunFrequency = 'daily' | 'weekly' | 'monthly'
 
@@ -152,7 +154,8 @@ export function startAtFromTriggerSchedule(
 
 export function triggerScheduleDisplayLabel(schedule: Partial<TriggerRunSchedule>): string {
   const freq = schedule.run_frequency ?? 'daily'
-  const timeSuffix = schedule.run_time ? ` at ${schedule.run_time}` : ''
+  const timeAmPm = schedule.run_time ? formatRunTimeAmPm(schedule.run_time) : ''
+  const timeSuffix = timeAmPm ? ` at ${timeAmPm}` : ''
   const datePrefix = schedule.run_date ? `from ${schedule.run_date} · ` : ''
 
   if (freq === 'weekly') {
@@ -167,7 +170,9 @@ export function triggerScheduleDisplayLabel(schedule: Partial<TriggerRunSchedule
     return `${datePrefix}monthly day ${dom}${timeSuffix}`.replace(/^from .* · monthly/, 'monthly').trim()
   }
 
-  if (schedule.run_date && schedule.run_time) return `${schedule.run_date} ${schedule.run_time}`
+  if (schedule.run_date && schedule.run_time) {
+    return `${schedule.run_date} ${formatRunTimeAmPm(schedule.run_time)}`
+  }
   if (schedule.run_date) return `from ${schedule.run_date}`
   if (schedule.run_time) return `daily${timeSuffix}`
   return 'anytime'
@@ -176,6 +181,81 @@ export function triggerScheduleDisplayLabel(schedule: Partial<TriggerRunSchedule
 export function getTriggerRunScheduleFromPlan(plan: CampaignWorkflowPlan): TriggerRunSchedule {
   const trigger = plan.ordered.find((n) => String(n.type).startsWith('crm.trigger.'))
   return triggerScheduleFromParams(trigger?.parameters)
+}
+
+function triggerKindLabel(type: string): string {
+  const t = type.toLowerCase()
+  if (t === 'birthday') return 'Birthday'
+  if (t === 'last_purchase') return 'Last purchase'
+  if (t === 'enrollment') return 'Enrollment'
+  return 'Manual'
+}
+
+function triggerEventHint(type: string, offsetDays: number): string | null {
+  const t = type.toLowerCase()
+  const n = Math.abs(Math.round(offsetDays))
+  if (t === 'birthday') {
+    if (offsetDays === 0) return 'On customer birthday'
+    if (offsetDays < 0) return `${n} day${n === 1 ? '' : 's'} before birthday`
+    return `${n} day${n === 1 ? '' : 's'} after birthday`
+  }
+  if (t === 'last_purchase') {
+    if (offsetDays === 0) return 'On last purchase date'
+    if (offsetDays < 0) return `${n} day${n === 1 ? '' : 's'} before last purchase`
+    return `${n} day${n === 1 ? '' : 's'} after last purchase`
+  }
+  if (t === 'enrollment') return 'When customer enrolls'
+  return null
+}
+
+/** Read cron schedule from workflow trigger node (or legacy start_at). */
+export function resolveCampaignTriggerSchedule(campaign: {
+  workflow_definition?: unknown
+  start_at?: string | null
+  timezone?: string | null
+}): TriggerRunSchedule {
+  const def = campaign.workflow_definition as WorkflowDefinition | undefined
+  if (def?.nodes?.length) {
+    const trigger = def.nodes.find((n) => String(n.type).startsWith('crm.trigger.'))
+    if (trigger?.parameters) return triggerScheduleFromParams(trigger.parameters)
+  }
+  return triggerScheduleFromStartAt(campaign.start_at, campaign.timezone)
+}
+
+export type CampaignListTriggerDisplay = {
+  kind: string
+  /** When cron checks / runs: daily, weekly, monthly, time */
+  scheduleLine: string
+  /** Birthday / last purchase / enrollment context */
+  eventLine: string | null
+  timezone: string
+}
+
+/** Human-readable trigger + schedule for campaigns list table. */
+export function campaignListTriggerDisplay(campaign: {
+  trigger_type?: string | null
+  trigger_offset_days?: number | null
+  timezone?: string | null
+  workflow_definition?: unknown
+  start_at?: string | null
+}): CampaignListTriggerDisplay {
+  const triggerType = (campaign.trigger_type ?? 'manual') as CampaignTriggerType
+  const schedule = resolveCampaignTriggerSchedule(campaign)
+  let scheduleLine = triggerScheduleDisplayLabel(schedule)
+  const freq = schedule.run_frequency ?? 'daily'
+  if (freq === 'daily' && scheduleLine === 'anytime') {
+    scheduleLine = 'Daily · anytime (cron)'
+  } else if (freq === 'daily' && schedule.run_time && !scheduleLine.startsWith('daily')) {
+    const t = formatRunTimeAmPm(schedule.run_time)
+    scheduleLine = t ? `Daily at ${t}` : 'Daily'
+  }
+
+  return {
+    kind: triggerKindLabel(triggerType),
+    scheduleLine,
+    eventLine: triggerEventHint(triggerType, Number(campaign.trigger_offset_days ?? 0)),
+    timezone: campaign.timezone?.trim() || 'Asia/Kuala_Lumpur',
+  }
 }
 
 function wallMinutesInTz(d: Date, timeZone: string): number {

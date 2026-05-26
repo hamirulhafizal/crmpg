@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/auth-context'
+import { CampaignListTriggerCell } from '@/app/dashboard/campaigns/_components/CampaignListTriggerCell'
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
 import {
   CampaignFullScreenPanel,
@@ -19,6 +20,10 @@ type Row = {
   name: string
   status: string
   trigger_type: string
+  trigger_offset_days?: number
+  timezone?: string | null
+  workflow_definition?: unknown
+  start_at?: string | null
   enrolled_count?: number
   sent_count?: number
   created_at: string
@@ -356,7 +361,9 @@ function CampaignsListInner() {
                         <td className="px-4 py-3">
                           <CampaignStatusBadge status={r.status as never} />
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{r.trigger_type}</td>
+                        <td className="px-4 py-3 align-top">
+                          <CampaignListTriggerCell campaign={r} />
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums text-slate-600">{r.enrolled_count ?? 0}</td>
                         <td className="px-4 py-3 text-right tabular-nums text-slate-600">{r.sent_count ?? 0}</td>
                         <td className="px-4 py-3 text-slate-600">{new Date(r.created_at).toLocaleDateString()}</td>

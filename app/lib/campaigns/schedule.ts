@@ -38,6 +38,19 @@ export function parseTimeToHm(sendTime: string): { h: number; m: number } {
   return { h: Number(m[1]), m: Number(m[2]) }
 }
 
+/** Display HH:MM (24h storage) as "8:00 AM" / "2:30 PM". */
+export function formatRunTimeAmPm(sendTime: string | null | undefined): string {
+  const raw = sendTimeFromDb(sendTime)
+  if (!raw) return ''
+  const { h, m } = parseTimeToHm(raw)
+  const d = new Date(2000, 0, 1, h, m)
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d)
+}
+
 function wallTimeHmInTz(d: Date, timeZone: string): { h: number; m: number } {
   const localHm = new Intl.DateTimeFormat('en-GB', {
     timeZone,
