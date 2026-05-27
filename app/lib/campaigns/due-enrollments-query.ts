@@ -35,7 +35,10 @@ export async function fetchActiveDueEnrollmentsMerged<T>(
 
   const seen = new Set<string>()
   const merged: T[] = []
-  const rows = [...(nullNext.data ?? []), ...(lteNext.data ?? [])] as T[]
+  // IMPORTANT: prioritize timestamp-due rows first.
+  // In sequential queue campaigns, many waiting enrollments have `next_send_at = null`.
+  // If null rows are merged first, they can consume the limit and starve truly due rows.
+  const rows = [...(lteNext.data ?? []), ...(nullNext.data ?? [])] as T[]
   for (const row of rows) {
     const id = String((row as { id: string }).id)
     if (seen.has(id)) continue
