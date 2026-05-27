@@ -36,17 +36,24 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const pathname = request.nextUrl.pathname
+  const isCustomerPortal =
+    pathname.startsWith('/pg-gold-saver') ||
+    pathname.startsWith('/customer') ||
+    pathname.startsWith('/api/customer-portal')
+
   // Protected routes (dashboard is PWA start_url, so redirect to login if not authenticated)
   if (
     !user &&
-    (request.nextUrl.pathname.startsWith('/dashboard') ||
-      request.nextUrl.pathname.startsWith('/profile') ||
-      request.nextUrl.pathname.startsWith('/pwa-test') ||
-      request.nextUrl.pathname.startsWith('/excel-processor') ||
-      request.nextUrl.pathname.startsWith('/customers') ||
-      request.nextUrl.pathname.startsWith('/waha-integration') ||
-      request.nextUrl.pathname.startsWith('/google-ads') ||
-      request.nextUrl.pathname.startsWith('/admin'))
+    !isCustomerPortal &&
+    (pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/profile') ||
+      pathname.startsWith('/pwa-test') ||
+      pathname.startsWith('/excel-processor') ||
+      pathname.startsWith('/customers') ||
+      pathname.startsWith('/waha-integration') ||
+      pathname.startsWith('/google-ads') ||
+      pathname.startsWith('/admin'))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
