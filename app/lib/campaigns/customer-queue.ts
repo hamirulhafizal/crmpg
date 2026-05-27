@@ -103,7 +103,15 @@ export async function reconcileSequentialQueue(
   if (error) throw error
   const rows = (data ?? []) as EnrollmentRow[]
   const inSlot = rows.filter((row) => !isQueueWaiting(row.metadata))
-  if (inSlot.length <= 1) return
+  if (inSlot.length === 0) {
+    // Self-heal deadlock: if all active rows are tagged waiting, promote the earliest one.
+    const promoted = await promoteNextQueuedEnrollment(supabase, campaignId, { log })
+    if (promoted) {
+      log?.('queue self-heal: promoted first waiting enrollment because no active slot owner existed')
+    }
+    return
+  }
+  if (inSlot.length === 1) return
 
   const keeper =
     inSlot.find((row) => (row.last_step_sent ?? 0) > 0) ??
