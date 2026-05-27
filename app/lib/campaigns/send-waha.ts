@@ -202,6 +202,16 @@ async function sendImageToChatCandidates(
 }
 
 /** Send a rendered PNG/JPEG to WhatsApp (optional caption; typing applies to caption length). */
+function assertImageBytes(imageBytes: Buffer): Buffer {
+  if (!Buffer.isBuffer(imageBytes)) {
+    throw new Error('Image payload is missing (expected Buffer)')
+  }
+  if (imageBytes.length === 0) {
+    throw new Error('Rendered image is empty (0 bytes)')
+  }
+  return imageBytes
+}
+
 export async function sendCampaignWhatsAppImage(
   userId: string,
   session: string,
@@ -209,6 +219,7 @@ export async function sendCampaignWhatsAppImage(
   imageBytes: Buffer,
   opts?: CampaignWhatsAppImageSendOpts
 ): Promise<void> {
+  const png = assertImageBytes(imageBytes)
   const mimetype = opts?.mimetype ?? 'image/png'
   const filename = opts?.filename ?? 'image.png'
   const caption = opts?.caption?.trim() || undefined
@@ -227,7 +238,7 @@ export async function sendCampaignWhatsAppImage(
     {
       mimetype,
       filename,
-      data: imageBytes.toString('base64'),
+      data: png.toString('base64'),
     },
     caption
   )

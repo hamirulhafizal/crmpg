@@ -19,7 +19,14 @@ export async function sendCampaignImageStep(opts: {
   }
 
   const bg = await downloadWorkflowMedia(params.background_path)
+  if (!bg.length) {
+    throw new Error('Background image file is empty or could not be loaded from storage')
+  }
+
   const png = await renderCampaignImagePng(params, bg, opts.customer)
+  if (!png.length) {
+    throw new Error('Failed to render campaign image (empty PNG output)')
+  }
 
   let caption = renderCampaignTemplateForCustomer(params.caption_template ?? '', opts.customer)
   if (params.randomize_spaces && caption.trim()) {

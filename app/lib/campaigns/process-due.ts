@@ -82,6 +82,8 @@ function cronLog(debugLines: string[] | undefined, message: string) {
 
 const CUSTOMER_PAGE = 250
 const SEND_BATCH = 25
+const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
+const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
 
 function campaignInWindow(c: CampaignRow, now: Date): boolean {
   if (c.start_at && new Date(c.start_at) > now) return false
@@ -184,6 +186,94 @@ async function promoteNextCustomerInQueue(
     nextSendAt: promoteAt,
     log: (msg) => cronLog(debugLines, msg),
   })
+}
+
+async function countRecentFailedStepAttempts(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  enrollmentId: string,
+  stepId: string
+): Promise<number> {
+  const since = new Date(Date.now() - STEP_SEND_FAILURE_WINDOW_MS).toISOString()
+  const { count, error } = await supabase
+    .from('campaign_message_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('enrollment_id', enrollmentId)
+    .eq('campaign_step_id', stepId)
+    .eq('send_status', 'failed')
+    .gte('created_at', since)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+async function advanceEnrollmentPastAbandonedStep(params: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  row: DueEnrollmentRow
+  campaign: CampaignRow
+  plan: CampaignWorkflowPlan
+  steps: CampaignStepRow[]
+  failedStep: CampaignStepRow
+  reason: string
+  debugLines?: string[]
+  onProgress?: CampaignWorkflowProgressHandler
+}): Promise<void> {
+  const { supabase, row, campaign, plan, steps, failedStep, reason, debugLines, onProgress } = params
+  const following = steps.find((s) => s.step_order > failedStep.step_order)
+  const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
+  const stepNodeId = nodeIdForStep(plan, failedStep.step_order)
+  const workflowMeta = metadataAfterStepSent(plan, failedStep.step_order, stepNodeId)
+
+  let nextSendAt: string | null = null
+  let status: 'active' | 'completed' = 'completed'
+  let completedAt: string | null = new Date().toISOString()
+
+  if (following) {
+    status = 'active'
+    completedAt = null
+    const computed = computeSendAt(new Date(), following.delay_days, following.send_time, tz)
+    nextSendAt = computed.toISOString()
+  }
+
+  await supabase
+    .from('campaign_enrollments')
+    .update({
+      last_step_sent: failedStep.step_order,
+      next_send_at: nextSendAt,
+      status,
+      completed_at: completedAt,
+      metadata: {
+        ...(row.metadata ?? {}),
+        ...workflowMeta,
+        step_send_abandoned: {
+          at: new Date().toISOString(),
+          step_order: failedStep.step_order,
+          step_id: failedStep.id,
+          reason,
+        },
+      },
+    })
+    .eq('id', row.id)
+
+  cronLog(
+    debugLines,
+    `abandon failed step enrollment=${row.id} campaign=${campaign.id} failed_step=${failedStep.step_order} following=${following?.step_order ?? 'none'} status=${status}`
+  )
+  onProgress?.({
+    type: 'log',
+    message: `Skipped step ${failedStep.step_order} after repeated failures so the queue can continue`,
+    level: 'info',
+  })
+
+  if (!following && usesSequentialCustomerQueue(plan)) {
+    await promoteNextCustomerInQueue(
+      supabase,
+      campaign.id,
+      plan,
+      failedStep.step_order,
+      new Date(),
+      debugLines
+    )
+  }
 }
 
 async function countSentToday(
@@ -764,8 +854,15 @@ async function processDueEnrollmentRows(
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
+      const stackFirstLine =
+        e instanceof Error && typeof e.stack === 'string'
+          ? e.stack.split('\n').slice(0, 2).join(' | ')
+          : ''
       summary.messages_failed++
-      cronLog(debugLines, `fail send enrollment=${row.id} log=${logInsert.id}: ${msg}`)
+      cronLog(
+        debugLines,
+        `fail send enrollment=${row.id} campaign=${campaign.id} customer=${customer.id} step=${nextStep.step_order} step_id=${nextStep.id} node_type=${isImageStep ? 'crm.whatsapp.send_image' : 'crm.whatsapp.send'} log=${logInsert.id}: ${msg}${stackFirstLine ? ` [${stackFirstLine}]` : ''}`
+      )
       onProgress?.({
         type: 'send',
         status: 'failed',
@@ -786,6 +883,25 @@ async function processDueEnrollmentRows(
           error_message: msg,
         })
         .eq('id', logInsert.id)
+
+      const recentFails = await countRecentFailedStepAttempts(supabase, row.id, nextStep.id)
+      if (recentFails >= MAX_STEP_SEND_FAILURES_BEFORE_SKIP) {
+        cronLog(
+          debugLines,
+          `step send abandoned enrollment=${row.id} step=${nextStep.step_order} failures=${recentFails}/${MAX_STEP_SEND_FAILURES_BEFORE_SKIP}`
+        )
+        await advanceEnrollmentPastAbandonedStep({
+          supabase,
+          row,
+          campaign,
+          plan,
+          steps,
+          failedStep: nextStep,
+          reason: msg,
+          debugLines,
+          onProgress,
+        })
+      }
     }
   }
 }

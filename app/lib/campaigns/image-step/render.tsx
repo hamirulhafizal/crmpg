@@ -21,7 +21,11 @@ export async function renderCampaignImagePng(
     throw new Error('Upload a background image before sending')
   }
 
-  const mimetype = parsed.background_mimetype ?? 'image/png'
+  if (!backgroundBuffer?.length) {
+    throw new Error('Background image buffer is empty')
+  }
+
+  const mimetype = (parsed.background_mimetype ?? 'image/png').trim() || 'image/png'
   const dataUrl = `data:${mimetype};base64,${backgroundBuffer.toString('base64')}`
   const designW = Math.max(1, parsed.canvas_width ?? 1080)
   const designH = Math.max(1, parsed.canvas_height ?? 1080)
