@@ -21,6 +21,10 @@ function cronDebugEnabled(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
+
+  console.log('cron campaigns--->')
+  console.log('request.url--->', request.url)
+
   const startedAt = Date.now()
   const url = new URL(request.url)
   const campaignIdOnly = url.searchParams.get('campaign_id')?.trim() || undefined
