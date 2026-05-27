@@ -5,7 +5,6 @@
 All code has been implemented to use **Service Account** authentication instead of OAuth.
 
 ---
-
 ## 📋 Requirements Summary
 
 ### 1. **Google Cloud Console Setup** ✅ Required
