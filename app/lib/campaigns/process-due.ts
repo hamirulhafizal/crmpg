@@ -74,10 +74,9 @@ export type ProcessDueResult = {
 }
 
 function cronLog(debugLines: string[] | undefined, message: string) {
-  if (!debugLines) return
   const line = `[campaign-cron] ${message}`
-  debugLines.push(line)
   console.log(line)
+  debugLines?.push(line)
 }
 
 const CUSTOMER_PAGE = 250
