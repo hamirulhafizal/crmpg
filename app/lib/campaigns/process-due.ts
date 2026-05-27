@@ -3,6 +3,7 @@ import {
   countActiveQueueSlots,
   countWaitingEnrollments,
   filterDueRowsForSequentialQueue,
+  isQueueWaiting,
   metadataWithCustomerQueue,
   promoteNextQueuedEnrollment,
   reconcileSequentialQueue,
@@ -440,6 +441,7 @@ type DueEnrollmentRow = {
   id: string
   last_step_sent: number
   metadata?: Record<string, unknown> | null
+  next_send_at?: string | null
   campaign: CampaignRow | CampaignRow[] | null
   customer: CustomerForAudience | CustomerForAudience[] | null
 }
@@ -911,12 +913,38 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   }
 
   cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s) (as_of=${isoDue})`)
-  const dueFiltered = filterDueRowsForSequentialQueue((dueRows ?? []) as DueEnrollmentRow[], plansByCampaignId)
+  const dueRowsTyped = (dueRows ?? []) as DueEnrollmentRow[]
+  const dueWaiting = dueRowsTyped.filter((r) => isQueueWaiting(r.metadata)).length
+  const dueTimed = dueRowsTyped.length - dueWaiting
+  cronLog(
+    debugLines,
+    `due mix total=${dueRowsTyped.length} timed_or_ready=${dueTimed} queue_waiting=${dueWaiting}`
+  )
+
+  const dueFiltered = filterDueRowsForSequentialQueue(dueRowsTyped, plansByCampaignId)
   if (dueFiltered.length !== (dueRows ?? []).length) {
     cronLog(
       debugLines,
       `sequential queue: processing ${dueFiltered.length} enrollment(s) this run (${(dueRows ?? []).length - dueFiltered.length} deferred)`
     )
+  }
+  if (dueRowsTyped.length > 0) {
+    const kept = new Set(dueFiltered.map((r) => r.id))
+    const campaignStats = new Map<string, { total: number; waiting: number; kept: number }>()
+    for (const row of dueRowsTyped) {
+      const raw = row.campaign
+      const campaign = (Array.isArray(raw) ? raw[0] : raw) as CampaignRow | null
+      const campaignKey = campaign ? `${campaign.id.slice(0, 8)}…${campaign.name}` : 'unknown'
+      const stat = campaignStats.get(campaignKey) ?? { total: 0, waiting: 0, kept: 0 }
+      stat.total += 1
+      if (isQueueWaiting(row.metadata)) stat.waiting += 1
+      if (kept.has(row.id)) stat.kept += 1
+      campaignStats.set(campaignKey, stat)
+    }
+    const summary = [...campaignStats.entries()]
+      .map(([k, v]) => `${k} total=${v.total} waiting=${v.waiting} kept=${v.kept}`)
+      .join(' | ')
+    cronLog(debugLines, `due by campaign ${summary}`)
   }
   if (onProgress && opts?.campaignIdOnly) {
     onProgress({ type: 'phase', phase: 'due_send' })
