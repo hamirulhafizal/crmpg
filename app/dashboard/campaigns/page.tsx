@@ -321,8 +321,8 @@ function CampaignsListInner() {
         <div className="mb-6 rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Campaigns</h1>
-              <p className="mt-1 text-sm text-slate-600">Multi-step WhatsApp automation for your CRM audience.</p>
+              <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Workflow</h1>
+              <p className="mt-1 text-sm text-slate-600">Multi-step automation</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <input
@@ -466,7 +466,7 @@ function CampaignsListInner() {
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                New campaign
+                New workflow
               </button>
             </div>
           </div>
@@ -624,11 +624,27 @@ function CampaignsListInner() {
                               className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
                             >
                               <ActionIcon>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                  stroke="currentColor"
+                                  aria-hidden
+                                >
+                                  <rect
+                                    x="8"
+                                    y="8"
+                                    width="14"
+                                    height="14"
+                                    rx="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
                                   <path
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9 9 0 009 9zM18.75 6.75h-9a9 9 0 00-9 9v9.75c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125v-9.75a9 9 0 00-9-9z"
+                                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
                                   />
                                 </svg>
                               </ActionIcon>

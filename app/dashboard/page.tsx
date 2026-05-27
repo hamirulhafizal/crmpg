@@ -515,12 +515,46 @@ export default function DashboardPage() {
                 className="group rounded-2xl border border-rose-200 bg-gradient-to-b from-rose-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
               >
                 <div className="h-12 w-12 rounded-full bg-rose-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1c0 2.21 1.79 4 4 4 2.21 0 4-1.79 4-4h1a4 4 0 013.564 5.683M15 13v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4m6 0V9a2 2 0 00-2-2h-2a2 2 0 00-2 2v4.01" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <circle cx="5.5" cy="5.5" r="2" strokeWidth={1.75} />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.75}
+                      d="M7.5 5.5h6.5c.9 0 1.6.7 1.6 1.6V8.5"
+                    />
+                    <rect x="13" y="3" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.75}
+                      d="M13 5.5H8.2c-.9 0-1.6.7-1.6 1.6v2.4"
+                    />
+                    <rect x="3" y="10" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.75}
+                      d="M10 12.5h4.3c.9 0 1.6.7 1.6 1.6v1.4"
+                    />
+                    <rect x="14" y="15" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                    <circle cx="19.5" cy="19.5" r="2.25" strokeWidth={1.75} />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.75}
+                      d="M18.6 19.5l.65.65 1.5-1.5"
+                    />
                   </svg>
                 </div>
-                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Campaigns</h4>
-                <p className="text-xs text-slate-500 mt-1">Drip WhatsApp flows</p>
+                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Workflows</h4>
+                <p className="text-xs text-slate-500 mt-1">Multi-step Automation</p>
               </Link>
             )}
 

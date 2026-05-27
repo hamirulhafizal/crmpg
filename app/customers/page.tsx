@@ -33,6 +33,10 @@ import {
 } from '@/app/lib/follow-up-resume'
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
+import {
+  customerPortalLoginUrl,
+  PORTAL_BRAND,
+} from '@/app/lib/customer-portal/brand'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -510,6 +514,7 @@ function CustomersPage() {
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null)
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [isImporting, setIsImporting] = useState(false)
+  const [portalLoginUrlCopied, setPortalLoginUrlCopied] = useState(false)
   const isMountedRef = useRef(true)
   const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => void>(
     () => {}
@@ -673,6 +678,21 @@ function CustomersPage() {
   const handleImportProgress = useCallback((current: number, total: number) => {
     setImportProgress({ current, total })
   }, [])
+
+  const handleCopyPortalLoginUrl = async () => {
+    const url = customerPortalLoginUrl(window.location.origin)
+    try {
+      await navigator.clipboard.writeText(url)
+      setPortalLoginUrlCopied(true)
+      setImportResult({
+        success: true,
+        message: `Login link for customer`,
+      })
+      window.setTimeout(() => setPortalLoginUrlCopied(false), 2000)
+    } catch {
+      setError('Could not copy login URL. Copy manually: ' + url)
+    }
+  }
 
   const handleConnectGoogleContacts = (e?: React.MouseEvent) => {
     e?.preventDefault()
@@ -1283,7 +1303,7 @@ function CustomersPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-lg font-semibold text-slate-300">Customer management</h1>
+          <h1 className="text-lg font-semibold text-slate-900 ">Customer management</h1>
           <div
             role="tablist"
             aria-label="Customer management sections"
@@ -1704,6 +1724,23 @@ function CustomersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               Create Customer
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleCopyPortalLoginUrl()}
+              title={`Copy ${PORTAL_BRAND} customer sign-in link`}
+              className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                />
+              </svg>
+              {portalLoginUrlCopied ? 'Copied!' : 'Copy login URL'}
             </button>
 
             {selectedIds.size > 0 && (

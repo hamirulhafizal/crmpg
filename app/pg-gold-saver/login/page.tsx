@@ -101,7 +101,7 @@ export default function PgGoldSaverLoginPage() {
                   id="pg_code"
                   type="text"
                   autoComplete="off"
-                  placeholder="e.g. PG12345"
+                  placeholder="contoh: PG00123456"
                   value={pgCode}
                   onChange={(e) => setPgCode(e.target.value)}
                   required

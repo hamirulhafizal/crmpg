@@ -336,7 +336,7 @@ export function CampaignEditor(props: {
           onClick={() => void submit()}
           className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : props.mode === 'create' ? 'Create campaign' : 'Save changes'}
+          {saving ? 'Saving…' : props.mode === 'create' ? 'Create workflow' : 'Save changes'}
         </button>
       </div>
     </div>

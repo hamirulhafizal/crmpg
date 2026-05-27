@@ -227,7 +227,7 @@ function CampaignWorkflowBuilderInner({
   const save = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
-      setError('Campaign name is required')
+      setError('Workflow name is required')
       return
     }
     const def = draftToDefinition(draft)
@@ -251,7 +251,7 @@ function CampaignWorkflowBuilderInner({
         }),
       })
       const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error || 'Failed to create campaign')
+      if (!res.ok) throw new Error(json.error || 'Failed to create workflow')
       const id = json.data?.id as string
       if (!id) throw new Error('No campaign id returned')
       onCreated(id)
@@ -277,7 +277,7 @@ function CampaignWorkflowBuilderInner({
         </button>
         <input
           type="text"
-          placeholder="Campaign name"
+          placeholder="Workflow name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-black"
@@ -297,7 +297,7 @@ function CampaignWorkflowBuilderInner({
           onClick={() => void save()}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
         >
-          {saving ? 'Creating…' : 'Create campaign'}
+          {saving ? 'Creating…' : 'Create workflow'}
         </button>
       </header>
 
