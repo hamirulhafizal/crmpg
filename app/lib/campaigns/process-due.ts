@@ -19,7 +19,7 @@ import {
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignEmailFallback, type GmailFallbackCustomer } from '@/app/lib/campaigns/gmail-fallback'
-import { sendCampaignImageStep } from '@/app/lib/campaigns/image-step/send'
+import { CAMPAIGN_IMAGE_SEND_VERSION, sendCampaignImageStep } from '@/app/lib/campaigns/image-step/send'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
 import {
   isImageStepNode,
@@ -706,11 +706,16 @@ async function processDueEnrollmentRows(
     try {
       try {
         if (isImageStep && stepNode) {
+          const imageParams = (stepNode.parameters ?? {}) as Record<string, unknown>
+          cronLog(
+            debugLines,
+            `image step enrollment=${row.id} version=${CAMPAIGN_IMAGE_SEND_VERSION} path=${String(imageParams.background_path ?? '').slice(0, 80)} layers=${Array.isArray(imageParams.layers) ? imageParams.layers.length : 0}`
+          )
           const imageResult = await sendCampaignImageStep({
             userId: campaign.user_id,
             session,
             phone: customer.phone,
-            parameters: stepNode.parameters ?? {},
+            parameters: imageParams,
             customer: customer as Record<string, unknown>,
           })
           if (imageResult.caption) {

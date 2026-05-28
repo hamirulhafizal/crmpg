@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { processDueCampaignMessages } from '@/app/lib/campaigns/process-due'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 export const maxDuration = 300
 
 function authorizeCron(request: Request): boolean {
