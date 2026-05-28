@@ -6,7 +6,7 @@ import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import { sendCampaignWhatsAppImage } from '@/app/lib/campaigns/send-waha'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
 
-export const CAMPAIGN_IMAGE_SEND_VERSION = 'v3-dataurl-node-og'
+export const CAMPAIGN_IMAGE_SEND_VERSION = 'v4-no-undefined-textshadow'
 
 export async function sendCampaignImageStep(opts: {
   userId: string

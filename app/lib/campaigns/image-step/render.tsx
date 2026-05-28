@@ -69,7 +69,8 @@ export async function renderCampaignImagePng(
           alt=""
           style={{
             position: 'absolute',
-            inset: 0,
+            left: 0,
+            top: 0,
             width: '100%',
             height: '100%',
             objectFit,
@@ -77,8 +78,8 @@ export async function renderCampaignImagePng(
         />
         {layers.map((layer) => {
           const text = String(resolveLayerText(layer, customer) ?? '')
-          const left = (layer.x / 100) * width
-          const top = (layer.y / 100) * height
+          const left = Number.isFinite(layer.x) ? (layer.x / 100) * width : width / 2
+          const top = Number.isFinite(layer.y) ? (layer.y / 100) * height : height / 2
           const textBg = layerTextBackgroundRgba(layer)
           const fontSize = layerEffectiveFontSize(layer)
           const safeFontSize = Number.isFinite(fontSize) ? fontSize : 48
@@ -111,7 +112,6 @@ export async function renderCampaignImagePng(
                     fontWeight: layer.font_weight ?? 700,
                     textAlign: layer.align,
                     lineHeight: 1.15,
-                    textShadow: textBg ? undefined : '0 2px 8px rgba(0,0,0,0.55)',
                     whiteSpace: 'pre-wrap',
                     ...(textBg
                       ? {
@@ -119,7 +119,10 @@ export async function renderCampaignImagePng(
                           padding: '0.35em 0.65em',
                           borderRadius: Math.round(safeFontSize * 0.12),
                         }
-                      : {}),
+                      : {
+                          // Satori crashes if textShadow is explicitly undefined
+                          textShadow: '0 2px 8px rgba(0,0,0,0.55)',
+                        }),
                   }}
                 >
                   {text}
