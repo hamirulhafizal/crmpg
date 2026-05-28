@@ -11,9 +11,28 @@ function alignToFlex(align: string): 'flex-start' | 'center' | 'flex-end' {
   return 'center'
 }
 
+export type CampaignImageBackgroundSource = {
+  buffer?: Buffer
+  signedUrl?: string
+}
+
+function resolveBackgroundImageSrc(
+  background: CampaignImageBackgroundSource,
+  mimetype: string
+): string {
+  const url = background.signedUrl?.trim()
+  if (url) return url
+
+  const buf = background.buffer
+  if (!Buffer.isBuffer(buf) || !buf.length) {
+    throw new Error('Background image is missing (upload it again in the workflow editor)')
+  }
+  return `data:${mimetype};base64,${buf.toString('base64')}`
+}
+
 export async function renderCampaignImagePng(
   params: ImageStepParameters,
-  backgroundBuffer: Buffer,
+  background: CampaignImageBackgroundSource,
   customer: Record<string, unknown>
 ): Promise<Buffer> {
   const parsed = parseImageStepParameters(params as Record<string, unknown>)
@@ -21,12 +40,8 @@ export async function renderCampaignImagePng(
     throw new Error('Upload a background image before sending')
   }
 
-  if (!backgroundBuffer?.length) {
-    throw new Error('Background image buffer is empty')
-  }
-
   const mimetype = (parsed.background_mimetype ?? 'image/png').trim() || 'image/png'
-  const dataUrl = `data:${mimetype};base64,${backgroundBuffer.toString('base64')}`
+  const imgSrc = resolveBackgroundImageSrc(background, mimetype)
   const designW = Math.max(1, parsed.canvas_width ?? 1080)
   const designH = Math.max(1, parsed.canvas_height ?? 1080)
   const { width, height } = outputDimensions(parsed.aspect_mode ?? 'square', designW, designH)
@@ -48,7 +63,7 @@ export async function renderCampaignImagePng(
         }}
       >
         <img
-          src={dataUrl}
+          src={imgSrc}
           alt=""
           style={{
             position: 'absolute',
@@ -59,7 +74,7 @@ export async function renderCampaignImagePng(
           }}
         />
         {layers.map((layer) => {
-          const text = resolveLayerText(layer, customer)
+          const text = String(resolveLayerText(layer, customer) ?? '')
           const left = (layer.x / 100) * width
           const top = (layer.y / 100) * height
           const textBg = layerTextBackgroundRgba(layer)
@@ -89,7 +104,7 @@ export async function renderCampaignImagePng(
                   display: 'flex',
                   color: layer.color,
                   fontFamily: layer.font_family,
-                  fontSize,
+                  fontSize: Number.isFinite(fontSize) ? fontSize : 48,
                   fontWeight: layer.font_weight ?? 700,
                   textAlign: layer.align,
                   lineHeight: 1.15,

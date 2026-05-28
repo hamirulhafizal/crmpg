@@ -39,10 +39,12 @@ function parseLayer(raw: unknown, index: number, seenIds: Set<string>): ImageTex
     flip_x: o.flip_x === true,
     flip_y: o.flip_y === true,
     font_family: String(o.font_family ?? 'Arial, sans-serif'),
-    font_size: Math.max(8, Math.min(200, Number(o.font_size ?? 48))),
-    color: String(o.color ?? '#ffffff'),
+    font_size: Number.isFinite(Number(o.font_size))
+      ? Math.max(8, Math.min(200, Number(o.font_size)))
+      : 48,
+    color: String(o.color ?? '#ffffff').trim() || '#ffffff',
     align: parseAlign(o.align),
-    font_weight: Number(o.font_weight ?? 700),
+    font_weight: Number.isFinite(Number(o.font_weight)) ? Number(o.font_weight) : 700,
     text_background_color: String(o.text_background_color ?? '#000000'),
     text_background_opacity: Math.min(100, Math.max(0, Number(o.text_background_opacity ?? 0))),
   }

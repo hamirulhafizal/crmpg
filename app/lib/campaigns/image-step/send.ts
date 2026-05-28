@@ -1,7 +1,7 @@
 import { humanizeWhatsAppText } from '@/app/lib/campaigns/whatsapp-humanize'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
 import { renderCampaignImagePng } from '@/app/lib/campaigns/image-step/render'
-import { downloadWorkflowMedia } from '@/app/lib/campaigns/image-step/storage'
+import { downloadWorkflowMedia, signedWorkflowMediaUrl } from '@/app/lib/campaigns/image-step/storage'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import { sendCampaignWhatsAppImage } from '@/app/lib/campaigns/send-waha'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
@@ -19,11 +19,15 @@ export async function sendCampaignImageStep(opts: {
   }
 
   const bg = await downloadWorkflowMedia(params.background_path)
-  if (!bg.length) {
-    throw new Error('Background image file is empty or could not be loaded from storage')
-  }
+  const signedUrl = await signedWorkflowMediaUrl(params.background_path)
 
-  const png = await renderCampaignImagePng(params, bg, opts.customer)
+  let png: Buffer
+  try {
+    png = await renderCampaignImagePng(params, { buffer: bg, signedUrl }, opts.customer)
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e)
+    throw new Error(`Campaign image render failed: ${detail}`)
+  }
   if (!png.length) {
     throw new Error('Failed to render campaign image (empty PNG output)')
   }

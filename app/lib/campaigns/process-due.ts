@@ -856,7 +856,7 @@ async function processDueEnrollmentRows(
       const msg = e instanceof Error ? e.message : String(e)
       const stackFirstLine =
         e instanceof Error && typeof e.stack === 'string'
-          ? e.stack.split('\n').slice(0, 2).join(' | ')
+          ? e.stack.split('\n').slice(0, 6).join(' | ')
           : ''
       summary.messages_failed++
       cronLog(
