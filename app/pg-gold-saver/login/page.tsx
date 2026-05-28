@@ -1,11 +1,15 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { PORTAL_BRAND } from '@/app/lib/customer-portal/brand'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { PORTAL_BRAND, PORTAL_PROFILE_PATH } from '@/app/lib/customer-portal/brand'
 
-export default function PgGoldSaverLoginPage() {
+function PgGoldSaverLoginInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnTo = searchParams.get('return')
+  const safeReturn =
+    returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : null
   const [pgCode, setPgCode] = useState('')
   const [customerId, setCustomerId] = useState<string | null>(null)
   const [deliveryHint, setDeliveryHint] = useState<string | null>(null)
@@ -60,7 +64,7 @@ export default function PgGoldSaverLoginPage() {
       if (!res.ok) {
         throw new Error(json.error || 'Invalid code')
       }
-      router.replace('/pg-gold-saver/profile')
+      router.replace(safeReturn ?? PORTAL_PROFILE_PATH)
     } catch (err) {
       setMessage({
         type: 'error',
@@ -175,5 +179,19 @@ export default function PgGoldSaverLoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function PgGoldSaverLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-amber-50 text-sm text-slate-600">
+          Loading…
+        </div>
+      }
+    >
+      <PgGoldSaverLoginInner />
+    </Suspense>
   )
 }

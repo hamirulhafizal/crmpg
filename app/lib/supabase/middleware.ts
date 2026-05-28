@@ -40,7 +40,8 @@ export async function updateSession(request: NextRequest) {
   const isCustomerPortal =
     pathname.startsWith('/pg-gold-saver') ||
     pathname.startsWith('/customer') ||
-    pathname.startsWith('/api/customer-portal')
+    pathname.startsWith('/api/customer-portal') ||
+    pathname.startsWith('/api/public/lucky-draw')
 
   // Protected routes (dashboard is PWA start_url, so redirect to login if not authenticated)
   if (

@@ -54,7 +54,7 @@ type LocationPickerSheetProps = {
   open: boolean
   initialLocation?: string
   onClose: () => void
-  onConfirm: (location: string) => void
+  onConfirm: (location: string, coords?: { lat: number; lng: number }) => void
 }
 
 export default function LocationPickerSheet({
@@ -89,7 +89,7 @@ export default function LocationPickerSheet({
       setGeoError(null)
       if (recenter) setRecenterTarget(coords)
       const label = await resolveAddress(coords)
-      if (applyToField) onConfirm(label)
+      if (applyToField) onConfirm(label, { lat: coords.lat, lng: coords.lng })
       return label
     },
     [onConfirm, resolveAddress]
@@ -100,7 +100,7 @@ export default function LocationPickerSheet({
       setTracking(true)
       setGeoError(null)
       try {
-        const position = await getCurrentPosition()
+        const position = await getCurrentPosition({ fresh: true })
         const coords = {
           lng: position.coords.longitude,
           lat: position.coords.latitude,
@@ -136,18 +136,18 @@ export default function LocationPickerSheet({
     setLocatingOnOpen(true)
     void (async () => {
       try {
-        const position = await getCurrentPosition()
+        const position = await getCurrentPosition({ fresh: true })
         await applyCoords(
           {
             lng: position.coords.longitude,
             lat: position.coords.latitude,
           },
-          true,
+          false,
           true
         )
       } catch (error) {
         if (parsed) {
-          await applyCoords({ lng: parsed.lng, lat: parsed.lat }, true, true)
+          await applyCoords({ lng: parsed.lng, lat: parsed.lat }, false, true)
         } else {
           setGeoError(geolocationErrorMessage(error))
         }
@@ -172,6 +172,12 @@ export default function LocationPickerSheet({
     },
     [applyCoords]
   )
+
+  const confirmSelection = useCallback(async () => {
+    if (!marker || !preview.trim()) return
+    onConfirm(preview.trim(), { lat: marker.lat, lng: marker.lng })
+    onClose()
+  }, [marker, preview, onConfirm, onClose])
 
   if (!open) return null
 
@@ -264,12 +270,20 @@ export default function LocationPickerSheet({
             </button>
             <button
               type="button"
-              onClick={() => void trackMyLocation(true)}
+              onClick={() => void trackMyLocation(false)}
               disabled={tracking || resolving}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
             >
               <Locate className="size-4" aria-hidden />
-              {tracking ? 'Tracking…' : 'Track my location'}
+              {tracking ? 'Locating…' : 'Locate me'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmSelection()}
+              disabled={!marker || !preview.trim() || resolving}
+              className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-60"
+            >
+              Use this location
             </button>
           </div>
         </div>

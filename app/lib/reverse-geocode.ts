@@ -5,19 +5,11 @@ export async function reverseGeocodeLatLng(
 ): Promise<string> {
   try {
     const response = await fetch(
-      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+      `/api/reverse-geocode?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`
     )
     if (!response.ok) throw new Error('Reverse geocoding failed')
-    const data = (await response.json()) as {
-      city?: string
-      locality?: string
-      principalSubdivision?: string
-      countryName?: string
-    }
-    const city = data.city || data.locality
-    if (city && data.principalSubdivision) {
-      return [city, data.principalSubdivision, data.countryName].filter(Boolean).join(', ')
-    }
+    const data = (await response.json()) as { label?: string }
+    if (data.label) return data.label
   } catch {
     // fall through
   }
@@ -37,7 +29,12 @@ export function parseLatLngFromLocation(value: string): { lat: number; lng: numb
   return { lat: a, lng: b }
 }
 
-export function getCurrentPosition(): Promise<GeolocationPosition> {
+export type GeolocationRequestOptions = {
+  /** When true, never reuse a cached device position (recommended for Locate me). */
+  fresh?: boolean
+}
+
+export function getCurrentPosition(options?: GeolocationRequestOptions): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       reject(new Error('Geolocation is not supported on this device.'))
@@ -45,8 +42,8 @@ export function getCurrentPosition(): Promise<GeolocationPosition> {
     }
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 120000,
+      timeout: options?.fresh ? 25000 : 15000,
+      maximumAge: options?.fresh ? 0 : 120000,
     })
   })
 }
@@ -55,13 +52,21 @@ export function geolocationErrorMessage(error: unknown): string {
   if (error instanceof GeolocationPositionError) {
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        return 'Location access denied. Enable location in your browser settings, or tap the map to pick a spot.'
+        return 'Location access denied. Enable location in your browser settings, or tap Map to pick your town.'
       case error.POSITION_UNAVAILABLE:
-        return 'Location unavailable. Try again or tap the map to pick a spot.'
+        return 'Location unavailable. Try again outdoors or tap Map to pick Kluang manually.'
       case error.TIMEOUT:
-        return 'Location request timed out. Try again or tap the map to pick a spot.'
+        return 'Location request timed out. Try again or tap Map to pick your town.'
     }
   }
   if (error instanceof Error && error.message) return error.message
-  return 'Could not get your location. Try again or tap the map to pick a spot.'
+  return 'Could not get your location. Tap Map to pick your town manually.'
+}
+
+export function formatLocationAccuracyMeters(accuracy: number | undefined): string | null {
+  if (accuracy == null || !Number.isFinite(accuracy)) return null
+  if (accuracy >= 5000) return 'Very approximate — use Map to pick your exact town.'
+  if (accuracy >= 1500) return 'Approximate area — tap Locate me again or use Map if this is wrong.'
+  if (accuracy >= 500) return `Within ~${Math.round(accuracy)} m`
+  return `Accurate to ~${Math.round(accuracy)} m`
 }

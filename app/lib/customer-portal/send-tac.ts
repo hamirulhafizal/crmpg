@@ -21,12 +21,28 @@ function toChatId(phone: string): string {
   return `${normalizePhoneToMsisdn(phone)}@c.us`
 }
 
-function tacMessage(code: string, pgCode?: string | null): string {
+function tacIntroMessage(pgCode?: string | null): string {
   const pgLabel = pgCode?.trim() ? ` (${pgCode.trim()})` : ''
   return (
     `${PORTAL_BRAND} — verification code${pgLabel}\n\n` +
-    `Your login code: ${code}\n` +
-    `Valid for 10 minutes. Do not share this code with anyone.`
+    `Valid for 10 minutes. Do not share this code with anyone.\n\n` +
+    `Your login code is below: 👇🏻👇🏻👇🏻`
+  )
+}
+
+async function sendWhatsAppText(
+  session: string,
+  chatId: string,
+  text: string,
+  ownerUserId: string
+): Promise<void> {
+  await wahaFetch(
+    '/api/sendText',
+    {
+      method: 'POST',
+      body: JSON.stringify({ session, chatId, text }),
+    },
+    { userId: ownerUserId }
   )
 }
 
@@ -64,17 +80,12 @@ async function sendViaWhatsApp(params: {
   }
 
   const chatId = toChatId(params.customerPhone)
-  const text = tacMessage(params.code, params.pgCode)
+  const intro = tacIntroMessage(params.pgCode)
+  const codeOnly = params.code.trim()
 
   try {
-    await wahaFetch(
-      '/api/sendText',
-      {
-        method: 'POST',
-        body: JSON.stringify({ session, chatId, text }),
-      },
-      { userId: params.ownerUserId }
-    )
+    await sendWhatsAppText(session, chatId, intro, params.ownerUserId)
+    await sendWhatsAppText(session, chatId, codeOnly, params.ownerUserId)
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to send WhatsApp message'
@@ -94,7 +105,7 @@ async function sendViaEmail(params: {
   }
 
   const pgLabel = params.pgCode?.trim() ? ` (${params.pgCode.trim()})` : ''
-  const text = tacMessage(params.code, params.pgCode)
+  const text = `${tacIntroMessage(params.pgCode)}\n\n${params.code.trim()}`
 
   try {
     const transporter = nodemailer.createTransport({
