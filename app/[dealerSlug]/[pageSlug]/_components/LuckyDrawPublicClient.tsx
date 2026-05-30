@@ -1,13 +1,12 @@
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Gift, Sparkles, Users } from 'lucide-react'
-import { PORTAL_LOGIN_PATH } from '@/app/lib/customer-portal/brand'
 import type { LuckyDrawPrize, LuckyDrawQuestion } from '@/app/lib/lucky-draw/types'
 import { LuckyDrawQuestionnaire } from '@/app/[dealerSlug]/[pageSlug]/_components/LuckyDrawQuestionnaire'
 import { ParticipationSuccess } from '@/app/[dealerSlug]/[pageSlug]/_components/ParticipationSuccess'
+import { CustomerPortalLoginSheet } from '@/app/pg-gold-saver/_components/CustomerPortalLoginSheet'
 
 type TagRow = { id: string; category_id: string; label: string }
 type TagCategory = { id: string; name: string; allows_multiple: boolean; tags: TagRow[] }
@@ -33,7 +32,6 @@ type Props = {
 
 export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
   const searchParams = useSearchParams()
-  const returnPath = `/${dealerSlug}/${pageSlug}`
 
   const [loggedIn, setLoggedIn] = useState(false)
   const [entered, setEntered] = useState(false)
@@ -44,6 +42,7 @@ export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
   const [successOpen, setSuccessOpen] = useState(false)
   const [tagCatalog, setTagCatalog] = useState<TagCategory[]>([])
   const [signingOut, setSigningOut] = useState(false)
+  const [loginOpen, setLoginOpen] = useState(false)
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true)
@@ -75,7 +74,10 @@ export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
     if (searchParams.get('joined') === '1' && loggedIn && !entered && page.status === 'active') {
       setQuestionnaireOpen(true)
     }
-  }, [searchParams, loggedIn, entered, page.status])
+    if (searchParams.get('joined') === '1' && !loggedIn && !statusLoading) {
+      setLoginOpen(true)
+    }
+  }, [searchParams, loggedIn, entered, page.status, statusLoading])
 
   useEffect(() => {
     if (entered && participatedAt) {
@@ -83,12 +85,28 @@ export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
     }
   }, [entered, participatedAt])
 
-  const loginHref = `${PORTAL_LOGIN_PATH}?return=${encodeURIComponent(returnPath + '?joined=1')}`
+  const openLogin = () => setLoginOpen(true)
+
+  const handleLoginSuccess = async () => {
+    try {
+      const res = await fetch(`/api/customer-portal/lucky-draw/${page.id}/status`)
+      const json = await res.json()
+      setLoggedIn(!!json.loggedIn)
+      setEntered(!!json.entered)
+      setParticipatedAt(json.participated_at ?? null)
+      setCustomerName(json.customer?.name ?? null)
+      if (page.status === 'active' && !json.entered) {
+        setQuestionnaireOpen(true)
+      }
+    } catch {
+      await loadStatus()
+    }
+  }
 
   const handleJoin = () => {
     if (closed) return
     if (!loggedIn) {
-      window.location.href = loginHref
+      openLogin()
       return
     }
     if (page.status !== 'active') return
@@ -234,12 +252,14 @@ export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
               This lucky draw is not open for entries yet.
             </p>
           ) : !loggedIn ? (
-            <Link
-              href={loginHref}
-              className="flex w-full items-center justify-center rounded-xl bg-amber-600 px-4 py-3.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 active:scale-[0.98]"
+            <button
+              type="button"
+              onClick={openLogin}
+              disabled={statusLoading}
+              className="flex w-full items-center justify-center rounded-xl bg-amber-600 px-4 py-3.5 text-center text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
             >
               {statusLoading ? 'Loading…' : 'Sign in to join'}
-            </Link>
+            </button>
           ) : (
             <button
               type="button"
@@ -253,11 +273,19 @@ export function LuckyDrawPublicClient({ page, dealerSlug, pageSlug }: Props) {
           {!loggedIn && !closed && !entered && !statusLoading && (
             <p className="mt-3 text-center text-xs text-slate-500">
               Sign in with your PG code via{' '}
-              <span className="font-medium text-amber-800">Gold Saver</span>
+              <span className="font-medium text-amber-800">PG Gold Saver</span>
             </p>
           )}
         </section>
       </main>
+
+      <CustomerPortalLoginSheet
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        onSuccess={() => void handleLoginSuccess()}
+        title="Sign in to join"
+        description="Enter your PG code to join this lucky draw. We will send a one-time code to your WhatsApp or email."
+      />
 
       <LuckyDrawQuestionnaire
         open={questionnaireOpen}

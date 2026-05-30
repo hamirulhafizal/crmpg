@@ -3,23 +3,7 @@ import { createClient } from '@/app/lib/supabase/server'
 import { ensureDealerSettings } from '@/app/lib/lucky-draw/dealer-settings'
 import { normalizeQuestions } from '@/app/lib/lucky-draw/questions'
 import { isValidSlug, normalizeSlug } from '@/app/lib/lucky-draw/slug'
-import type { LuckyDrawPrize } from '@/app/lib/lucky-draw/types'
-
-function normalizePrizes(raw: unknown): LuckyDrawPrize[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .map((item) => {
-      const row = item as Record<string, unknown>
-      const name = typeof row.name === 'string' ? row.name.trim() : ''
-      if (!name) return null
-      const description =
-        typeof row.description === 'string' && row.description.trim()
-          ? row.description.trim()
-          : undefined
-      return { name, description }
-    })
-    .filter((p): p is LuckyDrawPrize => p !== null)
-}
+import { normalizePrizes } from '@/app/lib/lucky-draw/prizes'
 
 export async function GET() {
   try {
