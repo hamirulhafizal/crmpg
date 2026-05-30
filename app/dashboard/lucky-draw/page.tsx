@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatedSheetDialog } from '@/app/components/AnimatedSheetDialog'
 import { useAuth } from '@/app/contexts/auth-context'
-import { luckyDrawPublicPath } from '@/app/lib/lucky-draw/slug'
+import { luckyDrawPublicPath, normalizeSlug } from '@/app/lib/lucky-draw/slug'
 import type { LuckyDrawPage, LuckyDrawPrize, LuckyDrawQuestion } from '@/app/lib/lucky-draw/types'
 import {
   ensureQuestionIds,
@@ -93,6 +93,7 @@ export default function LuckyDrawDashboardPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [copiedPageId, setCopiedPageId] = useState<string | null>(null)
+  const pageSlugManuallyEditedRef = useRef(false)
 
   const load = useCallback(async () => {
     setListLoading(true)
@@ -127,6 +128,7 @@ export default function LuckyDrawDashboardPage() {
   }, [user, load])
 
   const openCreate = () => {
+    pageSlugManuallyEditedRef.current = false
     setEditorMode('create')
     setEditor(emptyEditor())
     setEditorLoading(false)
@@ -136,9 +138,26 @@ export default function LuckyDrawDashboardPage() {
   const closeEditor = () => setEditorOpen(false)
 
   const resetEditor = () => {
+    pageSlugManuallyEditedRef.current = false
     setEditor(null)
     setEditorLoading(false)
     setEditorMode('create')
+  }
+
+  const handleTitleChange = (title: string) => {
+    setEditor((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        title,
+        page_slug: pageSlugManuallyEditedRef.current ? prev.page_slug : normalizeSlug(title),
+      }
+    })
+  }
+
+  const handlePageSlugChange = (page_slug: string) => {
+    pageSlugManuallyEditedRef.current = true
+    setEditor((prev) => (prev ? { ...prev, page_slug } : prev))
   }
 
   const openEdit = async (id: string) => {
@@ -162,6 +181,8 @@ export default function LuckyDrawDashboardPage() {
         target_audience: p.target_audience ?? '',
         questions: ensureQuestionIds(p.questions ?? []),
       })
+      pageSlugManuallyEditedRef.current =
+        normalizeSlug(p.title) !== normalizeSlug(p.page_slug)
     } catch (e) {
       closeEditor()
       setMessage({
@@ -399,7 +420,7 @@ export default function LuckyDrawDashboardPage() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
                   <input
                     value={editor.title}
-                    onChange={(e) => setEditor({ ...editor, title: e.target.value })}
+                    onChange={(e) => handleTitleChange(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                   />
                 </div>
@@ -407,7 +428,7 @@ export default function LuckyDrawDashboardPage() {
                   <label className="mb-1 block text-sm font-medium text-slate-700">Page slug</label>
                   <input
                     value={editor.page_slug}
-                    onChange={(e) => setEditor({ ...editor, page_slug: e.target.value })}
+                    onChange={(e) => handlePageSlugChange(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
                     placeholder="lucky-draw"
                   />
