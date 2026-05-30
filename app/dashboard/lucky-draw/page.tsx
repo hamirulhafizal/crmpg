@@ -3,28 +3,14 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { AnimatedSheetDialog } from '@/app/components/AnimatedSheetDialog'
 import { useAuth } from '@/app/contexts/auth-context'
 import { luckyDrawPublicPath } from '@/app/lib/lucky-draw/slug'
-import type {
-  LuckyDrawPage,
-  LuckyDrawPrize,
-  LuckyDrawQuestion,
-  LuckyDrawQuestionType,
-} from '@/app/lib/lucky-draw/types'
-
-const QUESTION_TYPES: { value: LuckyDrawQuestionType; label: string }[] = [
-  { value: 'text', label: 'Short text' },
-  { value: 'multiple_choice', label: 'Multiple choice' },
-  { value: 'yes_no', label: 'Yes / No' },
-  { value: 'tag_picker', label: 'Tag picker' },
-]
-
-const emptyQuestion = (): LuckyDrawQuestion => ({
-  sort_order: 0,
-  question_type: 'text',
-  question_text: '',
-  is_required: true,
-})
+import type { LuckyDrawPage, LuckyDrawPrize, LuckyDrawQuestion } from '@/app/lib/lucky-draw/types'
+import {
+  ensureQuestionIds,
+  LuckyDrawQuestionsEditor,
+} from '@/app/dashboard/lucky-draw/_components/LuckyDrawQuestionsEditor'
 
 type EditorState = {
   id?: string
@@ -49,6 +35,50 @@ function emptyEditor(): EditorState {
   }
 }
 
+function LuckyDrawEditorSkeleton() {
+  return (
+    <div className="space-y-5 px-6 py-5" aria-busy="true" aria-label="Loading editor">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <div className="h-4 w-12 animate-pulse rounded bg-slate-200" />
+          <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+          <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-4 w-14 animate-pulse rounded bg-slate-200" />
+        <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-4 w-14 animate-pulse rounded bg-slate-200" />
+        <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+        <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-4 w-28 animate-pulse rounded bg-slate-200" />
+        <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-4 w-36 animate-pulse rounded bg-slate-200" />
+        <div className="h-28 animate-pulse rounded-xl bg-slate-100" />
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-4 w-32 animate-pulse rounded bg-slate-200" />
+        <div className="h-3 w-full max-w-md animate-pulse rounded bg-slate-100" />
+        <div className="h-24 animate-pulse rounded-xl bg-slate-100" />
+      </div>
+    </div>
+  )
+}
+
 export default function LuckyDrawDashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
@@ -57,6 +87,9 @@ export default function LuckyDrawDashboardPage() {
   const [slugDraft, setSlugDraft] = useState('')
   const [listLoading, setListLoading] = useState(true)
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editorLoading, setEditorLoading] = useState(false)
+  const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [copiedPageId, setCopiedPageId] = useState<string | null>(null)
@@ -116,10 +149,27 @@ export default function LuckyDrawDashboardPage() {
     }
   }
 
-  const openCreate = () => setEditor(emptyEditor())
+  const openCreate = () => {
+    setEditorMode('create')
+    setEditor(emptyEditor())
+    setEditorLoading(false)
+    setEditorOpen(true)
+  }
+
+  const closeEditor = () => setEditorOpen(false)
+
+  const resetEditor = () => {
+    setEditor(null)
+    setEditorLoading(false)
+    setEditorMode('create')
+  }
 
   const openEdit = async (id: string) => {
     setMessage(null)
+    setEditorMode('edit')
+    setEditor(null)
+    setEditorLoading(true)
+    setEditorOpen(true)
     try {
       const res = await fetch(`/api/lucky-draw/${id}`)
       const json = await res.json()
@@ -133,13 +183,16 @@ export default function LuckyDrawDashboardPage() {
         prizes: p.prizes?.length ? p.prizes : [{ name: '', description: '' }],
         terms_and_conditions: p.terms_and_conditions ?? '',
         target_audience: p.target_audience ?? '',
-        questions: p.questions ?? [],
+        questions: ensureQuestionIds(p.questions ?? []),
       })
     } catch (e) {
+      closeEditor()
       setMessage({
         type: 'error',
         text: e instanceof Error ? e.message : 'Failed to open editor',
       })
+    } finally {
+      setEditorLoading(false)
     }
   }
 
@@ -155,7 +208,9 @@ export default function LuckyDrawDashboardPage() {
         prizes: editor.prizes.filter((p) => p.name.trim()),
         terms_and_conditions: editor.terms_and_conditions,
         target_audience: editor.target_audience,
-        questions: editor.questions.filter((q) => q.question_text.trim()),
+        questions: editor.questions
+          .filter((q) => q.question_text.trim())
+          .map((q, i) => ({ ...q, sort_order: i })),
       }
 
       const res = await fetch(editor.id ? `/api/lucky-draw/${editor.id}` : '/api/lucky-draw', {
@@ -165,7 +220,7 @@ export default function LuckyDrawDashboardPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Save failed')
-      setEditor(null)
+      closeEditor()
       setMessage({ type: 'success', text: 'Lucky draw page saved.' })
       await load()
     } catch (e) {
@@ -329,23 +384,29 @@ export default function LuckyDrawDashboardPage() {
         </section>
       </main>
 
-      {editor && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4">
-          <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {editor.id ? 'Edit lucky draw' : 'New lucky draw'}
-              </h2>
+      {(editorOpen || editor) && (
+        <AnimatedSheetDialog
+          open={editorOpen}
+          onClose={closeEditor}
+          onExitComplete={resetEditor}
+          title={editorMode === 'edit' ? 'Edit lucky draw' : 'New lucky draw'}
+          footer={
+            <div className="px-6 py-4">
               <button
                 type="button"
-                onClick={() => setEditor(null)}
-                className="text-sm text-slate-500 hover:text-slate-800"
+                onClick={() => void saveEditor()}
+                disabled={saving || editorLoading || !editor}
+                className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Close
+                {saving ? 'Saving…' : 'Save page'}
               </button>
             </div>
-
-            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          }
+        >
+          {editorLoading || !editor ? (
+            <LuckyDrawEditorSkeleton />
+          ) : (
+          <div className="space-y-5 px-6 py-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
@@ -452,106 +513,13 @@ export default function LuckyDrawDashboardPage() {
                 />
               </div>
 
-              <div>
-                <p className="mb-1 text-sm font-medium text-slate-700">Built-in questions</p>
-                <p className="mb-3 text-xs text-slate-500">
-                  Saving purpose (all tags) and location (Locate me) are always included.
-                </p>
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="text-sm font-medium text-slate-700">Custom questions</label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditor({
-                        ...editor,
-                        questions: [...editor.questions, emptyQuestion()],
-                      })
-                    }
-                    className="text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    + Add question
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {editor.questions.map((q, i) => (
-                    <div key={i} className="rounded-xl border border-slate-200 p-4">
-                      <div className="mb-2 grid gap-2 sm:grid-cols-2">
-                        <select
-                          value={q.question_type}
-                          onChange={(e) => {
-                            const questions = [...editor.questions]
-                            questions[i] = {
-                              ...questions[i],
-                              question_type: e.target.value as LuckyDrawQuestionType,
-                            }
-                            setEditor({ ...editor, questions })
-                          }}
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        >
-                          {QUESTION_TYPES.map((t) => (
-                            <option key={t.value} value={t.value}>
-                              {t.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const questions = editor.questions.filter((_, idx) => idx !== i)
-                            setEditor({ ...editor, questions })
-                          }}
-                          className="text-sm text-red-600 hover:text-red-700"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                      <input
-                        value={q.question_text}
-                        onChange={(e) => {
-                          const questions = [...editor.questions]
-                          questions[i] = { ...questions[i], question_text: e.target.value }
-                          setEditor({ ...editor, questions })
-                        }}
-                        placeholder="Question text"
-                        className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                      />
-                      {q.question_type === 'multiple_choice' && (
-                        <textarea
-                          value={(q.options ?? []).join('\n')}
-                          onChange={(e) => {
-                            const questions = [...editor.questions]
-                            questions[i] = {
-                              ...questions[i],
-                              options: e.target.value
-                                .split('\n')
-                                .map((s) => s.trim())
-                                .filter(Boolean),
-                            }
-                            setEditor({ ...editor, questions })
-                          }}
-                          rows={3}
-                          placeholder="One option per line"
-                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <LuckyDrawQuestionsEditor
+                questions={editor.questions}
+                onChange={(questions) => setEditor({ ...editor, questions })}
+              />
             </div>
-
-            <div className="border-t border-slate-200 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => void saveEditor()}
-                disabled={saving}
-                className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                {saving ? 'Saving…' : 'Save page'}
-              </button>
-            </div>
-          </div>
-        </div>
+          )}
+        </AnimatedSheetDialog>
       )}
     </div>
   )
