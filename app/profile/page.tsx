@@ -349,7 +349,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <label htmlFor="username_pbo" className="block text-sm font-medium text-slate-700 mb-2">
-                Username PBO/PGO
+                pg2u.my/your-username
               </label>
               <input
                 id="username_pbo"

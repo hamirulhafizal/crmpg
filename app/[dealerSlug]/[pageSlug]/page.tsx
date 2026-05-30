@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { Suspense } from 'react'
 import { LuckyDrawPublicClient } from '@/app/[dealerSlug]/[pageSlug]/_components/LuckyDrawPublicClient'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { resolveLuckyDrawDealer } from '@/app/lib/lucky-draw/dealer-settings'
 
 type Props = {
   params: Promise<{ dealerSlug: string; pageSlug: string }>
@@ -10,11 +11,7 @@ type Props = {
 async function loadPublicPage(dealerSlug: string, pageSlug: string) {
   const admin = createServiceRoleClient()
 
-  const { data: settings } = await admin
-    .from('lucky_draw_dealer_settings')
-    .select('user_id, dealer_slug')
-    .eq('dealer_slug', dealerSlug.toLowerCase())
-    .maybeSingle()
+  const settings = await resolveLuckyDrawDealer(admin, dealerSlug)
 
   if (!settings) return null
 

@@ -84,7 +84,7 @@ export default function LuckyDrawDashboardPage() {
   const router = useRouter()
   const [pages, setPages] = useState<LuckyDrawPage[]>([])
   const [dealerSlug, setDealerSlug] = useState('')
-  const [slugDraft, setSlugDraft] = useState('')
+  const [usernamePbo, setUsernamePbo] = useState<string | null>(null)
   const [listLoading, setListLoading] = useState(true)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -107,7 +107,7 @@ export default function LuckyDrawDashboardPage() {
       setPages(listJson.data ?? [])
       const slug = slugJson.data?.dealer_slug ?? ''
       setDealerSlug(slug)
-      setSlugDraft(slug)
+      setUsernamePbo(slugJson.data?.username_pbo ?? null)
     } catch (e) {
       setMessage({
         type: 'error',
@@ -125,29 +125,6 @@ export default function LuckyDrawDashboardPage() {
   useEffect(() => {
     if (user) void load()
   }, [user, load])
-
-  const saveDealerSlug = async () => {
-    setSaving(true)
-    setMessage(null)
-    try {
-      const res = await fetch('/api/lucky-draw/dealer-slug', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dealer_slug: slugDraft }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to update URL')
-      setDealerSlug(json.data.dealer_slug)
-      setMessage({ type: 'success', text: 'Dealer URL updated.' })
-    } catch (e) {
-      setMessage({
-        type: 'error',
-        text: e instanceof Error ? e.message : 'Update failed',
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
 
   const openCreate = () => {
     setEditorMode('create')
@@ -292,28 +269,38 @@ export default function LuckyDrawDashboardPage() {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Your public URL</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Customers visit{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
-              /{dealerSlug || '…'}/your-page-name
-            </code>
-          </p>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <input
-              value={slugDraft}
-              onChange={(e) => setSlugDraft(e.target.value)}
-              className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm"
-              placeholder="dealer-slug"
-            />
-            <button
-              type="button"
-              onClick={() => void saveDealerSlug()}
-              disabled={saving || !slugDraft.trim()}
-              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              Save slug
-            </button>
-          </div>
+          {usernamePbo ? (
+            <>
+              <p className="mt-1 text-sm text-slate-600">
+                Uses your pg2u.my username{' '}
+                <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{usernamePbo}</code>
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                Customers visit{' '}
+                <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">
+                  /{dealerSlug || '…'}/your-page-name
+                </code>
+              </p>
+              <Link
+                href="/profile"
+                className="mt-4 inline-flex text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Edit username on profile →
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-slate-600">
+                Set your pg2u.my username in profile to get your public lucky draw URL.
+              </p>
+              <Link
+                href="/profile"
+                className="mt-4 inline-flex rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Set username on profile
+              </Link>
+            </>
+          )}
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

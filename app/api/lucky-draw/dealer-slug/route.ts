@@ -14,7 +14,12 @@ export async function GET() {
     }
 
     const settings = await ensureDealerSettings(supabase, user.id)
-    return NextResponse.json({ data: settings })
+    return NextResponse.json({
+      data: {
+        dealer_slug: settings.dealer_slug,
+        username_pbo: settings.username_pbo,
+      },
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to load dealer settings'
     return NextResponse.json({ error: msg }, { status: 500 })

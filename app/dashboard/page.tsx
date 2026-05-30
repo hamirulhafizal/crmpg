@@ -5,6 +5,8 @@ import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
+import { isProfileComplete, resolveProfilePhone } from '@/app/lib/profile/completion'
 
 export default function DashboardPage() {
   const { user, loading, signOut, refreshUser } = useAuth()
@@ -13,8 +15,9 @@ export default function DashboardPage() {
   const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
   const [checkingWahaSession, setCheckingWahaSession] = useState(true)
 
-  const [passwordGateLoading, setPasswordGateLoading] = useState(true)
+  const [accountChecksLoading, setAccountChecksLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
+  const [needsProfileSetup, setNeedsProfileSetup] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [confirmNewPassword, setConfirmNewPassword] = useState('')
   const [passwordDialogError, setPasswordDialogError] = useState<string | null>(null)
@@ -130,23 +133,45 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) {
-      setPasswordGateLoading(true)
+      setAccountChecksLoading(true)
       setNeedsPasswordSetup(false)
+      setNeedsProfileSetup(false)
       return
     }
     let cancelled = false
-    setPasswordGateLoading(true)
+    setAccountChecksLoading(true)
 
     ;(async () => {
-      const { data, error } = await supabase.rpc('user_has_password')
+      const [passwordResult, profileResult] = await Promise.all([
+        supabase.rpc('user_has_password'),
+        supabase
+          .from('profiles')
+          .select('pgcode, phone, username_pbo')
+          .eq('id', user.id)
+          .maybeSingle(),
+      ])
+
       if (cancelled) return
-      if (error) {
-        console.error('user_has_password:', error.message)
+
+      if (passwordResult.error) {
+        console.error('user_has_password:', passwordResult.error.message)
         setNeedsPasswordSetup(false)
       } else {
-        setNeedsPasswordSetup(data === false)
+        setNeedsPasswordSetup(passwordResult.data === false)
       }
-      setPasswordGateLoading(false)
+
+      const profileRow = profileResult.data
+      const profileComplete = isProfileComplete(
+        {
+          username_pbo: profileRow?.username_pbo ?? null,
+          phone: resolveProfilePhone(profileRow?.phone, user.user_metadata?.phone),
+          pgcode: profileRow?.pgcode ?? null,
+        },
+        user.user_metadata?.phone
+      )
+      setNeedsProfileSetup(!profileComplete)
+
+      setAccountChecksLoading(false)
     })()
 
     return () => {
@@ -237,7 +262,7 @@ export default function DashboardPage() {
     return null
   }
 
-  if (passwordGateLoading) {
+  if (accountChecksLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -268,9 +293,17 @@ export default function DashboardPage() {
   }
 
   const showPasswordGate = needsPasswordSetup
+  const showProfileGate = !needsPasswordSetup && needsProfileSetup
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
+      {showProfileGate && user && (
+        <ProfileCompletionDialog
+          userId={user.id}
+          userMetadata={user.user_metadata}
+          onComplete={() => setNeedsProfileSetup(false)}
+        />
+      )}
       {showPasswordGate && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"

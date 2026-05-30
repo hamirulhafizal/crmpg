@@ -22,3 +22,8 @@ export function isValidSlug(slug: string): boolean {
 export function luckyDrawPublicPath(dealerSlug: string, pageSlug: string): string {
   return `/${dealerSlug}/${pageSlug}`
 }
+
+/** pg2u.my username → lucky draw URL segment (e.g. hamirulhafizal). */
+export function dealerSlugFromUsernamePgo(username: string): string {
+  return normalizeSlug(username)
+}

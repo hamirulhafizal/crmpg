@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { resolveLuckyDrawDealer } from '@/app/lib/lucky-draw/dealer-settings'
 
 type Params = { params: Promise<{ dealerSlug: string; pageSlug: string }> }
 
@@ -8,13 +9,8 @@ export async function GET(_request: Request, context: Params) {
     const { dealerSlug, pageSlug } = await context.params
     const admin = createServiceRoleClient()
 
-    const { data: settings, error: settingsErr } = await admin
-      .from('lucky_draw_dealer_settings')
-      .select('user_id, dealer_slug')
-      .eq('dealer_slug', dealerSlug.toLowerCase())
-      .maybeSingle()
+    const settings = await resolveLuckyDrawDealer(admin, dealerSlug)
 
-    if (settingsErr) throw settingsErr
     if (!settings) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
