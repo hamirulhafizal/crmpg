@@ -7,22 +7,24 @@ type Params = { params: Promise<{ pageId: string }> }
 function normalizeCustomAnswers(raw: unknown): LuckyDrawEntryAnswer[] {
   if (!Array.isArray(raw)) return []
   const validTypes: LuckyDrawQuestionType[] = ['text', 'multiple_choice', 'yes_no', 'tag_picker']
+  const answers: LuckyDrawEntryAnswer[] = []
 
-  return raw
-    .map((item) => {
-      const row = item as Record<string, unknown>
-      const question_id = typeof row.question_id === 'string' ? row.question_id : ''
-      const question_text = typeof row.question_text === 'string' ? row.question_text : ''
-      const question_type = row.question_type as LuckyDrawQuestionType
-      if (!question_id || !question_text || !validTypes.includes(question_type)) return null
-      return {
-        question_id,
-        question_text,
-        question_type,
-        value: row.value ?? null,
-      } satisfies LuckyDrawEntryAnswer
+  for (const item of raw) {
+    const row = item as Record<string, unknown>
+    const question_id = typeof row.question_id === 'string' ? row.question_id : ''
+    const question_text = typeof row.question_text === 'string' ? row.question_text : ''
+    const question_type = row.question_type as LuckyDrawQuestionType
+    if (!question_id || !question_text || !validTypes.includes(question_type)) continue
+
+    answers.push({
+      question_id,
+      question_text,
+      question_type,
+      value: row.value ?? null,
     })
-    .filter((a): a is LuckyDrawEntryAnswer => a !== null)
+  }
+
+  return answers
 }
 
 export async function POST(request: Request, context: Params) {
