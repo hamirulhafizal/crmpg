@@ -17,6 +17,7 @@ type AnalyticsLead = {
   email: string | null
   phone: string | null
   icNumber: string | null
+  pgCode: string | null
   location: string | null
   locationCity: string
   submittedAt: string
@@ -192,7 +193,8 @@ export function GoogleAdsAnalyticsTab() {
         (lead.location && lead.location.toLowerCase().includes(q)) ||
         (lead.locationCity && lead.locationCity.toLowerCase().includes(q)) ||
         (lead.participantName && lead.participantName.toLowerCase().includes(q)) ||
-        (lead.icNumber && lead.icNumber.includes(q))
+        (lead.icNumber && lead.icNumber.includes(q)) ||
+        (lead.pgCode && lead.pgCode.toLowerCase().includes(q))
       )
     })
   }, [data?.leads, search])
@@ -449,6 +451,7 @@ export function GoogleAdsAnalyticsTab() {
                     <tr>
                       <th className="px-4 py-3">Submitted</th>
                       <th className="px-4 py-3">Lead</th>
+                      <th className="px-4 py-3">PG code</th>
                       <th className="px-4 py-3">Location</th>
                       <th className="px-4 py-3">Participant</th>
                       <th className="px-4 py-3" />
@@ -461,6 +464,9 @@ export function GoogleAdsAnalyticsTab() {
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-900">{lead.name || '—'}</p>
                           <p className="text-xs text-slate-500">{lead.phone || lead.email || '—'}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-mono text-sm font-medium text-slate-800">{lead.pgCode || '—'}</p>
                         </td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-800">{lead.locationCity}</p>
@@ -525,6 +531,7 @@ export function GoogleAdsAnalyticsTab() {
                 ['Email', selectedLead.email],
                 ['Phone', selectedLead.phone],
                 ['IC', selectedLead.icNumber],
+                ['PG code', selectedLead.pgCode],
                 ['Location', selectedLead.location],
                 ['City', selectedLead.locationCity],
                 ['Submitted', fmtDate(selectedLead.submittedAt)],

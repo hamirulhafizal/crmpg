@@ -9,6 +9,7 @@ export type GapLeadRow = {
   location: string | null
   locationCity: string
   icNumber: string | null
+  pgCode: string | null
   submittedAt: string
   originalData: Record<string, unknown>
   segmentAttributes: Record<string, unknown>
@@ -43,6 +44,8 @@ export type GapCustomerRow = {
   email: string | null
   phone: string | null
   location: string | null
+  pg_code: string | null
+  email_normalized: string | null
   created_at: string | null
   original_data: unknown
   segment_attributes: unknown
@@ -65,7 +68,9 @@ export async function fetchGapCustomerRows(
   while (true) {
     const { data, error } = await admin
       .from('customers')
-      .select('id, user_id, name, email, phone, location, created_at, original_data, segment_attributes')
+      .select(
+        'id, user_id, name, email, phone, location, pg_code, email_normalized, created_at, original_data, segment_attributes'
+      )
       .in('user_id', userIds)
       .or(GAP_CUSTOMER_OR_FILTER)
       .order('created_at', { ascending: false })
@@ -99,6 +104,85 @@ export function gapLeadSubmittedAt(originalData: unknown, createdAt: string | nu
     if (!Number.isNaN(d.getTime())) return d.toISOString()
   }
   return new Date(0).toISOString()
+}
+
+export function gapLeadPgCode(row: {
+  pg_code?: string | null
+  original_data?: unknown
+}): string | null {
+  if (row.pg_code?.trim()) return row.pg_code.trim()
+  const data = asRecord(row.original_data)
+  for (const key of ['PGCode', 'PG Code', 'pg_code', 'PG code']) {
+    const raw = data[key]
+    if (typeof raw === 'string' && raw.trim()) return raw.trim()
+  }
+  return null
+}
+
+/** Fill missing pgCode from other customer rows under the same dealer (matched by email). */
+export async function enrichGapLeadsPgCode(
+  client: import('@supabase/supabase-js').SupabaseClient,
+  userId: string,
+  leads: GapLeadRow[]
+): Promise<GapLeadRow[]> {
+  const emailsToLookup = [
+    ...new Set(
+      leads
+        .filter((lead) => !lead.pgCode && lead.email?.trim())
+        .map((lead) => lead.email!.trim().toLowerCase())
+    ),
+  ]
+
+  if (emailsToLookup.length === 0) return leads
+
+  const pgByEmail = new Map<string, string>()
+  const chunkSize = 100
+
+  for (let i = 0; i < emailsToLookup.length; i += chunkSize) {
+    const chunk = emailsToLookup.slice(i, i + chunkSize)
+    const { data, error } = await client
+      .from('customers')
+      .select('email_normalized, email, pg_code, original_data')
+      .eq('user_id', userId)
+      .in('email_normalized', chunk)
+
+    if (error) throw error
+
+    for (const row of data || []) {
+      const pgCode = gapLeadPgCode(row)
+      if (!pgCode) continue
+      const emailKey =
+        (row.email_normalized as string | null)?.trim().toLowerCase() ||
+        (row.email as string | null)?.trim().toLowerCase()
+      if (emailKey && !pgByEmail.has(emailKey)) {
+        pgByEmail.set(emailKey, pgCode)
+      }
+    }
+  }
+
+  return leads.map((lead) => {
+    if (lead.pgCode || !lead.email?.trim()) return lead
+    const resolved = pgByEmail.get(lead.email.trim().toLowerCase())
+    return resolved ? { ...lead, pgCode: resolved } : lead
+  })
+}
+
+export async function enrichAllGapLeadsPgCode(
+  client: import('@supabase/supabase-js').SupabaseClient,
+  leads: GapLeadRow[]
+): Promise<GapLeadRow[]> {
+  const byUserId = new Map<string, GapLeadRow[]>()
+  for (const lead of leads) {
+    const bucket = byUserId.get(lead.userId) ?? []
+    bucket.push(lead)
+    byUserId.set(lead.userId, bucket)
+  }
+
+  const enriched: GapLeadRow[] = []
+  for (const [userId, userLeads] of byUserId) {
+    enriched.push(...(await enrichGapLeadsPgCode(client, userId, userLeads)))
+  }
+  return enriched
 }
 
 export function gapLeadIcNumber(originalData: unknown): string | null {
@@ -166,6 +250,7 @@ export function customerToGapLead(row: {
   email: string | null
   phone: string | null
   location: string | null
+  pg_code?: string | null
   created_at: string | null
   original_data: unknown
   segment_attributes: unknown
@@ -181,6 +266,7 @@ export function customerToGapLead(row: {
     location: row.location,
     locationCity: locationCityFromRaw(row.location),
     icNumber: gapLeadIcNumber(row.original_data),
+    pgCode: gapLeadPgCode(row),
     submittedAt,
     originalData: asRecord(row.original_data),
     segmentAttributes: asRecord(row.segment_attributes),

@@ -10,6 +10,7 @@ type DealerLead = {
   email: string | null
   phone: string | null
   icNumber: string | null
+  pgCode: string | null
   location: string | null
   locationCity: string
   submittedAt: string
@@ -84,7 +85,8 @@ export function GoogleAdsMyLeadsTab() {
         (lead.phone && lead.phone.includes(q)) ||
         (lead.location && lead.location.toLowerCase().includes(q)) ||
         (lead.locationCity && lead.locationCity.toLowerCase().includes(q)) ||
-        (lead.icNumber && lead.icNumber.includes(q))
+        (lead.icNumber && lead.icNumber.includes(q)) ||
+        (lead.pgCode && lead.pgCode.toLowerCase().includes(q))
       )
     })
   }, [data?.leads, search])
@@ -219,6 +221,7 @@ export function GoogleAdsMyLeadsTab() {
                     <tr>
                       <th className="px-4 py-3">Submitted</th>
                       <th className="px-4 py-3">Lead</th>
+                      <th className="px-4 py-3">PG code</th>
                       <th className="px-4 py-3">Location</th>
                       <th className="px-4 py-3" />
                     </tr>
@@ -230,6 +233,9 @@ export function GoogleAdsMyLeadsTab() {
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-900">{lead.name || '—'}</p>
                           <p className="text-xs text-slate-500">{lead.phone || lead.email || '—'}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-mono text-sm font-medium text-slate-800">{lead.pgCode || '—'}</p>
                         </td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-800">{lead.locationCity}</p>
@@ -255,7 +261,7 @@ export function GoogleAdsMyLeadsTab() {
       ) : null}
 
       {selectedLead && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm top-[-2rem]">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-lg font-semibold text-slate-900">Lead details</h3>
@@ -274,6 +280,7 @@ export function GoogleAdsMyLeadsTab() {
                 ['Email', selectedLead.email],
                 ['Phone', selectedLead.phone],
                 ['IC', selectedLead.icNumber],
+                ['PG code', selectedLead.pgCode],
                 ['Location', selectedLead.location],
                 ['City', selectedLead.locationCity],
                 ['Submitted', fmtDate(selectedLead.submittedAt)],

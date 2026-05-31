@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import {
   customerToGapLead,
+  enrichAllGapLeadsPgCode,
   fetchGapCustomerRows,
   leadWithinRange,
   resolveAnalyticsDateRange,
@@ -45,12 +46,14 @@ export async function GET(request: Request) {
     const { start, end, label: periodLabel } = resolveAnalyticsDateRange(period, null, null)
     const customers = await fetchGapCustomerRows(supabase, [user.id])
 
-    const leads = customers
+    let leads = customers
       .map((row) => customerToGapLead(row))
       .filter((lead): lead is NonNullable<typeof lead> => Boolean(lead))
       .filter((lead) => leadWithinRange(lead.submittedAt, start, end))
       .filter((lead) => !locationCity || lead.locationCity.toLowerCase() === locationCity)
-      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+
+    leads = await enrichAllGapLeadsPgCode(supabase, leads)
+    leads.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
 
     const locationCounts = new Map<string, number>()
     for (const lead of leads) {
@@ -74,6 +77,7 @@ export async function GET(request: Request) {
         email: lead.email,
         phone: lead.phone,
         icNumber: lead.icNumber,
+        pgCode: lead.pgCode,
         location: lead.location,
         locationCity: lead.locationCity,
         submittedAt: lead.submittedAt,
