@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 
 import { effectivePackageStatus } from '@/app/lib/google-ads/billing'
+import { GoogleAdsAnalyticsTab } from '@/app/admin/google-ads/_components/GoogleAdsAnalyticsTab'
 
 type PackageRow = {
   id: string
@@ -119,7 +120,7 @@ function toDatetimeLocalValue(iso: string | null | undefined): string {
 }
 
 export default function AdminGoogleAdsPage() {
-  const [tab, setTab] = useState<'participants' | 'packages'>('participants')
+  const [tab, setTab] = useState<'participants' | 'packages' | 'analytics'>('participants')
   const [participantView, setParticipantView] = useState<'cards' | 'table'>('table')
   const [participantSearch, setParticipantSearch] = useState('')
   const [participantPackageFilter, setParticipantPackageFilter] = useState<'all' | string>('all')
@@ -873,7 +874,17 @@ export default function AdminGoogleAdsPage() {
         >
           Participants
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('analytics')}
+          className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${tab === 'analytics' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+        >
+          Analytics
+        </button>
       </div>
+
+      {tab === 'analytics' && <GoogleAdsAnalyticsTab />}
 
       {tab === 'packages' && (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
