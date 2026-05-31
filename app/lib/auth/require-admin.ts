@@ -1,26 +1,49 @@
 import { createClient } from '@/app/lib/supabase/server'
+import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import type { User } from '@supabase/supabase-js'
 
 export type AdminAuthOk = { ok: true; user: User }
 export type AdminAuthFail = { ok: false; response: Response }
 
-/** Verify session user has profiles.role = admin (uses anon key + RLS). */
-export async function requireAdminApi(): Promise<AdminAuthOk | AdminAuthFail> {
+function bearerToken(request?: Request): string | null {
+  const header = request?.headers.get('authorization')
+  if (!header) return null
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() || null
+}
+
+async function resolveUser(request?: Request): Promise<User | null> {
   const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const token = bearerToken(request)
+
+  if (token) {
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error || !data.user) return null
+    return data.user
+  }
+
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) return null
+  return data.user
+}
+
+/** Verify session user has profiles.role = admin. */
+export async function requireAdminApi(request?: Request): Promise<AdminAuthOk | AdminAuthFail> {
+  const user = await resolveUser(request)
+  if (!user) {
     return { ok: false, response: Response.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
-  const { data: profile, error: profileError } = await supabase
+
+  const admin = createServiceRoleClient()
+  const { data: profile, error: profileError } = await admin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .maybeSingle()
+
   if (profileError || profile?.role !== 'admin') {
     return { ok: false, response: Response.json({ error: 'Forbidden' }, { status: 403 }) }
   }
+
   return { ok: true, user }
 }

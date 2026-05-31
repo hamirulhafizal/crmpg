@@ -563,6 +563,25 @@ export default function DashboardPage() {
                   </svg>
                 }
               />
+
+              <ServiceTile
+                href="/admin/media"
+                title="Media library"
+                description="R2 images, audio, video, PDF"
+                borderClassName="border-indigo-200"
+                gradientClassName="from-indigo-50/80 to-white"
+                iconClassName="bg-indigo-600"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                }
+              />
             </div>
           </div>
         )}

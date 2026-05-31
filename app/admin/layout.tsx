@@ -63,6 +63,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             >
               Google Ads
             </Link>
+            <Link
+              href="/admin/media"
+              className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            >
+              Media
+            </Link>
           </nav>
         </div>
       </header>
