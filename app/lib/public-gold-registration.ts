@@ -124,7 +124,7 @@ export type PublicGoldRegistrationInput = {
   phone: string
   introPgCode: string
   location?: string
-  /** Dealer / introducer WhatsApp (MSISDN); screenshot is sent here via WAHA_GAP_LEAD_SESSION */
+  /** Dealer / introducer WhatsApp (MSISDN); screenshot is sent here via GAP lead WAHA settings */
   introducerPhone?: string
 }
 

@@ -1,14 +1,15 @@
 /**
- * GAP public lead → WhatsApp (WAHA). Configure in env (no secrets in code):
- * - WAHA_GAP_LEAD_SESSION — sender session name (e.g. 601156747399); change when you switch device/session.
- * - WAHA_GAP_LEAD_API_KEY — optional; falls back to WAHA_API_KEY.
- * - WAHA_GAP_LEAD_BASE_URL — optional; falls back to WAHA_API_BASE_URL / default host.
- * - WAHA_GAP_LEAD_CC_CHAT_ID — optional second copy (e.g. 260635845763172@lid).
+ * GAP public lead → WhatsApp (WAHA).
+ * Config is stored in Supabase (`admin_app_settings`, key `gap_lead_waha`) and edited in Admin → Google Ads.
  */
 import { readFile } from 'fs/promises'
 import path from 'path'
 
-import { getGapLeadFormWahaConfig, wahaFetchWithConfig, type WahaConfig } from '@/app/lib/waha'
+import {
+  gapLeadWahaConfigFromSettings,
+  loadGapLeadWahaSettings,
+} from '@/app/lib/gap-lead-waha-settings'
+import { wahaFetchWithConfig, type WahaConfig } from '@/app/lib/waha'
 
 /** E.164-style MSISDN (MY) for @c.us chat id. */
 function phoneToWhatsappChatId(phone: string): string {
@@ -34,20 +35,21 @@ function normalizeWahaText(text: string): string {
 
 /**
  * Send GAP lead text to the dealer on WhatsApp (and optional CC to @lid / group).
- * Uses `WAHA_GAP_LEAD_SESSION` (sender session) and `WAHA_GAP_LEAD_API_KEY` or `WAHA_API_KEY`.
+ * Uses WAHA config from Supabase (Admin → Google Ads settings).
  */
 export async function sendGapLeadWhatsAppMessages(opts: {
   dealerPhone: string | undefined | null
   text: string
 }): Promise<{ sentToDealer: boolean; sentCc: boolean; skipReason?: string }> {
-  const session = process.env.WAHA_GAP_LEAD_SESSION?.trim()
-  const cfg = getGapLeadFormWahaConfig()
+  const settings = await loadGapLeadWahaSettings()
+  const session = settings.session.trim()
+  const cfg = gapLeadWahaConfigFromSettings(settings)
 
   if (!cfg || !session) {
     return {
       sentToDealer: false,
       sentCc: false,
-      skipReason: 'WAHA_GAP_LEAD_SESSION or WAHA_GAP_LEAD_API_KEY / WAHA_API_KEY not set',
+      skipReason: 'GAP lead WAHA not configured — set base URL, API key, and session in Admin → Google Ads.',
     }
   }
 
@@ -62,7 +64,7 @@ export async function sendGapLeadWhatsAppMessages(opts: {
     sentToDealer = true
   }
 
-  const ccChatId = process.env.WAHA_GAP_LEAD_CC_CHAT_ID?.trim()
+  const ccChatId = settings.ccChatId.trim()
   let ccFailed = false
   if (ccChatId) {
     try {
@@ -83,8 +85,8 @@ export async function sendGapLeadWhatsAppMessages(opts: {
       sentToDealer: false,
       sentCc: false,
       skipReason: ccFailed
-        ? 'WAHA CC send failed (check session / WAHA_GAP_LEAD_CC_CHAT_ID).'
-        : 'No dealer phone and no WAHA_GAP_LEAD_CC_CHAT_ID',
+        ? 'WAHA CC send failed (check session / CC chat ID in admin settings).'
+        : 'No dealer phone and no CC chat ID configured',
     }
   }
 
@@ -102,14 +104,15 @@ export async function sendGapLeadWhatsAppImage(opts: {
   imagePath: string
   caption?: string
 }): Promise<{ sentToDealer: boolean; sentCc: boolean; skipReason?: string }> {
-  const session = process.env.WAHA_GAP_LEAD_SESSION?.trim()
-  const cfg = getGapLeadFormWahaConfig()
+  const settings = await loadGapLeadWahaSettings()
+  const session = settings.session.trim()
+  const cfg = gapLeadWahaConfigFromSettings(settings)
 
   if (!cfg || !session) {
     return {
       sentToDealer: false,
       sentCc: false,
-      skipReason: 'WAHA_GAP_LEAD_SESSION or WAHA_GAP_LEAD_API_KEY / WAHA_API_KEY not set',
+      skipReason: 'GAP lead WAHA not configured — set base URL, API key, and session in Admin → Google Ads.',
     }
   }
 
@@ -136,7 +139,7 @@ export async function sendGapLeadWhatsAppImage(opts: {
     sentToDealer = true
   }
 
-  const ccChatId = process.env.WAHA_GAP_LEAD_CC_CHAT_ID?.trim()
+  const ccChatId = settings.ccChatId.trim()
   if (ccChatId) {
     await sendImage(cfg, session, ccChatId, { mimetype, filename, data }, opts.caption)
     sentCc = true
@@ -146,7 +149,7 @@ export async function sendGapLeadWhatsAppImage(opts: {
     return {
       sentToDealer: false,
       sentCc: false,
-      skipReason: 'No dealer phone and no WAHA_GAP_LEAD_CC_CHAT_ID',
+      skipReason: 'No dealer phone and no CC chat ID configured',
     }
   }
 

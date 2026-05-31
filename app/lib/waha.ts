@@ -221,12 +221,9 @@ export async function wahaFetch<T = unknown>(
   }
 }
 
-/** Optional overrides for public GAP lead form (session/API key), separate from user-scoped WAHA. */
+/** @deprecated Use {@link loadGapLeadWahaSettings} from gap-lead-waha-settings (Supabase only). */
 export function getGapLeadFormWahaConfig(): WahaConfig | null {
-  const baseUrl = normalizeBaseUrl(process.env.WAHA_GAP_LEAD_BASE_URL || ENV_BASE_URL)
-  const apiKey = (process.env.WAHA_GAP_LEAD_API_KEY || ENV_API_KEY).trim()
-  if (!apiKey) return null
-  return { baseUrl, apiKey, dashboardPass: null }
+  return null
 }
 
 /** Same HTTP behaviour as {@link wahaFetch} but uses an explicit config (no DB/env chain). */

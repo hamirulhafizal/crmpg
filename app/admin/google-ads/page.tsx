@@ -177,6 +177,18 @@ export default function AdminGoogleAdsPage() {
   const [plannerServiceChargeMonthly, setPlannerServiceChargeMonthly] = useState('350')
   const [plannerExpanded, setPlannerExpanded] = useState(false)
 
+  const [gapLeadSettingsOpen, setGapLeadSettingsOpen] = useState(false)
+  const [gapLeadSettingsLoading, setGapLeadSettingsLoading] = useState(false)
+  const [gapLeadSettingsSaving, setGapLeadSettingsSaving] = useState(false)
+  const [gapLeadSettingsError, setGapLeadSettingsError] = useState<string | null>(null)
+  const [gapLeadSettingsMessage, setGapLeadSettingsMessage] = useState<string | null>(null)
+  const [gapLeadApiKeyConfigured, setGapLeadApiKeyConfigured] = useState(false)
+  const [gapLeadConfigured, setGapLeadConfigured] = useState(false)
+  const [gapLeadBaseUrl, setGapLeadBaseUrl] = useState('')
+  const [gapLeadApiKey, setGapLeadApiKey] = useState('')
+  const [gapLeadSession, setGapLeadSession] = useState('')
+  const [gapLeadCcChatId, setGapLeadCcChatId] = useState('')
+
   const loadPackages = useCallback(async () => {
     setLoadingPackages(true)
     setPackageError(null)
@@ -646,11 +658,91 @@ export default function AdminGoogleAdsPage() {
     }
   }
 
+  const openGapLeadSettings = async () => {
+    setGapLeadSettingsOpen(true)
+    setGapLeadSettingsLoading(true)
+    setGapLeadSettingsError(null)
+    setGapLeadSettingsMessage(null)
+    setGapLeadApiKey('')
+    try {
+      const res = await fetch('/api/admin/google-ads/gap-lead-waha-settings')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load WAHA settings')
+
+      setGapLeadBaseUrl(data.settings?.baseUrl || '')
+      setGapLeadSession(data.settings?.session || '')
+      setGapLeadCcChatId(data.settings?.ccChatId || '')
+      setGapLeadApiKeyConfigured(Boolean(data.apiKeyConfigured))
+      setGapLeadConfigured(Boolean(data.configured))
+    } catch (e) {
+      setGapLeadSettingsError(e instanceof Error ? e.message : 'Failed to load WAHA settings')
+    } finally {
+      setGapLeadSettingsLoading(false)
+    }
+  }
+
+  const saveGapLeadSettings = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setGapLeadSettingsSaving(true)
+    setGapLeadSettingsError(null)
+    setGapLeadSettingsMessage(null)
+    try {
+      const res = await fetch('/api/admin/google-ads/gap-lead-waha-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: gapLeadBaseUrl.trim(),
+          apiKey: gapLeadApiKey.trim(),
+          session: gapLeadSession.trim(),
+          ccChatId: gapLeadCcChatId.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Save failed')
+
+      setGapLeadSettingsMessage('GAP lead WAHA settings saved.')
+      setGapLeadApiKey('')
+
+      const reload = await fetch('/api/admin/google-ads/gap-lead-waha-settings')
+      const reloaded = await reload.json().catch(() => ({}))
+      if (reload.ok) {
+        setGapLeadBaseUrl(reloaded.settings?.baseUrl || '')
+        setGapLeadSession(reloaded.settings?.session || '')
+        setGapLeadCcChatId(reloaded.settings?.ccChatId || '')
+        setGapLeadApiKeyConfigured(Boolean(reloaded.apiKeyConfigured))
+        setGapLeadConfigured(Boolean(reloaded.configured))
+      }
+    } catch (e) {
+      setGapLeadSettingsError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setGapLeadSettingsSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Google Ads campaign</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-slate-900">Google Ads campaign</h1>
+            <button
+              type="button"
+              onClick={() => void openGapLeadSettings()}
+              aria-label="GAP lead WAHA settings"
+              title="GAP lead WAHA settings"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.75}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
           <p className="mt-1 text-sm text-slate-600">
             Manage package (monthly/yearly, price only) and enrolled users. Payment confirmation prepares for Bayarcash.
           </p>
@@ -1770,6 +1862,119 @@ export default function AdminGoogleAdsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {gapLeadSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm top-[-2rem]">
+          <div className="max-h-[min(90vh,640px)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">GAP lead WAHA settings</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  WhatsApp config for GAP registration leads. Stored in Supabase — update here when WAHA session or API changes.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGapLeadSettingsOpen(false)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {gapLeadSettingsLoading ? (
+              <p className="mt-6 text-sm text-slate-500">Loading settings…</p>
+            ) : (
+              <form onSubmit={saveGapLeadSettings} className="mt-5 space-y-4">
+                {gapLeadSettingsError && (
+                  <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+                    {gapLeadSettingsError}
+                  </p>
+                )}
+                {gapLeadSettingsMessage && (
+                  <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+                    {gapLeadSettingsMessage}
+                  </p>
+                )}
+
+                {!gapLeadConfigured && !gapLeadSettingsLoading && (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+                    WAHA is not fully configured yet. Save base URL, API key, and sender session to enable GAP lead WhatsApp.
+                  </p>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">WAHA base URL</label>
+                  <input
+                    value={gapLeadBaseUrl}
+                    onChange={(e) => setGapLeadBaseUrl(e.target.value)}
+                    placeholder="https://api.publicgolds.com"
+                    required
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">WAHA API key</label>
+                  <input
+                    type="password"
+                    value={gapLeadApiKey}
+                    onChange={(e) => setGapLeadApiKey(e.target.value)}
+                    placeholder={gapLeadApiKeyConfigured ? 'Leave blank to keep current key' : 'Enter API key'}
+                    required={!gapLeadApiKeyConfigured}
+                    autoComplete="off"
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                  {gapLeadApiKeyConfigured && (
+                    <p className="mt-1 text-xs text-slate-500">A key is saved. Enter a new value only to replace it.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Sender session</label>
+                  <input
+                    value={gapLeadSession}
+                    onChange={(e) => setGapLeadSession(e.target.value)}
+                    placeholder="601156747399"
+                    required
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">WAHA session name used to send GAP lead messages.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">CC chat ID (optional)</label>
+                  <input
+                    value={gapLeadCcChatId}
+                    onChange={(e) => setGapLeadCcChatId(e.target.value)}
+                    placeholder="260635845763172@lid"
+                    className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Optional second copy to a group or @lid chat.</p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setGapLeadSettingsOpen(false)}
+                    className="rounded-xl px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={gapLeadSettingsSaving}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {gapLeadSettingsSaving ? 'Saving…' : 'Save settings'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
