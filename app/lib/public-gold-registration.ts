@@ -4,6 +4,7 @@ import path from 'path'
 import type { Browser, BrowserContext, LaunchOptions } from 'playwright-core'
 
 import { sendGapLeadWhatsAppImage, sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
+import { formatPhoneForDisplay } from '@/app/lib/phone-msisdn'
 
 /**
  * Hermetic browsers under node_modules (postinstall). Required on Vercel serverless — there is no
@@ -296,7 +297,7 @@ async function runRegistrationAttempt(
         caption: `New GAP registration received: 
         \nName: ${input.fullName}
         \nIC: ${input.icNumber}
-        \nPhone: ${input.phone}
+        \nPhone: ${formatPhoneForDisplay(input.phone)}
         \nLocation: ${input.location ?? ''}
         \nEmail: ${input.email}
         `.trim(),

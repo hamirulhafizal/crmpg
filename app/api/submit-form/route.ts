@@ -4,15 +4,14 @@ import nodemailer from 'nodemailer'
 import { sendGapLeadWhatsAppMessages } from '@/app/lib/gap-lead-whatsapp'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import { loadActiveGoogleAdsDealers } from '@/app/lib/google-ads/active-dealers-for-leads'
+import { normalizePhoneToMsisdn, formatPhoneForDisplay } from '@/app/lib/phone-msisdn'
 import { registerCustomerAtPublicGold } from '@/app/lib/public-gold-registration'
 
 function normalizePhoneForMatch(value: unknown): string {
   if (value == null) return ''
-  let digits = String(value).replace(/\D/g, '')
+  const digits = String(value).replace(/\D/g, '')
   if (!digits) return ''
-  if (digits.startsWith('0')) digits = `60${digits.slice(1)}`
-  if (!digits.startsWith('60')) digits = `60${digits}`
-  return digits
+  return normalizePhoneToMsisdn(digits)
 }
 
 function normalizeEmailForMatch(value: unknown): string {
@@ -24,14 +23,14 @@ function buildLeadBody(formData: Record<string, unknown>, dealerEmail: string): 
   const fullName = String(formData.fullName ?? '')
   const email = String(formData.email ?? '')
   const ic = String(formData.icNumber ?? '')
-  const phone = String(formData.phone ?? '')
+  const phone = formatPhoneForDisplay(formData.phone)
   const location = String(formData.location ?? '')
   return `New GAP registration received:
 
 Name: ${fullName}
 Email: ${email}
 IC: ${ic}
-Phone: +6${phone}
+Phone: ${phone}
 
 Customer form --------------------------------->
 Location: ${location}
