@@ -92,6 +92,7 @@ export async function PATCH(request: Request, context: Params) {
     }
 
     if (Object.keys(patch).length > 0) {
+      patch.uses_platform_defaults = false
       const { error: updErr } = await supabase.from('lucky_draw_pages').update(patch).eq('id', id)
       if (updErr) {
         if (updErr.code === '23505') {
@@ -103,6 +104,10 @@ export async function PATCH(request: Request, context: Params) {
 
     if ('questions' in body) {
       const questions = normalizeQuestions(body.questions)
+      await supabase
+        .from('lucky_draw_pages')
+        .update({ uses_platform_defaults: false })
+        .eq('id', id)
       await supabase.from('lucky_draw_questions').delete().eq('page_id', id)
       if (questions.length > 0) {
         const rows = questions.map((q) => ({

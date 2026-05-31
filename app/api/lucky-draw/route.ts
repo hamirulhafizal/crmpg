@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import { ensureDealerSettings } from '@/app/lib/lucky-draw/dealer-settings'
+import { ensureDealerDefaultLuckyDrawPage } from '@/app/lib/lucky-draw/platform-defaults'
 import { normalizeQuestions } from '@/app/lib/lucky-draw/questions'
 import { isValidSlug, normalizeSlug } from '@/app/lib/lucky-draw/slug'
 import { normalizePrizes } from '@/app/lib/lucky-draw/prizes'
@@ -17,6 +18,7 @@ export async function GET() {
     }
 
     const settings = await ensureDealerSettings(supabase, user.id)
+    await ensureDealerDefaultLuckyDrawPage(supabase, user.id)
 
     const { data: pages, error } = await supabase
       .from('lucky_draw_pages')

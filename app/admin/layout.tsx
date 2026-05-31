@@ -52,6 +52,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               Workflow nodes
             </Link>
             <Link
+              href="/admin/lucky-draw-defaults"
+              className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            >
+              Lucky draw defaults
+            </Link>
+            <Link
               href="/admin/google-ads"
               className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >

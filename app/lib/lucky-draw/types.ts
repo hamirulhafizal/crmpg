@@ -27,6 +27,7 @@ export type LuckyDrawPage = {
   target_audience: string | null
   created_at: string
   updated_at: string
+  uses_platform_defaults?: boolean
   questions?: LuckyDrawQuestion[]
   entry_count?: number
 }

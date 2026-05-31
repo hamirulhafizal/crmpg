@@ -339,14 +339,21 @@ export default function LuckyDrawDashboardPage() {
             <p className="px-6 py-8 text-sm text-slate-500">Loading…</p>
           ) : pages.length === 0 ? (
             <p className="px-6 py-8 text-sm text-slate-500">
-              No lucky draw pages yet. Create your first one.
+              No lucky draw pages yet. Refresh to load your default page, or create a new one.
             </p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {pages.map((p) => (
                 <li key={p.id} className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-semibold text-slate-900">{p.title}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-900">{p.title}</p>
+                      {p.uses_platform_defaults && (
+                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-200">
+                          Platform default
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-slate-500">
                       /{dealerSlug}/{p.page_slug} · {p.status} · {p.entry_count ?? 0} entries
                     </p>
