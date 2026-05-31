@@ -3,10 +3,88 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
 import { isProfileComplete, resolveProfilePhone } from '@/app/lib/profile/completion'
+
+type ServiceTileProps = {
+  href: string
+  title: string
+  description: string
+  borderClassName?: string
+  gradientClassName?: string
+  iconClassName: string
+  icon: ReactNode
+}
+
+function ServiceTile({
+  href,
+  title,
+  description,
+  borderClassName = 'border-slate-200',
+  gradientClassName = 'from-slate-50 to-white',
+  iconClassName,
+  icon,
+}: ServiceTileProps) {
+  return (
+    <Link
+      href={href}
+      className={`group rounded-2xl border ${borderClassName} bg-gradient-to-b ${gradientClassName} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]`}
+    >
+      <div
+        className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full text-white shadow-sm ${iconClassName}`}
+      >
+        {icon}
+      </div>
+      <h4 className="text-sm font-semibold leading-tight text-slate-900">{title}</h4>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+    </Link>
+  )
+}
+
+function ServiceTileSkeleton() {
+  return (
+    <div aria-hidden="true" className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
+      <div className="mb-3 h-12 w-12 animate-pulse rounded-full bg-violet-200/70" />
+      <div className="h-3 w-24 animate-pulse rounded bg-violet-200/70" />
+      <div className="mt-2 h-2.5 w-20 animate-pulse rounded bg-violet-100/90" />
+    </div>
+  )
+}
+
+function WahaStatusBadge({
+  checking,
+  connected,
+}: {
+  checking: boolean
+  connected: boolean
+}) {
+  if (checking) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
+        Checking WAHA...
+      </span>
+    )
+  }
+
+  if (connected) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        WAHA connected
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+      <span className="h-2 w-2 rounded-full bg-amber-500" />
+      WAHA not connected
+    </span>
+  )
+}
 
 export default function DashboardPage() {
   const { user, loading, signOut, refreshUser } = useAuth()
@@ -414,223 +492,230 @@ export default function DashboardPage() {
           <p className="text-slate-600">You&apos;re successfully signed in to your account.</p>
         </div>
 
-        {/* Tools Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 border border-slate-200/50">
+        {/* Admin tools — only for platform admins */}
+        {!checkingAdmin && isAdmin && (
+          <div className="rounded-2xl border border-slate-300/80 bg-white p-6 shadow-xl md:p-8">
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold text-slate-900">Admin</h3>
+              <p className="mt-1 text-xs text-slate-500">Platform management tools</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <ServiceTile
+                href="/admin/settings"
+                title="Admin Settings"
+                description="Web app settings"
+                iconClassName="bg-slate-900/90"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                }
+              />
+
+              <ServiceTile
+                href="/admin/workflow-nodes"
+                title="Workflow nodes"
+                description="Campaign builder palette"
+                gradientClassName="from-violet-50/80 to-white"
+                iconClassName="bg-violet-600"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+                  </svg>
+                }
+              />
+
+              <ServiceTile
+                href="/admin/lucky-draw-defaults"
+                title="Lucky draw defaults"
+                description="Platform draw template"
+                borderClassName="border-amber-200"
+                gradientClassName="from-amber-50/80 to-white"
+                iconClassName="bg-amber-500"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+                    />
+                  </svg>
+                }
+              />
+
+              <ServiceTile
+                href="/admin/google-ads"
+                title="Admin Google Ads"
+                description="Campaign management"
+                iconClassName="bg-slate-900/90"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                  </svg>
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Dealer / user tools */}
+        <div className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl md:p-8">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-semibold text-slate-900">All Services</h3>
-              <p className="text-xs text-slate-500 mt-1">Quick access tools</p>
+              <p className="mt-1 text-xs text-slate-500">Quick access tools</p>
             </div>
-            {checkingWahaSession ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-                <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
-                Checking WAHA...
-              </span>
-            ) : hasActiveWahaSession ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                WAHA connected
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-                <span className="h-2 w-2 rounded-full bg-amber-500" />
-                WAHA not connected
-              </span>
-            )}
+            <WahaStatusBadge checking={checkingWahaSession} connected={hasActiveWahaSession} />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-            {!checkingAdmin && isAdmin && (
-              <>
-                <Link
-                  href="/admin/settings"
-                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-                >
-                  <div className="h-12 w-12 rounded-full bg-slate-900/90 text-white flex items-center justify-center mb-3 shadow-sm">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-900 leading-tight">Admin Settings</h4>
-                  <p className="text-xs text-slate-500 mt-1">Web app settings</p>
-                </Link>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {!checkingGoogleAds && googleAdsEnrolled && (
+              <ServiceTile
+                href="/google-ads"
+                title="Google Ads"
+                description="Subscription"
+                borderClassName="border-amber-200"
+                gradientClassName="from-amber-50 to-white"
+                iconClassName="bg-amber-500"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                }
+              />
+            )}
 
-                <Link
-                  href="/admin/workflow-nodes"
-                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-violet-50/80 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-                >
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-violet-600 text-white shadow-sm">
+            <ServiceTile
+              href="/customers"
+              title="Customers"
+              description="Customer management"
+              borderClassName="border-emerald-200"
+              gradientClassName="from-emerald-50 to-white"
+              iconClassName="bg-emerald-500"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+              }
+            />
+
+            <ServiceTile
+              href="/waha-integration"
+              title="WAHA"
+              description="WhatsApp integration"
+              borderClassName="border-teal-200"
+              gradientClassName="from-teal-50 to-white"
+              iconClassName="bg-teal-500"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              }
+            />
+
+            {checkingWahaSession && <ServiceTileSkeleton />}
+
+            {!checkingWahaSession && hasActiveWahaSession && (
+              <>
+                <ServiceTile
+                  href="/dashboard/campaigns"
+                  title="Workflows"
+                  description="Multi-step Automation"
+                  borderClassName="border-rose-200"
+                  gradientClassName="from-rose-50 to-white"
+                  iconClassName="bg-rose-500"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <circle cx="5.5" cy="5.5" r="2" strokeWidth={1.75} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7.5 5.5h6.5c.9 0 1.6.7 1.6 1.6V8.5" />
+                      <rect x="13" y="3" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 5.5H8.2c-.9 0-1.6.7-1.6 1.6v2.4" />
+                      <rect x="3" y="10" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 12.5h4.3c.9 0 1.6.7 1.6 1.6v1.4" />
+                      <rect x="14" y="15" width="7" height="5" rx="1.25" strokeWidth={1.75} />
+                      <circle cx="19.5" cy="19.5" r="2.25" strokeWidth={1.75} />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M18.6 19.5l.65.65 1.5-1.5" />
+                    </svg>
+                  }
+                />
+
+                <ServiceTile
+                  href="/automated-messages"
+                  title="Automated Messages"
+                  description="WAHA templates"
+                  borderClassName="border-violet-200"
+                  gradientClassName="from-violet-50 to-white"
+                  iconClassName="bg-violet-500"
+                  icon={
                     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M4 6h16M4 12h8m-8 6h16"
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                       />
                     </svg>
-                  </div>
-                  <h4 className="text-sm font-semibold leading-tight text-slate-900">Workflow nodes</h4>
-                  <p className="mt-1 text-xs text-slate-500">Campaign builder palette</p>
-                </Link>
-
-                <Link
-                  href="/admin/google-ads"
-                  className="group rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-                >
-                  <div className="h-12 w-12 rounded-full bg-slate-900/90 text-white flex items-center justify-center mb-3 shadow-sm">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                    </svg>
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-900 leading-tight">Admin Google Ads</h4>
-                  <p className="text-xs text-slate-500 mt-1">Campaign management</p>
-                </Link>
+                  }
+                />
               </>
             )}
 
-            {!checkingGoogleAds && googleAdsEnrolled && (
-              <Link
-                href="/google-ads"
-                className="group rounded-2xl border border-amber-200 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-              >
-                <div className="h-12 w-12 rounded-full bg-amber-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Google Ads</h4>
-                <p className="text-xs text-slate-500 mt-1">Subscription</p>
-              </Link>
-            )}
-
-            <Link
-              href="/customers"
-              className="group rounded-2xl border border-emerald-200 bg-gradient-to-b from-emerald-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-            >
-              <div className="h-12 w-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h4 className="text-sm font-semibold text-slate-900 leading-tight">Customers</h4>
-              <p className="text-xs text-slate-500 mt-1">Customer management</p>
-            </Link>
-
-            <Link
-              href="/waha-integration"
-              className="group rounded-2xl border border-teal-200 bg-gradient-to-b from-teal-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-            >
-              <div className="h-12 w-12 rounded-full bg-teal-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h4 className="text-sm font-semibold text-slate-900 leading-tight">WAHA</h4>
-              <p className="text-xs text-slate-500 mt-1">WhatsApp integration</p>
-            </Link>
-
-            {checkingWahaSession && (
-              <div
-                aria-hidden="true"
-                className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4"
-              >
-                <div className="h-12 w-12 rounded-full bg-violet-200/70 animate-pulse mb-3" />
-                <div className="h-3 w-24 rounded bg-violet-200/70 animate-pulse" />
-                <div className="mt-2 h-2.5 w-20 rounded bg-violet-100/90 animate-pulse" />
-              </div>
-            )}
-
-            {!checkingWahaSession && hasActiveWahaSession && (
-              <Link
-                href="/dashboard/campaigns"
-                className="group rounded-2xl border border-rose-200 bg-gradient-to-b from-rose-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-              >
-                <div className="h-12 w-12 rounded-full bg-rose-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    aria-hidden
-                  >
-                    <circle cx="5.5" cy="5.5" r="2" strokeWidth={1.75} />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.75}
-                      d="M7.5 5.5h6.5c.9 0 1.6.7 1.6 1.6V8.5"
-                    />
-                    <rect x="13" y="3" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.75}
-                      d="M13 5.5H8.2c-.9 0-1.6.7-1.6 1.6v2.4"
-                    />
-                    <rect x="3" y="10" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.75}
-                      d="M10 12.5h4.3c.9 0 1.6.7 1.6 1.6v1.4"
-                    />
-                    <rect x="14" y="15" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                    <circle cx="19.5" cy="19.5" r="2.25" strokeWidth={1.75} />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.75}
-                      d="M18.6 19.5l.65.65 1.5-1.5"
-                    />
-                  </svg>
-                </div>
-                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Workflows</h4>
-                <p className="text-xs text-slate-500 mt-1">Multi-step Automation</p>
-              </Link>
-            )}
-
-            {!checkingWahaSession && hasActiveWahaSession && (
-              <Link
-                href="/automated-messages"
-                className="group rounded-2xl border border-violet-200 bg-gradient-to-b from-violet-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-              >
-                <div className="h-12 w-12 rounded-full bg-violet-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </div>
-                <h4 className="text-sm font-semibold text-slate-900 leading-tight">Automated Messages</h4>
-                <p className="text-xs text-slate-500 mt-1">WAHA templates</p>
-              </Link>
-            )}
-
-            <Link
+            <ServiceTile
               href="/dashboard/lucky-draw"
-              className="group rounded-2xl border border-amber-200 bg-gradient-to-b from-amber-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-            >
-              <div className="h-12 w-12 rounded-full bg-amber-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+              title="Lucky Draw"
+              description="Public draw pages"
+              borderClassName="border-amber-200"
+              gradientClassName="from-amber-50 to-white"
+              iconClassName="bg-amber-500"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+                  />
                 </svg>
-              </div>
-              <h4 className="text-sm font-semibold text-slate-900 leading-tight">Lucky Draw</h4>
-              <p className="text-xs text-slate-500 mt-1">Public draw pages</p>
-            </Link>
+              }
+            />
 
-            <Link
+            <ServiceTile
               href="/extension-download"
-              className="group rounded-2xl border border-orange-200 bg-gradient-to-b from-orange-50 to-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]"
-            >
-              <div className="h-12 w-12 rounded-full bg-orange-500 text-white flex items-center justify-center mb-3 shadow-sm">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+              title="Chrome Extension"
+              description="Download tools"
+              borderClassName="border-orange-200"
+              gradientClassName="from-orange-50 to-white"
+              iconClassName="bg-orange-500"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
+                  />
                 </svg>
-              </div>
-              <h4 className="text-sm font-semibold text-slate-900 leading-tight">Chrome Extension</h4>
-              <p className="text-xs text-slate-500 mt-1">Download tools</p>
-            </Link>
+              }
+            />
           </div>
         </div>
 
