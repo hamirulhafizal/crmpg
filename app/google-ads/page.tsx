@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { canRequestRenewal, effectivePackageStatus } from '@/app/lib/google-ads/billing'
+import { GoogleAdsMyLeadsTab } from '@/app/google-ads/_components/GoogleAdsMyLeadsTab'
 
 type PackageRow = {
   id: string
@@ -59,6 +60,7 @@ function fmtMoney(amount: number, currency: string) {
 }
 
 export default function GoogleAdsParticipantPage() {
+  const [tab, setTab] = useState<'package' | 'leads'>('package')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<MeResponse | null>(null)
@@ -249,7 +251,31 @@ export default function GoogleAdsParticipantPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      
+        <div className="mb-6 flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setTab('package')}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === 'package' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Your package
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('leads')}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+              tab === 'leads' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Your lead
+          </button>
+        </div>
+
+        {tab === 'leads' && <GoogleAdsMyLeadsTab />}
+
+        {tab === 'package' && (
+          <>
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="text-2xl font-semibold text-slate-900">Your package</h1>
           <p className="mt-1 text-sm text-slate-600">
@@ -462,6 +488,8 @@ export default function GoogleAdsParticipantPage() {
           <p className="mt-6 text-center text-sm text-slate-500">
             pac changes are available in the last 7 days before expiry, or after your period ends.
           </p>
+        )}
+          </>
         )}
       </main>
     </div>
