@@ -25,6 +25,8 @@ export type LeadRotationAgent = {
   image_url: string
   lead_email: boolean
   no_tel?: string
+  /** ISO timestamp used for fair queue order (earliest payment first). */
+  queue_sort_at: string
 }
 
 /** True when subscription is paid up for “now” (monthly or yearly window). */
@@ -83,9 +85,62 @@ async function authEmailsAndPhones(
   return map
 }
 
+/** Participants without a paid row sort after everyone with confirmed payment. */
+const NO_PAYMENT_SORT_BASE_MS = Date.UTC(2099, 0, 1)
+
+/** Earliest successful payment per participant (Bayarcash paid row). */
+async function loadFirstPaidAtByParticipantId(
+  admin: SupabaseClient,
+  participantIds: string[]
+): Promise<Map<string, string>> {
+  if (participantIds.length === 0) return new Map()
+
+  const { data, error } = await admin
+    .from('google_ads_payments')
+    .select('participant_id, created_at, updated_at')
+    .in('participant_id', participantIds)
+    .eq('status', 'paid')
+
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, string>()
+  for (const row of data ?? []) {
+    const iso = (row.updated_at as string | null) || (row.created_at as string | null)
+    if (!iso) continue
+    const prev = map.get(row.participant_id as string)
+    if (!prev || iso < prev) map.set(row.participant_id as string, iso)
+  }
+  return map
+}
+
+/** Queue position: earliest payment first; late payers join at the back. */
+function rotationQueueSortKey(row: ParticipantRow, firstPaidAt: Map<string, string>): number {
+  const paidIso = firstPaidAt.get(row.id)
+  if (paidIso) {
+    const ms = new Date(paidIso).getTime()
+    if (Number.isFinite(ms)) return ms
+  }
+  const sub = normalizeSub(row)
+  if (sub?.current_period_start) {
+    const ms = new Date(sub.current_period_start).getTime()
+    if (Number.isFinite(ms)) return NO_PAYMENT_SORT_BASE_MS + ms
+  }
+  const ms = new Date(row.created_at).getTime()
+  return Number.isFinite(ms) ? NO_PAYMENT_SORT_BASE_MS + ms : Number.MAX_SAFE_INTEGER
+}
+
+function rotationQueueSortIso(row: ParticipantRow, firstPaidAt: Map<string, string>): string {
+  const paidIso = firstPaidAt.get(row.id)
+  if (paidIso) return paidIso
+  const sub = normalizeSub(row)
+  if (sub?.current_period_start) return sub.current_period_start
+  return row.created_at
+}
+
 /**
  * Active Google Ads dealers: enrolled, subscription `active`, and current time inside paid period
  * (monthly or yearly package — enforced via period_start / period_end).
+ * Rotation queue order: earliest paid payment first (late payers are last in line).
  */
 export async function loadActiveGoogleAdsDealers(
   admin: SupabaseClient
@@ -107,7 +162,6 @@ export async function loadActiveGoogleAdsDealers(
       )
     `
     )
-    .order('created_at', { ascending: true })
 
   if (error) throw new Error(error.message)
 
@@ -121,6 +175,14 @@ export async function loadActiveGoogleAdsDealers(
   if (inPeriod.length === 0) {
     return { dealers: [] }
   }
+
+  const firstPaidAt = await loadFirstPaidAtByParticipantId(
+    admin,
+    inPeriod.map((r) => r.id)
+  )
+  inPeriod.sort(
+    (a, b) => rotationQueueSortKey(a, firstPaidAt) - rotationQueueSortKey(b, firstPaidAt)
+  )
 
   const userIds = inPeriod.map((r) => r.user_id)
   const authMap = await authEmailsAndPhones(admin, userIds)
@@ -169,6 +231,7 @@ export async function loadActiveGoogleAdsDealers(
       image_url: avatar,
       lead_email: Boolean(r.lead_email),
       no_tel: dealerPhone || auth.phone,
+      queue_sort_at: rotationQueueSortIso(r, firstPaidAt),
     })
   }
 
@@ -188,6 +251,7 @@ export async function getActiveGoogleAdsAgentsForApi(): Promise<
     customers: number
     no_tel: string
     lead_email: boolean
+    queue_sort_at: string
   }>
 > {
   const admin = createServiceRoleClient()
@@ -203,6 +267,7 @@ export async function getActiveGoogleAdsAgentsForApi(): Promise<
     customers: 0,
     no_tel: d.no_tel || '',
     lead_email: d.lead_email,
+    queue_sort_at: d.queue_sort_at,
   }))
 }
 

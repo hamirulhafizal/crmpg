@@ -241,7 +241,7 @@ export function GoogleAdsRotationPanel() {
           </ul>
         )}
         <p className="mt-3 text-[11px] text-slate-400">
-          Updates every {POLL_MS / 1000}s · Order follows enrollment date (first enrolled = first in line)
+          Updates every {POLL_MS / 1000}s · Order follows first payment date (earliest paid = first in line)
         </p>
       </div>
     </section>

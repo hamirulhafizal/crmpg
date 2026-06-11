@@ -119,6 +119,15 @@ function toDatetimeLocalValue(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function participantPeriodEndMs(row: ParticipantRow): number | null {
+  const end = normalizeSubscription(row)?.current_period_end
+  if (!end) return null
+  const ms = new Date(end).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+type PeriodEndSort = 'asc' | 'desc'
+
 export default function AdminGoogleAdsPage() {
   const [tab, setTab] = useState<'participants' | 'packages' | 'analytics'>('participants')
   const [participantView, setParticipantView] = useState<'cards' | 'table'>('table')
@@ -127,6 +136,7 @@ export default function AdminGoogleAdsPage() {
   const [participantStatusFilter, setParticipantStatusFilter] = useState<
     'all' | 'active_package' | 'pending_payment' | 'expired' | 'cancelled' | 'awaiting_package'
   >('all')
+  const [periodEndSort, setPeriodEndSort] = useState<PeriodEndSort>('asc')
   const FILTER_STORAGE_KEY = 'admin_google_ads_participant_filters_v1'
 
   const [packages, setPackages] = useState<PackageRow[]>([])
@@ -323,6 +333,20 @@ export default function AdminGoogleAdsPage() {
       )
     })
   }, [participants, participantSearch, participantPackageFilter, participantStatusFilter])
+
+  const sortedFilteredParticipants = useMemo(() => {
+    const list = [...filteredParticipants]
+    list.sort((a, b) => {
+      const aMs = participantPeriodEndMs(a)
+      const bMs = participantPeriodEndMs(b)
+      if (aMs == null && bMs == null) return 0
+      if (aMs == null) return 1
+      if (bMs == null) return -1
+      const cmp = aMs - bMs
+      return periodEndSort === 'asc' ? cmp : -cmp
+    })
+    return list
+  }, [filteredParticipants, periodEndSort])
 
   const budgetPlanner = useMemo(() => {
     const budget = Math.max(0, Number(plannerBudgetMonthly) || 0)
@@ -1353,13 +1377,25 @@ export default function AdminGoogleAdsPage() {
                     <th className="px-4 py-3">Participant</th>
                     <th className="px-4 py-3">package</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Period ends</th>
+                    <th className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setPeriodEndSort((s) => (s === 'asc' ? 'desc' : 'asc'))}
+                        className="inline-flex items-center gap-1.5 rounded-md transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                        aria-sort={periodEndSort === 'asc' ? 'ascending' : 'descending'}
+                      >
+                        Period ends
+                        <span className="text-slate-400" aria-hidden>
+                          {periodEndSort === 'asc' ? '↑' : '↓'}
+                        </span>
+                      </button>
+                    </th>
                     <th className="px-4 py-3">Notes</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredParticipants.map((p) => {
+                  {sortedFilteredParticipants.map((p) => {
                     const sub = normalizeSubscription(p)
                     const pkg = sub?.package
                     const pkgOne = Array.isArray(pkg) ? pkg[0] : pkg

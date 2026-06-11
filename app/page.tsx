@@ -51,6 +51,15 @@ interface Agent {
   email: string;
   lead_email: boolean;
   no_tel?: string;
+  /** Earliest payment (or fallback) — used for fair queue display order */
+  queue_sort_at?: string;
+}
+
+/** Same order as Google Ads lead rotation: earliest payment first. */
+function sortAgentsByQueue(agents: Agent[]): Agent[] {
+  return [...agents].sort((a, b) =>
+    (a.queue_sort_at ?? '').localeCompare(b.queue_sort_at ?? '')
+  );
 }
 
 interface FormData {
@@ -178,7 +187,7 @@ export default function NewPage() {
           const data = await response.json();
           //console.log('🔄 All agents fetched:--->', data);
 
-          setAllAgents(data);
+          setAllAgents(sortAgentsByQueue(data));
 
           if (data.every((agent: any) => agent.lead_email === true)) {
             console.log('🔄 All agents have lead_email: true, resetting all dealers lead_email to false');
@@ -195,7 +204,7 @@ export default function NewPage() {
     fetchAllAgents();
   }, []);
 
-  // Filter agents based on search term
+  // Filter agents based on search term (preserve payment queue order)
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredAgents(allAgents);
@@ -206,7 +215,7 @@ export default function NewPage() {
         agent.pgcode.toLowerCase().includes(q) ||
         (agent.username_pgo && agent.username_pgo.toLowerCase().includes(q))
       );
-      setFilteredAgents(filtered);
+      setFilteredAgents(sortAgentsByQueue(filtered));
     }
   }, [searchTerm, allAgents]);
 
@@ -275,7 +284,7 @@ export default function NewPage() {
           console.log('🔄 Fresh data fetched:--->', freshData);
 
           // Update local state with fresh data
-          setAllAgents(freshData);
+          setAllAgents(sortAgentsByQueue(freshData));
           setFilteredAgents(freshData);
 
           // Find available dealer from fresh data
@@ -541,7 +550,7 @@ export default function NewPage() {
         const response = await fetch('/api/get-all-agents');
         if (response.ok) {
           const data = await response.json();
-          setAllAgents(data);
+          setAllAgents(sortAgentsByQueue(data));
           setFilteredAgents(data);
           console.log('✅ Agents refreshed after setting all to false:', data);
 
@@ -603,7 +612,7 @@ export default function NewPage() {
         const refreshResponse = await fetch('/api/get-all-agents');
         if (refreshResponse.ok) {
           const data = await refreshResponse.json();
-          setAllAgents(data);
+          setAllAgents(sortAgentsByQueue(data));
           setFilteredAgents(data);
           console.log('✅ Agents refreshed after bulk update:', data);
 
@@ -1319,7 +1328,7 @@ export default function NewPage() {
                       const response = await fetch('/api/get-all-agents');
                       if (response.ok) {
                         const data = await response.json();
-                        setAllAgents(data);
+                        setAllAgents(sortAgentsByQueue(data));
                         setFilteredAgents(data);
                         console.log('✅ Agents refreshed after manual reset:', data);
                       }
