@@ -1,4 +1,5 @@
-import type { CampaignRow } from '@/app/lib/campaigns/types'
+import { bypassSequentialCustomerQueueForAudience } from '@/app/lib/campaigns/enrollment-lifecycle'
+import type { CampaignAudienceFilters, CampaignRow } from '@/app/lib/campaigns/types'
 import type { CampaignWorkflowPlan } from '@/app/lib/workflows/plan'
 import type { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
@@ -28,7 +29,11 @@ export function loopBatchSizeFromPlan(plan: CampaignWorkflowPlan): number | null
 }
 
 /** Loop batch size 1 → one customer completes the full message flow before the next starts. */
-export function usesSequentialCustomerQueue(plan: CampaignWorkflowPlan): boolean {
+export function usesSequentialCustomerQueue(
+  plan: CampaignWorkflowPlan,
+  audienceFilters?: CampaignAudienceFilters
+): boolean {
+  if (audienceFilters && bypassSequentialCustomerQueueForAudience(audienceFilters)) return false
   return loopBatchSizeFromPlan(plan) === 1
 }
 
@@ -195,7 +200,8 @@ export function filterDueRowsForSequentialQueue<
   const kept: T[] = []
   for (const [campaignId, group] of byCampaign) {
     const plan = plansByCampaignId.get(campaignId)
-    if (!plan || !usesSequentialCustomerQueue(plan)) {
+    const audienceFilters = plan?.compiled.audience_filters
+    if (!plan || !usesSequentialCustomerQueue(plan, audienceFilters)) {
       kept.push(...group)
       continue
     }

@@ -10,6 +10,11 @@ import {
   usesSequentialCustomerQueue,
   type CustomerQueueMeta,
 } from '@/app/lib/campaigns/customer-queue'
+import {
+  bypassSequentialCustomerQueueForAudience,
+  shouldReenrollBirthdayEnrollment,
+  type ExistingEnrollmentRow,
+} from '@/app/lib/campaigns/enrollment-lifecycle'
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import {
   CUSTOMER_EMBED_FOR_AUDIENCE_MATCH,
@@ -84,6 +89,48 @@ const CUSTOMER_PAGE = 250
 const SEND_BATCH = 25
 const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
+const STALE_PENDING_LOG_MS = 15 * 60 * 1000
+
+async function tryAcquireCampaignProcessorLock(
+  supabase: ReturnType<typeof createServiceRoleClient>
+): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc('try_campaign_processor_lock')
+  if (error) {
+    console.warn('[campaign-cron] processor lock unavailable:', error.message)
+    return null
+  }
+  return data === true
+}
+
+async function releaseCampaignProcessorLock(supabase: ReturnType<typeof createServiceRoleClient>): Promise<void> {
+  const { error } = await supabase.rpc('release_campaign_processor_lock')
+  if (error) {
+    console.warn('[campaign-cron] processor lock release failed:', error.message)
+  }
+}
+
+async function clearStalePendingCampaignLogs(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  debugLines?: string[]
+): Promise<void> {
+  const cutoff = new Date(Date.now() - STALE_PENDING_LOG_MS).toISOString()
+  const { error } = await supabase
+    .from('campaign_message_logs')
+    .update({
+      send_status: 'failed',
+      error_message: 'Stale pending log cleared for retry',
+    })
+    .eq('send_status', 'pending')
+    .lt('created_at', cutoff)
+
+  if (error) {
+    cronLog(debugLines, `stale pending cleanup error: ${error.message}`)
+  }
+}
+
+function isDuplicateStepLogError(err: { code?: string } | null | undefined): boolean {
+  return err?.code === '23505'
+}
 
 function campaignInWindow(c: CampaignRow, now: Date): boolean {
   if (c.start_at && new Date(c.start_at) > now) return false
@@ -166,9 +213,10 @@ async function promoteNextCustomerInQueue(
   plan: CampaignWorkflowPlan,
   completedStepOrder: number,
   afterAt: string | Date,
-  debugLines?: string[]
+  debugLines?: string[],
+  audienceFilters?: CampaignAudienceFilters
 ): Promise<void> {
-  if (!usesSequentialCustomerQueue(plan)) return
+  if (!usesSequentialCustomerQueue(plan, audienceFilters)) return
 
   const lastNodeId = nodeIdForStep(plan, completedStepOrder)
   const waitSec = waitSecondsBeforeNextCustomer(plan.definition, lastNodeId)
@@ -264,14 +312,15 @@ async function advanceEnrollmentPastAbandonedStep(params: {
     level: 'info',
   })
 
-  if (!following && usesSequentialCustomerQueue(plan)) {
+  if (!following && usesSequentialCustomerQueue(plan, plan.compiled.audience_filters)) {
     await promoteNextCustomerInQueue(
       supabase,
       campaign.id,
       plan,
       failedStep.step_order,
       new Date(),
-      debugLines
+      debugLines,
+      plan.compiled.audience_filters
     )
   }
 }
@@ -290,6 +339,144 @@ async function countSentToday(
 
   if (error) return 0
   return count ?? 0
+}
+
+async function buildEnrollmentQueueState(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  campaignId: string,
+  plan: CampaignWorkflowPlan,
+  filters: CampaignAudienceFilters,
+  enrollMoment: Date,
+  first: CampaignStepRow,
+  tz: string,
+  debugLines?: string[]
+): Promise<{ nextSendAt: string | null; queueMeta: CustomerQueueMeta }> {
+  let nextSend = computeSendAt(enrollMoment, first.delay_days, first.send_time, tz)
+  if (isScheduledSendTime(first.send_time) && nextSend.getTime() < enrollMoment.getTime()) {
+    nextSend = enrollMoment
+  }
+
+  let nextSendAt: string | null = nextSend.toISOString()
+  let queueMeta: CustomerQueueMeta = {
+    status: 'active',
+    enrolled_at: enrollMoment.toISOString(),
+  }
+
+  if (usesSequentialCustomerQueue(plan, filters)) {
+    const activeSlots = await countActiveQueueSlots(supabase, campaignId)
+    if (activeSlots > 0) {
+      const position = (await countWaitingEnrollments(supabase, campaignId)) + 1
+      queueMeta = {
+        status: 'waiting',
+        position,
+        enrolled_at: enrollMoment.toISOString(),
+      }
+      nextSendAt = null
+      cronLog(
+        debugLines,
+        `queue waiting campaign=${campaignId} position=${position} (active customer still in flow)`
+      )
+    }
+  }
+
+  return { nextSendAt, queueMeta }
+}
+
+async function resetBirthdayEnrollment(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  enrollment: ExistingEnrollmentRow,
+  campaign: CampaignRow,
+  plan: CampaignWorkflowPlan,
+  first: CampaignStepRow,
+  filters: CampaignAudienceFilters,
+  tz: string,
+  debugLines?: string[]
+): Promise<boolean> {
+  const enrollMoment = new Date()
+  const { nextSendAt, queueMeta } = await buildEnrollmentQueueState(
+    supabase,
+    campaign.id,
+    plan,
+    filters,
+    enrollMoment,
+    first,
+    tz,
+    debugLines
+  )
+  const baseMeta = metadataForNewEnrollment(plan) as Record<string, unknown>
+
+  const { error } = await supabase
+    .from('campaign_enrollments')
+    .update({
+      status: 'active',
+      last_step_sent: 0,
+      next_send_at: nextSendAt,
+      completed_at: null,
+      enrolled_at: enrollMoment.toISOString(),
+      metadata: metadataWithCustomerQueue(baseMeta, queueMeta),
+    })
+    .eq('id', enrollment.id)
+
+  if (error) {
+    cronLog(
+      debugLines,
+      `birthday re-enroll failed enrollment=${enrollment.id} customer=${enrollment.customer_id}: ${error.message}`
+    )
+    return false
+  }
+
+  cronLog(
+    debugLines,
+    `birthday re-enroll enrollment=${enrollment.id} customer=${enrollment.customer_id} prior_status=${enrollment.status}`
+  )
+  return true
+}
+
+/** Move birthday queue waiters to active when the audience runs in parallel (same-day birthdays). */
+async function activateParallelBirthdayQueueWaiters(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  campaignId: string,
+  filters: CampaignAudienceFilters,
+  debugLines?: string[]
+): Promise<number> {
+  if (!bypassSequentialCustomerQueueForAudience(filters)) return 0
+
+  const { data, error } = await supabase
+    .from('campaign_enrollments')
+    .select('id, metadata, enrolled_at')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'active')
+
+  if (error) {
+    cronLog(debugLines, `parallel birthday queue activation error campaign=${campaignId}: ${error.message}`)
+    return 0
+  }
+
+  let activated = 0
+  const nowIso = new Date().toISOString()
+  for (const row of data ?? []) {
+    if (!isQueueWaiting(row.metadata)) continue
+    const { error: uErr } = await supabase
+      .from('campaign_enrollments')
+      .update({
+        next_send_at: nowIso,
+        metadata: metadataWithCustomerQueue((row.metadata ?? {}) as Record<string, unknown>, {
+          status: 'active',
+          enrolled_at: String(row.enrolled_at ?? nowIso),
+        }),
+      })
+      .eq('id', row.id)
+
+    if (!uErr) {
+      activated++
+      cronLog(debugLines, `parallel birthday queue activated enrollment=${row.id}`)
+    }
+  }
+
+  if (activated > 0) {
+    cronLog(debugLines, `parallel birthday queue campaign=${campaignId} activated=${activated}`)
+  }
+  return activated
 }
 
 async function syncEnrollmentsForCampaign(
@@ -324,10 +511,14 @@ async function syncEnrollmentsForCampaign(
 
   const { data: existing } = await supabase
     .from('campaign_enrollments')
-    .select('customer_id')
+    .select('id, customer_id, status, completed_at, metadata, enrolled_at')
     .eq('campaign_id', campaign.id)
 
-  const enrolled = new Set((existing ?? []).map((r) => r.customer_id))
+  const enrollmentByCustomer = new Map<string, ExistingEnrollmentRow>()
+  for (const row of existing ?? []) {
+    enrollmentByCustomer.set(row.customer_id, row as ExistingEnrollmentRow)
+  }
+  const enrolled = new Set(enrollmentByCustomer.keys())
   const audienceId = plan.audienceNodeId ?? WORKFLOW_NODE.audience
   const enrollId = plan.enrollNodeId ?? WORKFLOW_NODE.enroll
   onProgress?.({ type: 'node', nodeId: audienceId, state: 'active' })
@@ -344,6 +535,7 @@ async function syncEnrollmentsForCampaign(
   let skipFilters = 0
   let insertFailed = 0
   let insertedHere = 0
+  let reenrolledHere = 0
 
   let offset = 0
   while (true) {
@@ -366,10 +558,6 @@ async function syncEnrollmentsForCampaign(
 
     for (const raw of rows) {
       const c = raw as unknown as CustomerForAudience
-      if (enrolled.has(c.id)) {
-        skipAlready++
-        continue
-      }
       if (!c.phone || !String(c.phone).trim()) {
         skipNoPhone++
         continue
@@ -379,36 +567,50 @@ async function syncEnrollmentsForCampaign(
         continue
       }
 
-      const enrollMoment = new Date()
-      let nextSend = computeSendAt(enrollMoment, first.delay_days, first.send_time, tz)
-      if (isScheduledSendTime(first.send_time) && nextSend.getTime() < enrollMoment.getTime()) {
-        nextSend = enrollMoment
+      if (enrolled.has(c.id)) {
+        const prior = enrollmentByCustomer.get(c.id)
+        if (prior && shouldReenrollBirthdayEnrollment(prior, filters)) {
+          const ok = await resetBirthdayEnrollment(
+            supabase,
+            prior,
+            campaign,
+            plan,
+            first,
+            filters,
+            tz,
+            debugLines
+          )
+          if (ok) {
+            summary.enrollments_inserted++
+            reenrolledHere++
+            const label = customerWorkflowLabel(c)
+            onProgress?.({ type: 'enrollment', customerId: c.id, label })
+            onProgress?.({ type: 'log', message: `Re-enrolled ${label} for birthday`, level: 'success' })
+          } else {
+            insertFailed++
+          }
+        } else {
+          skipAlready++
+        }
+        continue
       }
+
+      const enrollMoment = new Date()
+      const { nextSendAt, queueMeta } = await buildEnrollmentQueueState(
+        supabase,
+        campaign.id,
+        plan,
+        filters,
+        enrollMoment,
+        first,
+        tz,
+        debugLines
+      )
 
       const baseMeta = metadataForNewEnrollment(plan) as Record<string, unknown>
-      let nextSendAt: string | null = nextSend.toISOString()
-      let queueMeta: CustomerQueueMeta = {
-        status: 'active',
-        enrolled_at: enrollMoment.toISOString(),
-      }
 
-      if (usesSequentialCustomerQueue(plan)) {
-        const activeSlots = await countActiveQueueSlots(supabase, campaign.id)
-        if (activeSlots > 0) {
-          const position = (await countWaitingEnrollments(supabase, campaign.id)) + 1
-          queueMeta = {
-            status: 'waiting',
-            position,
-            enrolled_at: enrollMoment.toISOString(),
-          }
-          nextSendAt = null
-          cronLog(
-            debugLines,
-            `queue waiting customer=${c.id} campaign=${campaign.id} position=${position} (active customer still in flow)`
-          )
-        } else {
-          cronLog(debugLines, `queue active customer=${c.id} campaign=${campaign.id} (first in loop)`)
-        }
+      if (queueMeta.status === 'active') {
+        cronLog(debugLines, `queue active customer=${c.id} campaign=${campaign.id} (first in loop)`)
       }
 
       const { error: insErr } = await supabase.from('campaign_enrollments').insert({
@@ -440,7 +642,7 @@ async function syncEnrollmentsForCampaign(
 
   cronLog(
     debugLines,
-    `sync done campaign=${campaign.id} customers_scanned=${scanned} new_inserts_this_run=${insertedHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
+    `sync done campaign=${campaign.id} customers_scanned=${scanned} new_inserts_this_run=${insertedHere} re_enrolled=${reenrolledHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
   )
   onProgress?.({ type: 'node', nodeId: audienceId, state: 'complete' })
   onProgress?.({ type: 'node', nodeId: enrollId, state: 'complete' })
@@ -484,6 +686,14 @@ async function reconcileEnrollmentsToAudience(
       const custRaw = row.customer
       const customer = (Array.isArray(custRaw) ? custRaw[0] : custRaw) as CustomerForAudience | null
       if (!customer || customerMatchesFilters(customer, filters)) continue
+
+      if (filters.dob_is_today && isQueueWaiting(row.metadata)) {
+        cronLog(
+          debugLines,
+          `skip audience pause enrollment=${row.id}: birthday queue waiter (same-day flow)`
+        )
+        continue
+      }
 
       const { error: uErr } = await supabase
         .from('campaign_enrollments')
@@ -555,6 +765,7 @@ async function processDueEnrollmentRows(
     const rawCust = row.customer as CustomerForAudience | CustomerForAudience[] | null
     const customer = (Array.isArray(rawCust) ? rawCust[0] : rawCust) as CustomerForAudience | null
     const plan = plansByCampaignId.get(campaign?.id ?? '') ?? null
+    const audienceFilters = plan?.compiled.audience_filters
     if (!campaign || campaign.status !== 'active' || !campaignInWindow(campaign, now) || !customer?.phone || !plan) {
       cronLog(
         debugLines,
@@ -609,14 +820,15 @@ async function processDueEnrollmentRows(
           next_send_at: null,
         })
         .eq('id', row.id)
-      if (usesSequentialCustomerQueue(plan)) {
+      if (usesSequentialCustomerQueue(plan, audienceFilters)) {
         await promoteNextCustomerInQueue(
           supabase,
           campaign.id,
           plan,
           row.last_step_sent,
           new Date(),
-          debugLines
+          debugLines,
+          audienceFilters
         )
       }
       continue
@@ -682,6 +894,19 @@ async function processDueEnrollmentRows(
       .maybeSingle()
 
     if (logErr || !logInsert?.id) {
+      if (isDuplicateStepLogError(logErr)) {
+        cronLog(
+          debugLines,
+          `skip enrollment=${row.id}: step ${nextStep.step_order} already claimed by another worker`
+        )
+        onProgress?.({
+          type: 'log',
+          message: `Skipped ${label} step ${nextStep.step_order} — already sending`,
+          level: 'info',
+        })
+        onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'idle' })
+        continue
+      }
       summary.messages_failed++
       cronLog(debugLines, `fail enrollment=${row.id}: log insert error ${logErr?.message ?? 'unknown'}`)
       onProgress?.({
@@ -854,7 +1079,8 @@ async function processDueEnrollmentRows(
           plan,
           nextStep.step_order,
           sentAt,
-          debugLines
+          debugLines,
+          audienceFilters
         )
       }
     } catch (e) {
@@ -925,7 +1151,16 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     messages_failed: 0,
   }
 
-  const now = new Date()
+  const lockAcquired = await tryAcquireCampaignProcessorLock(supabase)
+  if (lockAcquired === false) {
+    cronLog(debugLines, 'skip: another campaign processor run is in progress')
+    return { summary, ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}) }
+  }
+
+  try {
+    await clearStalePendingCampaignLogs(supabase, debugLines)
+
+    const now = new Date()
   let scopedPlan: CampaignWorkflowPlan | null = null
   cronLog(
     debugLines,
@@ -1000,6 +1235,12 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     }
     await syncEnrollmentsForCampaign(supabase, c, steps, plan, summary, debugLines, progress)
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
+    await activateParallelBirthdayQueueWaiters(
+      supabase,
+      c.id,
+      plan.compiled.audience_filters,
+      debugLines
+    )
     await reconcileEnrollmentsToAudience(supabase, c.id, plan, debugLines, progress)
   }
 
@@ -1017,7 +1258,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
 
   for (const c of active) {
     const plan = plansByCampaignId.get(c.id)
-    if (plan && usesSequentialCustomerQueue(plan)) {
+    if (plan && usesSequentialCustomerQueue(plan, plan.compiled.audience_filters)) {
       await reconcileSequentialQueue(supabase, c.id, (msg) => cronLog(debugLines, msg))
     }
   }
@@ -1095,9 +1336,14 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     onProgress({ type: 'summary', summary: { ...summary } })
   }
 
-  return {
-    summary,
-    ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}),
+    return {
+      summary,
+      ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}),
+    }
+  } finally {
+    if (lockAcquired === true) {
+      await releaseCampaignProcessorLock(supabase)
+    }
   }
 }
 
