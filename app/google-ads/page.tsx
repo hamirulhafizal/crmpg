@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { canRequestRenewal, effectivePackageStatus } from '@/app/lib/google-ads/billing'
 import { GoogleAdsMyLeadsTab } from '@/app/google-ads/_components/GoogleAdsMyLeadsTab'
+import { GoogleAdsRotationPanel } from '@/app/google-ads/_components/GoogleAdsRotationPanel'
 
 type PackageRow = {
   id: string
@@ -251,6 +252,10 @@ export default function GoogleAdsParticipantPage() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <div className="mb-6">
+          <GoogleAdsRotationPanel />
+        </div>
+
         <div className="mb-6 flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           <button
             type="button"
