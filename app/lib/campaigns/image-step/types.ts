@@ -2,13 +2,23 @@ export type ImageAspectMode = 'square' | 'fit' | 'original'
 
 export type ImageTextAlign = 'left' | 'center' | 'right'
 
-export type ImageLayerKind = 'variable' | 'static'
+export type ImageLayerKind = 'variable' | 'static' | 'dealer'
+
+/** Profile fields available as dealer text on image templates. */
+export type DealerImageVariable = 'DealerFullName' | 'DealerPhone' | 'DealerPGCode' | 'DealerEmail'
+
+export type DealerImageContext = {
+  full_name: string
+  phone: string
+  pgcode: string
+  email: string
+}
 
 export type ImageTextLayer = {
   id: string
-  /** variable = customer field; static = fixed text on image */
+  /** variable = customer field; static = fixed text; dealer = logged-in dealer profile */
   layer_kind?: ImageLayerKind
-  /** Template token without braces, e.g. SenderName (when layer_kind is variable) */
+  /** Template token without braces (customer or dealer field name) */
   variable: string
   /** Fixed text on image (when layer_kind is static) */
   static_text?: string
@@ -117,3 +127,17 @@ export const IMAGE_VARIABLE_OPTIONS = [
   'Name',
   'Phone',
 ] as const
+
+export const IMAGE_DEALER_VARIABLE_OPTIONS: DealerImageVariable[] = [
+  'DealerFullName',
+  'DealerPhone',
+  'DealerPGCode',
+  'DealerEmail',
+]
+
+export const IMAGE_DEALER_VARIABLE_LABELS: Record<DealerImageVariable, string> = {
+  DealerFullName: 'Dealer full name',
+  DealerPhone: 'Dealer phone',
+  DealerPGCode: 'Dealer PG code',
+  DealerEmail: 'Dealer email',
+}

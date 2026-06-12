@@ -6,7 +6,7 @@ import {
   type WorkflowImageBufferInput,
 } from '@/app/lib/campaigns/image-step/coerce-buffer'
 import { outputDimensions, parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
-import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
+import type { ImageStepParameters, DealerImageContext } from '@/app/lib/campaigns/image-step/types'
 
 function alignToFlex(align: string): 'flex-start' | 'center' | 'flex-end' {
   if (align === 'left') return 'flex-start'
@@ -32,7 +32,8 @@ function backgroundDataUrl(buffer: Buffer, mimetype: string): string {
 export async function renderCampaignImagePng(
   params: ImageStepParameters,
   background: WorkflowImageBufferInput,
-  customer: Record<string, unknown>
+  customer: Record<string, unknown>,
+  dealer?: DealerImageContext | null
 ): Promise<Buffer> {
   const parsed = parseImageStepParameters(params as Record<string, unknown>)
   if (!parsed.background_path?.trim()) {
@@ -77,7 +78,7 @@ export async function renderCampaignImagePng(
           }}
         />
         {layers.map((layer) => {
-          const text = String(resolveLayerText(layer, customer) ?? '')
+          const text = String(resolveLayerText(layer, customer, dealer) ?? '')
           const left = Number.isFinite(layer.x) ? (layer.x / 100) * width : width / 2
           const top = Number.isFinite(layer.y) ? (layer.y / 100) * height : height / 2
           const textBg = layerTextBackgroundRgba(layer)

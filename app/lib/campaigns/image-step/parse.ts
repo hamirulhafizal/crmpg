@@ -17,11 +17,19 @@ function parseAlign(v: unknown): ImageTextAlign {
   return 'center'
 }
 
+function parseLayerKind(v: unknown): ImageLayerKind {
+  if (v === 'static') return 'static'
+  if (v === 'dealer') return 'dealer'
+  return 'variable'
+}
+
 function parseLayer(raw: unknown, index: number, seenIds: Set<string>): ImageTextLayer | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  const layer_kind: ImageLayerKind = o.layer_kind === 'static' ? 'static' : 'variable'
-  const variable = String(o.variable ?? 'SenderName').replace(/[{}]/g, '').trim() || 'SenderName'
+  const layer_kind = parseLayerKind(o.layer_kind)
+  const defaultVariable =
+    layer_kind === 'dealer' ? 'DealerFullName' : 'SenderName'
+  const variable = String(o.variable ?? defaultVariable).replace(/[{}]/g, '').trim() || defaultVariable
   let id = String(o.id ?? '').trim()
   if (!id || seenIds.has(id)) {
     id = `layer-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`

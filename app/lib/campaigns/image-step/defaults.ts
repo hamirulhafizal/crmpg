@@ -59,6 +59,25 @@ export function newStaticTextLayer(text = 'Your text'): ImageTextLayer {
   }
 }
 
+export function newDealerTextLayer(variable = 'DealerFullName'): ImageTextLayer {
+  return {
+    id: `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    layer_kind: 'dealer',
+    variable,
+    x: 50,
+    y: 50,
+    rotation: 0,
+    scale: 1,
+    flip_x: false,
+    flip_y: false,
+    font_family: 'Arial, sans-serif',
+    font_size: 48,
+    color: '#ffffff',
+    align: 'center',
+    font_weight: 700,
+  }
+}
+
 /** @deprecated Use newVariableTextLayer */
 export function newImageTextLayer(variable = 'SenderName'): ImageTextLayer {
   return newVariableTextLayer(variable)

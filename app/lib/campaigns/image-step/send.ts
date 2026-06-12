@@ -1,4 +1,5 @@
 import { humanizeWhatsAppText } from '@/app/lib/campaigns/whatsapp-humanize'
+import { loadDealerImageContext } from '@/app/lib/campaigns/image-step/dealer-context'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
 import { renderCampaignImagePng } from '@/app/lib/campaigns/image-step/render'
 import { downloadWorkflowMedia } from '@/app/lib/campaigns/image-step/storage'
@@ -31,9 +32,11 @@ export async function sendCampaignImageStep(opts: {
   const bg = await downloadWorkflowMedia(bgPath)
   console.log('[campaign-image] background loaded', { bytes: bg.length })
 
+  const dealer = await loadDealerImageContext(opts.userId)
+
   let png: Buffer
   try {
-    png = await renderCampaignImagePng(params, bg, opts.customer)
+    png = await renderCampaignImagePng(params, bg, opts.customer, dealer)
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e)
     const stack = e instanceof Error ? e.stack?.split('\n').slice(0, 4).join(' | ') : ''

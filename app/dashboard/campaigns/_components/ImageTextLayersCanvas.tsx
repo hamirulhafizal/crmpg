@@ -8,7 +8,7 @@ import {
   clampRotation,
   layerBoxTransformCss,
 } from '@/app/lib/campaigns/image-step/layer-transform'
-import type { ImageTextAlign, ImageTextLayer } from '@/app/lib/campaigns/image-step/types'
+import type { ImageTextAlign, ImageTextLayer, DealerImageContext } from '@/app/lib/campaigns/image-step/types'
 import { FontFamilyPicker } from '@/app/dashboard/campaigns/_components/FontFamilyPicker'
 
 type GestureKind = 'move' | 'resize' | 'rotate' | null
@@ -23,6 +23,8 @@ type Props = {
   canvasRef?: React.RefObject<HTMLDivElement | null>
   /** Non-interactive preview — same layer markup as the editor canvas. */
   readOnly?: boolean
+  /** Resolved dealer profile values for dealer-variable layer preview. */
+  dealerPreview?: DealerImageContext | null
   className?: string
   style?: React.CSSProperties
   children?: React.ReactNode
@@ -324,6 +326,7 @@ export function ImageTextLayersCanvas({
   onRemoveLayer,
   canvasRef: canvasRefProp,
   readOnly = false,
+  dealerPreview = null,
   className = '',
   style,
   children,
@@ -453,7 +456,7 @@ export function ImageTextLayersCanvas({
       {children}
       {layers.map((layer) => {
         const selected = !readOnly && selectedLayerId === layer.id
-        const preview = layerPreviewText(layer)
+        const preview = layerPreviewText(layer, dealerPreview)
         return (
           <div
             key={layer.id}

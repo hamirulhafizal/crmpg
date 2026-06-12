@@ -2,12 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useAuth } from '@/app/contexts/auth-context'
+import { createClient } from '@/app/lib/supabase/client'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
-import { newStaticTextLayer, newVariableTextLayer } from '@/app/lib/campaigns/image-step/defaults'
-import { isStaticLayer, layerListLabel } from '@/app/lib/campaigns/image-step/layer-text'
+import {
+  newDealerTextLayer,
+  newStaticTextLayer,
+  newVariableTextLayer,
+} from '@/app/lib/campaigns/image-step/defaults'
+import { isDealerLayer, isStaticLayer, layerListLabel } from '@/app/lib/campaigns/image-step/layer-text'
 import { previewCanvasLayout } from '@/app/lib/campaigns/image-step/preview-canvas'
 import {
+  IMAGE_DEALER_VARIABLE_LABELS,
+  IMAGE_DEALER_VARIABLE_OPTIONS,
   IMAGE_VARIABLE_OPTIONS,
+  type DealerImageContext,
   type ImageAspectMode,
   type ImageLayerKind,
   type ImageStepParameters,
@@ -38,6 +47,8 @@ export function WhatsAppImageStepDialog({
   onClose,
   onSave,
 }: Props) {
+  const { user } = useAuth()
+  const supabase = createClient()
   const [draft, setDraft] = useState<ImageStepParameters>(() =>
     parseImageStepParameters(initialParameters)
   )
@@ -46,6 +57,7 @@ export function WhatsAppImageStepDialog({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
+  const [dealerPreview, setDealerPreview] = useState<DealerImageContext | null>(null)
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -70,6 +82,43 @@ export function WhatsAppImageStepDialog({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
+
+  useEffect(() => {
+    if (!open || !user?.id) {
+      setDealerPreview(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, phone, pgcode')
+          .eq('id', user.id)
+          .maybeSingle()
+        if (cancelled) return
+        if (error) throw error
+        setDealerPreview({
+          full_name: data?.full_name?.trim() ?? '',
+          phone: data?.phone?.trim() ?? '',
+          pgcode: data?.pgcode?.trim() ?? '',
+          email: user.email?.trim() ?? '',
+        })
+      } catch {
+        if (!cancelled) {
+          setDealerPreview({
+            full_name: '',
+            phone: '',
+            pgcode: '',
+            email: user.email?.trim() ?? '',
+          })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, user?.id, user?.email, supabase])
 
   const refreshPreview = useCallback(async (path: string) => {
     if (!path.trim()) {
@@ -114,6 +163,12 @@ export function WhatsAppImageStepDialog({
 
   const addStaticLayer = () => {
     const layer = newStaticTextLayer()
+    setLocalLayers((prev) => [...prev, layer])
+    setSelectedLayerId(layer.id)
+  }
+
+  const addDealerLayer = () => {
+    const layer = newDealerTextLayer()
     setLocalLayers((prev) => [...prev, layer])
     setSelectedLayerId(layer.id)
   }
@@ -296,6 +351,7 @@ export function WhatsAppImageStepDialog({
                     onUpdateLayer={updateLayer}
                     onDuplicateLayer={duplicateLayer}
                     onRemoveLayer={removeLayer}
+                    dealerPreview={dealerPreview}
                     className="relative mx-auto w-full max-w-full overflow-hidden rounded-xl border-2 border-slate-300 bg-slate-950 shadow-inner"
                     style={{
                       touchAction: 'none',
@@ -325,6 +381,13 @@ export function WhatsAppImageStepDialog({
                       onClick={addVariableLayer}
                     >
                       + Customer variable
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100"
+                      onClick={addDealerLayer}
+                    >
+                      + Dealer variable
                     </button>
                     <button
                       type="button"
@@ -383,26 +446,50 @@ export function WhatsAppImageStepDialog({
                       </div>
                       <fieldset className="space-y-2">
                         <legend className="text-xs font-medium text-slate-600">Text source</legend>
-                        <div className="flex gap-2">
-                          {(['variable', 'static'] as ImageLayerKind[]).map((kind) => (
+                        <div className="flex flex-wrap gap-2">
+                          {(
+                            [
+                              ['variable', 'Customer field'],
+                              ['dealer', 'Dealer variable'],
+                              ['static', 'Fixed text'],
+                            ] as const
+                          ).map(([kind, label]) => (
                             <button
                               key={kind}
                               type="button"
-                              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                              className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
                                 (selectedLayer.layer_kind ?? 'variable') === kind
                                   ? 'border-teal-600 bg-teal-50 text-teal-900'
                                   : 'border-slate-200 bg-white text-slate-600'
                               }`}
                               onClick={() =>
                                 updateLayer(selectedLayer.id, {
-                                  layer_kind: kind,
+                                  layer_kind: kind as ImageLayerKind,
                                   ...(kind === 'static'
                                     ? { static_text: selectedLayer.static_text ?? 'Your text' }
+                                    : {}),
+                                  ...(kind === 'dealer'
+                                    ? {
+                                        variable: IMAGE_DEALER_VARIABLE_OPTIONS.includes(
+                                          selectedLayer.variable as (typeof IMAGE_DEALER_VARIABLE_OPTIONS)[number]
+                                        )
+                                          ? selectedLayer.variable
+                                          : 'DealerFullName',
+                                      }
+                                    : {}),
+                                  ...(kind === 'variable'
+                                    ? {
+                                        variable: IMAGE_VARIABLE_OPTIONS.includes(
+                                          selectedLayer.variable as (typeof IMAGE_VARIABLE_OPTIONS)[number]
+                                        )
+                                          ? selectedLayer.variable
+                                          : 'SenderName',
+                                      }
                                     : {}),
                                 })
                               }
                             >
-                              {kind === 'variable' ? 'Customer field' : 'Fixed text'}
+                              {label}
                             </button>
                           ))}
                         </div>
@@ -419,6 +506,24 @@ export function WhatsAppImageStepDialog({
                               updateLayer(selectedLayer.id, { static_text: e.target.value })
                             }
                           />
+                        </label>
+                      ) : isDealerLayer(selectedLayer) ? (
+                        <label className="block text-xs text-slate-600">
+                          Dealer variable
+                          <select
+                            className="input mt-1 w-full text-black"
+                            value={selectedLayer.variable}
+                            onChange={(e) => updateLayer(selectedLayer.id, { variable: e.target.value })}
+                          >
+                            {IMAGE_DEALER_VARIABLE_OPTIONS.map((v) => (
+                              <option key={v} value={v}>
+                                {IMAGE_DEALER_VARIABLE_LABELS[v]} ({`{${v}}`})
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Pulled from your profile when the image is sent.
+                          </p>
                         </label>
                       ) : (
                         <label className="block text-xs text-slate-600">
