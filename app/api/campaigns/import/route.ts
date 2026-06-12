@@ -3,11 +3,19 @@ import { createClient } from '@/app/lib/supabase/server'
 import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import { sanitizeCampaignRecordForTransfer } from '@/app/lib/workflows/sanitize-export'
+import {
+  collectImageStepMediaRefs,
+  imageStepsMissingBundledMedia,
+  importWorkflowMediaAssets,
+  remapWorkflowDefinitionBackgroundPaths,
+  type WorkflowMediaExportAsset,
+} from '@/app/lib/workflows/workflow-media-transfer'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 type ImportedCampaignItem = {
   campaign?: Record<string, unknown>
   steps?: Array<Record<string, unknown>>
+  workflow_media?: WorkflowMediaExportAsset[]
 }
 
 type ImportRequest = {
@@ -71,10 +79,11 @@ export async function POST(request: Request) {
       const item = list[i] ?? {}
       const sourceCampaign = sanitizeCampaignRecordForTransfer(item.campaign ?? {})
       const sourceSteps = Array.isArray(item.steps) ? item.steps : []
+      const sourceMedia = Array.isArray(item.workflow_media) ? item.workflow_media : []
       const name = ensureUniqueName(baseImportedName(sourceCampaign.name), usedNames)
 
       try {
-        const workflowDefinition =
+        let workflowDefinition =
           sourceCampaign.workflow_definition && typeof sourceCampaign.workflow_definition === 'object'
             ? (sourceCampaign.workflow_definition as WorkflowDefinition)
             : null
@@ -115,6 +124,49 @@ export async function POST(request: Request) {
           .select('id')
           .single()
         if (insertErr) throw insertErr
+
+        if (workflowDefinition && sourceMedia.length > 0) {
+          const originalDefinition = workflowDefinition
+          const pathRemap = await importWorkflowMediaAssets(
+            supabase,
+            user.id,
+            String(insertedCampaign.id),
+            sourceMedia
+          )
+          const missingNodes = imageStepsMissingBundledMedia(originalDefinition, pathRemap)
+          workflowDefinition = remapWorkflowDefinitionBackgroundPaths(workflowDefinition, pathRemap)
+          if (missingNodes.length > 0) {
+            warnings.push({
+              index: i,
+              name,
+              warning:
+                'Some image step backgrounds could not be restored — re-upload them in the workflow editor.',
+            })
+          }
+          const { error: defUpdateErr } = await supabase
+            .from('campaigns')
+            .update({ workflow_definition: workflowDefinition as never })
+            .eq('id', insertedCampaign.id)
+          if (defUpdateErr) {
+            warnings.push({
+              index: i,
+              name,
+              warning:
+                'Background images were imported but workflow definition could not be updated.',
+            })
+          }
+        } else if (
+          workflowDefinition &&
+          collectImageStepMediaRefs(workflowDefinition).length > 0 &&
+          sourceMedia.length === 0
+        ) {
+          warnings.push({
+            index: i,
+            name,
+            warning:
+              'This workflow has image steps but no bundled backgrounds — re-upload background images in the editor.',
+          })
+        }
 
         let compiledSteps: Array<Record<string, unknown>> = sourceSteps
         if (workflowDefinition != null) {

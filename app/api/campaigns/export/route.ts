@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
+import { CAMPAIGN_WORKFLOW_MEDIA_BUCKET } from '@/app/lib/campaigns/image-step/defaults'
 import { createClient } from '@/app/lib/supabase/server'
 import { sanitizeCampaignRecordForTransfer } from '@/app/lib/workflows/sanitize-export'
+import { buildWorkflowMediaExportAssets } from '@/app/lib/workflows/workflow-media-transfer'
+import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 type ExportRequest = {
   ids?: string[]
@@ -10,6 +13,7 @@ type ExportRequest = {
 type ExportCampaign = {
   campaign: Record<string, unknown>
   steps: Array<Record<string, unknown>>
+  workflow_media?: Awaited<ReturnType<typeof buildWorkflowMediaExportAssets>>
 }
 
 export async function POST(request: Request) {
@@ -55,13 +59,31 @@ export async function POST(request: Request) {
       }
     }
 
-    const exportCampaigns: ExportCampaign[] = rows.map((c) => ({
-      campaign: sanitizeCampaignRecordForTransfer(c as Record<string, unknown>),
-      steps: stepsByCampaign.get(String(c.id)) ?? [],
-    }))
+    const exportCampaigns: ExportCampaign[] = []
+    for (const c of rows) {
+      const sanitized = sanitizeCampaignRecordForTransfer(c as Record<string, unknown>)
+      const def =
+        sanitized.workflow_definition && typeof sanitized.workflow_definition === 'object'
+          ? (sanitized.workflow_definition as WorkflowDefinition)
+          : null
+      const workflow_media = await buildWorkflowMediaExportAssets(def, async (path) => {
+        const { data, error } = await supabase.storage
+          .from(CAMPAIGN_WORKFLOW_MEDIA_BUCKET)
+          .download(path)
+        if (error || !data) return null
+        const ab = data instanceof Blob ? await data.arrayBuffer() : data
+        const buffer = Buffer.from(ab as ArrayBuffer)
+        return buffer.length ? buffer : null
+      })
+      exportCampaigns.push({
+        campaign: sanitized,
+        steps: stepsByCampaign.get(String(c.id)) ?? [],
+        ...(workflow_media.length > 0 ? { workflow_media } : {}),
+      })
+    }
 
     const payload = {
-      version: 1,
+      version: 2,
       exported_at: new Date().toISOString(),
       campaigns: exportCampaigns,
     }

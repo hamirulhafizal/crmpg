@@ -104,7 +104,9 @@ function CampaignsListInner() {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [listLoading, setListLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastSeqRef = useRef(0)
@@ -140,24 +142,26 @@ function CampaignsListInner() {
     [router]
   )
 
-  const refetchList = useCallback(() => {
+  const refetchList = useCallback(async () => {
     if (!user) return
-    ;(async () => {
-      try {
-        const res = await fetch('/api/campaigns')
-        const json = await res.json()
-        if (!res.ok) throw new Error(json.error || 'Failed')
-        const nextRows = (json.data ?? []) as Row[]
-        setRows(nextRows)
-        setSelectedIds((prev) => {
-          if (prev.size === 0) return prev
-          const ids = new Set(nextRows.map((r) => r.id))
-          return new Set(Array.from(prev).filter((id) => ids.has(id)))
-        })
-      } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : 'Failed')
-      }
-    })()
+    setRefreshing(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/campaigns', { cache: 'no-store' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed')
+      const nextRows = (json.data ?? []) as Row[]
+      setRows(nextRows)
+      setSelectedIds((prev) => {
+        if (prev.size === 0) return prev
+        const ids = new Set(nextRows.map((r) => r.id))
+        return new Set(Array.from(prev).filter((id) => ids.has(id)))
+      })
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setRefreshing(false)
+    }
   }, [user])
 
   useEffect(() => {
@@ -250,6 +254,42 @@ function CampaignsListInner() {
       pushToast('error', msg)
     } finally {
       setBusy(null)
+    }
+  }
+
+  const bulkRemove = async () => {
+    if (selectedIds.size === 0) return
+    const count = selectedIds.size
+    if (!window.confirm(`Delete ${count} selected workflow${count === 1 ? '' : 's'}? This cannot be undone.`)) {
+      return
+    }
+    setBulkDeleting(true)
+    setErr(null)
+    try {
+      const ids = Array.from(selectedIds)
+      const res = await fetch('/api/campaigns/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Bulk delete failed')
+
+      const deletedIds = new Set(ids)
+      setRows((prev) => prev.filter((r) => !deletedIds.has(r.id)))
+      setSelectedIds(new Set())
+      pushToast('success', `Deleted ${Number(json.count ?? count)} workflow${Number(json.count ?? count) === 1 ? '' : 's'}.`)
+
+      if (panelMode && panelMode !== 'create') {
+        const panelId = 'edit' in panelMode ? panelMode.edit : panelMode.view
+        if (deletedIds.has(panelId)) replacePanel(null)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Bulk delete failed'
+      setErr(msg)
+      pushToast('error', msg)
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -374,7 +414,31 @@ function CampaignsListInner() {
               />
               <button
                 type="button"
-                disabled={bulkBusy || importBusy}
+                disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                onClick={() => void refetchList()}
+                title="Refresh list"
+                aria-label="Refresh workflow list"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                <svg
+                  className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
                 onClick={() => {
                   void (async () => {
                     setBulkBusy(true)
@@ -413,7 +477,7 @@ function CampaignsListInner() {
               </button>
               <button
                 type="button"
-                disabled={bulkBusy || importBusy || selectedIds.size === 0}
+                disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
                 onClick={() => {
                   void (async () => {
                     setBulkBusy(true)
@@ -452,7 +516,23 @@ function CampaignsListInner() {
               </button>
               <button
                 type="button"
-                disabled={bulkBusy || importBusy}
+                disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
+                onClick={() => void bulkRemove()}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+                {bulkDeleting ? 'Deleting…' : `Delete selected (${selectedIds.size})`}
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
                 onClick={() => importInputRef.current?.click()}
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
               >
