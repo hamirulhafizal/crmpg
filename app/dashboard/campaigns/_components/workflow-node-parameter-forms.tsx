@@ -568,7 +568,10 @@ export function WhatsAppMessageFields({
           {gmailFallbackEnabled ? (
             <div className="mt-3 space-y-2">
               <span className="block text-xs font-medium text-slate-700">Gmail fallback template</span>
-              <p className="hint">Email body sent when WhatsApp fails.</p>
+              <p className="hint">
+                Email body when WhatsApp fails. Leave empty to always use your Profile Gmail message
+                (recommended — shared/imported workflows stay dealer-specific).
+              </p>
               <textarea
                 rows={5}
                 className="input font-mono text-xs text-black"

@@ -22,6 +22,12 @@ export const PROFILE_COMPLETION_STEPS: Array<{
   placeholder: string
 }> = [
   {
+    field: 'username_pbo',
+    title: 'pg2u.my username',
+    description: 'Your public username on pg2u.my — used for lucky draw and lead pages.',
+    placeholder: 'Your username on pg2u.my',
+  },
+  {
     field: 'full_name',
     title: 'Your name',
     description: 'How customers and teammates will see you on the platform.',
@@ -32,12 +38,6 @@ export const PROFILE_COMPLETION_STEPS: Array<{
     title: 'PG code',
     description: 'Your Public Gold dealer code (e.g. PG00123456).',
     placeholder: 'PG00123456',
-  },
-  {
-    field: 'username_pbo',
-    title: 'pg2u.my username',
-    description: 'Your public username on pg2u.my — used for lucky draw and lead pages.',
-    placeholder: 'Your username on pg2u.my',
   },
   {
     field: 'phone',

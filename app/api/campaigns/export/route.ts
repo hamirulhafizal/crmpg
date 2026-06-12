@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
+import { sanitizeCampaignRecordForTransfer } from '@/app/lib/workflows/sanitize-export'
 
 type ExportRequest = {
   ids?: string[]
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     const exportCampaigns: ExportCampaign[] = rows.map((c) => ({
-      campaign: c as Record<string, unknown>,
+      campaign: sanitizeCampaignRecordForTransfer(c as Record<string, unknown>),
       steps: stepsByCampaign.get(String(c.id)) ?? [],
     }))
 

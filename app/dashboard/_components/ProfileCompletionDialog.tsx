@@ -261,6 +261,8 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
   const renderFieldInput = (field: RequiredProfileField) => {
     const commonClass =
       'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-lg text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:opacity-50'
+    const placeholder =
+      PROFILE_COMPLETION_STEPS.find((s) => s.field === field)?.placeholder ?? ''
 
     switch (field) {
       case 'full_name':
@@ -272,7 +274,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
             autoFocus
             value={fullName}
             onChange={(e) => handleFieldChange('full_name', e.target.value)}
-            placeholder={PROFILE_COMPLETION_STEPS[0].placeholder}
+            placeholder={placeholder}
             disabled={saving}
             className={commonClass}
           />
@@ -288,7 +290,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
             autoFocus
             value={pgcode}
             onChange={(e) => handleFieldChange('pgcode', e.target.value)}
-            placeholder={PROFILE_COMPLETION_STEPS[1].placeholder}
+            placeholder={placeholder}
             disabled={saving}
             className={commonClass}
           />
@@ -319,7 +321,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
             autoFocus
             value={phone}
             onChange={(e) => handleFieldChange('phone', e.target.value)}
-            placeholder={PROFILE_COMPLETION_STEPS[3].placeholder}
+            placeholder={placeholder}
             disabled={saving}
             className={commonClass}
           />
@@ -335,7 +337,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
                 autoFocus
                 value={gmailAppPassword}
                 onChange={(e) => handleFieldChange('gmail_app_password', e.target.value)}
-                placeholder={PROFILE_COMPLETION_STEPS[4].placeholder}
+                placeholder={placeholder}
                 disabled={saving}
                 className={`${commonClass} pr-24`}
               />
@@ -377,7 +379,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               rows={12}
               value={gmailMessage}
               onChange={(e) => handleFieldChange('gmail_message', e.target.value)}
-              placeholder={PROFILE_COMPLETION_STEPS[5].placeholder}
+              placeholder={placeholder}
               disabled={saving}
               className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm leading-relaxed text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 font-mono"
             />
@@ -399,12 +401,12 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
 
   const stepShortLabel = (field: RequiredProfileField) => {
     switch (field) {
+      case 'username_pbo':
+        return 'User'
       case 'full_name':
         return 'Name'
       case 'pgcode':
         return 'PG'
-      case 'username_pbo':
-        return 'User'
       case 'phone':
         return 'Phone'
       case 'gmail_app_password':

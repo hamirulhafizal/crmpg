@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
+import { sanitizeCampaignRecordForTransfer } from '@/app/lib/workflows/sanitize-export'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 
 type ImportedCampaignItem = {
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
 
     for (let i = 0; i < list.length; i += 1) {
       const item = list[i] ?? {}
-      const sourceCampaign = item.campaign ?? {}
+      const sourceCampaign = sanitizeCampaignRecordForTransfer(item.campaign ?? {})
       const sourceSteps = Array.isArray(item.steps) ? item.steps : []
       const name = ensureUniqueName(baseImportedName(sourceCampaign.name), usedNames)
 

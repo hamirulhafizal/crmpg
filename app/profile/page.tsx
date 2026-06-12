@@ -307,14 +307,14 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label htmlFor="full_name" className="block text-sm font-medium text-slate-700 mb-2">
-                Full Name
+                Display Name
               </label>
               <input
                 id="full_name"
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Your full name"
+                placeholder="Personal branding (e.g Hamirul Hafizal / Dr Muaz)"
                 disabled={saving || loading}
                 className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900 placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
               />
