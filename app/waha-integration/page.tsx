@@ -4,6 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { buildDefaultGmailMessage } from '@/app/lib/profile/gmail-template'
 
 interface WahaSession {
   name: string
@@ -14,24 +15,6 @@ interface WahaSession {
 
 function normalizeSessionNameToPhone(sessionName: string): string {
   return (sessionName || '').replace(/\D/g, '')
-}
-
-function buildDefaultEmailFallbackTemplate(phoneFromSession: string): string {
-  const phone = phoneFromSession || '601156747399'
-  return [
-    'Assalamualikum dan Salam',
-    '',
-    'Ini {SenderName} ya ?',
-    'saya Hamirul Dealer Public Gold',
-    '',
-    '{SenderName} sudah tukar no whatsapp ya ?',
-    '',
-    'Sila click link di bawah untuk hubungi saya',
-    '',
-    `wasap.my/${phone}/INFO_EMAS`,
-    `wasap.my/${phone}/INFO_EMAS`,
-    `wasap.my/${phone}/INFO_EMAS`,
-  ].join('\n')
 }
 
 export default function WahaIntegrationPage() {
@@ -484,7 +467,10 @@ export default function WahaIntegrationPage() {
                       normalizeSessionNameToPhone(selectedSession) ||
                       normalizeSessionNameToPhone(sessions[0]?.name || '') ||
                       '601156747399'
-                    const defaultTemplate = buildDefaultEmailFallbackTemplate(defaultPhone)
+                    const defaultTemplate = buildDefaultGmailMessage(
+                      (user?.user_metadata?.full_name as string | undefined) ?? 'Dealer Public Gold',
+                      defaultPhone
+                    )
                     try {
                       const res = await fetch('/api/waha/email-fallback')
                       if (!res.ok) {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
-import { isProfileComplete, resolveProfilePhone } from '@/app/lib/profile/completion'
+import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
 
 type ServiceTileProps = {
   href: string
@@ -224,7 +224,7 @@ export default function DashboardPage() {
         supabase.rpc('user_has_password'),
         supabase
           .from('profiles')
-          .select('pgcode, phone, username_pbo')
+          .select('full_name, pgcode, phone, username_pbo, gmail_app_password, gmail_message')
           .eq('id', user.id)
           .maybeSingle(),
       ])
@@ -241,11 +241,15 @@ export default function DashboardPage() {
       const profileRow = profileResult.data
       const profileComplete = isProfileComplete(
         {
+          full_name: profileRow?.full_name ?? null,
           username_pbo: profileRow?.username_pbo ?? null,
           phone: resolveProfilePhone(profileRow?.phone, user.user_metadata?.phone),
           pgcode: profileRow?.pgcode ?? null,
+          gmail_app_password: profileRow?.gmail_app_password ?? null,
+          gmail_message: profileRow?.gmail_message ?? null,
         },
-        user.user_metadata?.phone
+        user.user_metadata?.phone,
+        user.user_metadata?.full_name
       )
       setNeedsProfileSetup(!profileComplete)
 
@@ -373,15 +377,22 @@ export default function DashboardPage() {
   const showPasswordGate = needsPasswordSetup
   const showProfileGate = !needsPasswordSetup && needsProfileSetup
 
+  if (showProfileGate && user) {
+    return (
+      <ProfileCompletionDialog
+        userId={user.id}
+        userEmail={user.email}
+        userMetadata={user.user_metadata}
+        onComplete={async () => {
+          await refreshUser()
+          setNeedsProfileSetup(false)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
-      {showProfileGate && user && (
-        <ProfileCompletionDialog
-          userId={user.id}
-          userMetadata={user.user_metadata}
-          onComplete={() => setNeedsProfileSetup(false)}
-        />
-      )}
       {showPasswordGate && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
