@@ -287,6 +287,7 @@ function ViewPanelInner({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [testRunBusy, setTestRunBusy] = useState(false)
+  const [retryFailedBusy, setRetryFailedBusy] = useState(false)
   const workflowFromUrl = workflowOpenFromSearchParams(searchParams)
   const nodeFromUrl = selectedNodeFromSearchParams(searchParams)
   const [workflowOpen, setWorkflowOpen] = useState(workflowFromUrl)
@@ -414,6 +415,21 @@ function ViewPanelInner({
     }
   }, [id, stepOrders, workflowNodeIds, load, pushToast, openWorkflow])
 
+  const retryFailedSends = useCallback(async () => {
+    setRetryFailedBusy(true)
+    try {
+      const res = await fetch(`/api/campaigns/${id}/retry-failed`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Retry failed')
+      pushToast('success', json.message || `Re-queued ${json.reset ?? 0} enrollment(s)`)
+      await load()
+    } catch (e: unknown) {
+      pushToast('error', e instanceof Error ? e.message : 'Retry failed')
+    } finally {
+      setRetryFailedBusy(false)
+    }
+  }, [id, load, pushToast])
+
   return (
     <>
       <PanelChrome title={'Campaign'} subtitle="Details & analytics" onClose={onClose} />
@@ -435,6 +451,8 @@ function ViewPanelInner({
             }}
             testRunBusy={testRunBusy}
             onTestRun={runTestWithWorkflow}
+            retryFailedBusy={retryFailedBusy}
+            onRetryFailed={retryFailedSends}
           />
         )}
       </div>

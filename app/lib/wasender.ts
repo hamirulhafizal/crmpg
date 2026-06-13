@@ -134,8 +134,18 @@ export async function wasenderGetQrCode(cfg: WhatsAppServerConfig, sessionId: st
 }
 
 export async function wasenderGetSessionStatus(cfg: WhatsAppServerConfig, sessionApiKey: string): Promise<string> {
-  const res = await wasenderSessionFetch<{ status?: string }>(cfg, sessionApiKey, '/api/status', { method: 'GET' })
-  return (res?.status || 'disconnected').toString()
+  const res = await wasenderSessionFetch<WasenderEnvelope<{ status?: string }> | { status?: string }>(
+    cfg,
+    sessionApiKey,
+    '/api/status',
+    { method: 'GET' }
+  )
+  if (res && typeof res === 'object' && 'data' in res && res.data && typeof res.data === 'object') {
+    const nested = res.data as { status?: string }
+    if (nested.status) return nested.status.toString()
+  }
+  const flat = res as { status?: string }
+  return (flat?.status || 'disconnected').toString()
 }
 
 export async function wasenderDisconnectSession(cfg: WhatsAppServerConfig, sessionId: string): Promise<void> {

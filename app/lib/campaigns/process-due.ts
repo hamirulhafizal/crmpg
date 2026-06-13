@@ -54,6 +54,11 @@ import {
   loadUserWhatsAppSessionByName,
   resolveEffectiveWhatsAppProvider,
 } from '@/app/lib/whatsapp/resolve'
+import {
+  fetchLiveWhatsAppSessionStatus,
+  isWorkingWhatsAppSessionStatus,
+  persistWhatsAppSessionStatus,
+} from '@/app/lib/whatsapp/session-status'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -152,7 +157,8 @@ type WhatsAppSessionPick = {
 
 async function pickWhatsAppSession(
   supabase: ReturnType<typeof createServiceRoleClient>,
-  userId: string
+  userId: string,
+  debugLines?: string[]
 ): Promise<WhatsAppSessionPick | null> {
   const { data: rows } = await supabase
     .from('waha_user_sessions')
@@ -169,6 +175,7 @@ async function pickWhatsAppSession(
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
   const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  const cachedStatus = String(sessionRow?.last_known_waha_status || pick.last_known_waha_status || '')
 
   if (provider === 'wasender') {
     if (!sessionRow?.session_api_key?.trim()) {
@@ -179,13 +186,32 @@ async function pickWhatsAppSession(
         reason: 'Wasender session API key missing. Reconnect WhatsApp in Integration settings.',
       }
     }
-    const status = String(sessionRow.last_known_waha_status || pick.last_known_waha_status || '').toUpperCase()
-    if (status && status !== 'WORKING' && status !== 'CONNECTED') {
+
+    let liveStatus = cachedStatus
+    try {
+      liveStatus = await fetchLiveWhatsAppSessionStatus(userId, pick.session_name)
+      if (liveStatus !== cachedStatus.toUpperCase()) {
+        cronLog(
+          debugLines,
+          `wasender status sync user=${userId} session=${pick.session_name}: ${cachedStatus || '—'} → ${liveStatus}`
+        )
+      }
+      await persistWhatsAppSessionStatus(userId, pick.session_name, liveStatus)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      cronLog(debugLines, `wasender live status check failed user=${userId}: ${msg}`)
+      // If we have a session key, attempt send — Wasender will reject if truly disconnected.
+      if (sessionRow.session_api_key?.trim()) {
+        return { sessionName: pick.session_name, provider, ready: true }
+      }
+    }
+
+    if (!isWorkingWhatsAppSessionStatus(liveStatus)) {
       return {
         sessionName: pick.session_name,
         provider,
         ready: false,
-        reason: `WhatsApp session not connected (${status}). Scan QR in Integration settings.`,
+        reason: `WhatsApp session not connected (${liveStatus}). Scan QR in Integration settings.`,
       }
     }
   }
@@ -802,6 +828,15 @@ async function processDueEnrollmentRows(
   cronLog(debugLines, `due batch: ${due.length} enrollment row(s)`)
   const total = due.length
   let sendIndex = 0
+  const sessionPickByUser = new Map<string, WhatsAppSessionPick | null>()
+
+  const getSessionPick = async (userId: string): Promise<WhatsAppSessionPick | null> => {
+    if (!sessionPickByUser.has(userId)) {
+      sessionPickByUser.set(userId, await pickWhatsAppSession(supabase, userId, debugLines))
+    }
+    return sessionPickByUser.get(userId) ?? null
+  }
+
   for (const row of due) {
     const rawCamp = row.campaign
     const campaign = (Array.isArray(rawCamp) ? rawCamp[0] : rawCamp) as CampaignRow | null
@@ -877,7 +912,7 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    const sessionPick = await pickWhatsAppSession(supabase, campaign.user_id)
+    const sessionPick = await getSessionPick(campaign.user_id)
     if (!sessionPick) {
       summary.messages_failed++
       cronLog(debugLines, `fail enrollment=${row.id} campaign=${campaign.id}: no WhatsApp session user=${campaign.user_id}`)

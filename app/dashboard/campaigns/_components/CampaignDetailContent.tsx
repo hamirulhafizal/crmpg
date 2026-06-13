@@ -6,8 +6,13 @@ import { CampaignStepPreview } from '@/app/dashboard/campaigns/_components/Campa
 import { CampaignStatusBadge } from '@/app/dashboard/campaigns/_components/CampaignStatusBadge'
 import { buildCampaignStepDisplays } from '@/app/lib/campaigns/step-display'
 import type { AudienceDueSample, AudienceEligibleSample } from '@/app/lib/campaigns/audience-preview'
-import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import type { CampaignAudienceFilters, CampaignRow, CampaignStepRow } from '@/app/lib/campaigns/types'
 import { sendTimeDisplayLabel } from '@/app/lib/campaigns/schedule'
+import {
+  getTriggerRunScheduleFromPlan,
+  triggerScheduleDisplayLabel,
+} from '@/app/lib/campaigns/trigger-schedule'
+import { buildCampaignWorkflowPlan } from '@/app/lib/workflows/plan'
 
 export type CampaignDetailPayload = {
   campaign: Record<string, unknown>
@@ -52,8 +57,11 @@ export function CampaignDetailContent(props: {
   /** POST /api/campaigns/[id]/run — sync enrollments + send due messages (same as cron, scoped to this campaign). */
   onTestRun?: () => Promise<void>
   testRunBusy?: boolean
+  onRetryFailed?: () => Promise<void>
+  retryFailedBusy?: boolean
 }) {
-  const { payload, onEdit, onRefresh, onOpenWorkflow, onTestRun, testRunBusy } = props
+  const { payload, onEdit, onRefresh, onOpenWorkflow, onTestRun, testRunBusy, onRetryFailed, retryFailedBusy } =
+    props
 
   const c = payload.campaign as {
     name: string
@@ -78,6 +86,17 @@ export function CampaignDetailContent(props: {
       ),
     [payload.steps, payload.campaign]
   )
+
+  const runScheduleLabel = useMemo(() => {
+    try {
+      const camp = payload.campaign as CampaignRow
+      const plan = buildCampaignWorkflowPlan(camp, (payload.steps ?? []) as CampaignStepRow[])
+      const sched = getTriggerRunScheduleFromPlan(plan)
+      return triggerScheduleDisplayLabel(sched)
+    } catch {
+      return 'anytime'
+    }
+  }, [payload.campaign, payload.steps])
 
   return (
     <div className="space-y-8 pb-16">
@@ -175,6 +194,17 @@ export function CampaignDetailContent(props: {
                 )}
               </button>
             ) : null} */}
+            {payload.stats.failed > 0 && onRetryFailed ? (
+              <button
+                type="button"
+                disabled={retryFailedBusy || c.status !== 'active'}
+                onClick={() => void onRetryFailed()}
+                title="Re-queue failed sends for the next cron run"
+                className="inline-flex items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {retryFailedBusy ? 'Retrying…' : 'Retry failed'}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onRefresh}
@@ -195,11 +225,18 @@ export function CampaignDetailContent(props: {
           </div>
         </div>
         <p className="mt-3 text-sm text-slate-600">
-          Trigger: <span className="font-medium">{c.trigger_type}</span> · TZ{' '}
+          Trigger: <span className="font-medium">{c.trigger_type}</span> · Run schedule{' '}
+          <span className="font-medium">{runScheduleLabel}</span> · TZ{' '}
           <span className="font-medium">{c.timezone || 'Asia/Kuala_Lumpur'}</span> · Daily cap{' '}
           <span className="font-medium">{c.daily_send_limit}</span> · Cooldown{' '}
           <span className="font-medium">{c.cooldown_days}d</span>
         </p>
+        {payload.stats.failed > 0 ? (
+          <p className="mt-2 text-sm text-amber-800">
+            {payload.stats.failed} failed send(s) — often from WAHA errors before Wasender was enabled. Use{' '}
+            <span className="font-medium">Retry failed</span>, then wait for cron after the run schedule above.
+          </p>
+        ) : null}
       </div>
 
       {payload.audience ? (

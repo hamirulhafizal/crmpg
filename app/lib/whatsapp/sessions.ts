@@ -16,6 +16,7 @@ import {
 } from '@/app/lib/whatsapp/resolve'
 import type { WhatsAppProvider, WhatsAppSessionView } from '@/app/lib/whatsapp/types'
 import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
+import { persistWhatsAppSessionStatus } from '@/app/lib/whatsapp/session-status'
 
 function normalizeSessionPhone(name: string): string {
   let sessionName = name.replace(/\D/g, '')
@@ -37,6 +38,7 @@ export async function listWhatsAppSessions(userId: string): Promise<WhatsAppSess
         try {
           const raw = await wasenderGetSessionStatus(cfg, row.session_api_key)
           status = mapWasenderStatusToDisplay(raw)
+          await persistWhatsAppSessionStatus(userId, row.session_name, status)
         } catch {
           status = row.last_known_waha_status || 'DISCONNECTED'
         }
