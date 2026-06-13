@@ -1,23 +1,24 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { isWahaConfigured, wahaFetch } from '@/app/lib/waha'
+import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
+import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
+import { getWhatsAppSessionQr } from '@/app/lib/whatsapp/sessions'
 
-// GET /api/waha/sessions/[session]/qr - Get QR code for pairing (base64 image or raw value)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!(await isWahaConfigured({ userId: user.id }))) {
-      return NextResponse.json(
-        { error: 'WAHA integration is not configured' },
-        { status: 503 }
-      )
+    if (!(await isWhatsAppConfigured({ userId: user.id }))) {
+      return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
 
     const { session } = await params
@@ -26,23 +27,23 @@ export async function GET(
     }
 
     const { searchParams } = new URL(request.url)
-    const format = searchParams.get('format') || 'image' // image | raw
+    const format = searchParams.get('format') || 'image'
+    const forceReconnect = searchParams.get('force') === '1'
 
-    const result = await wahaFetch<{ data?: string; value?: string }>(
-      `/api/${encodeURIComponent(session)}/auth/qr?format=${format === 'raw' ? 'raw' : 'image'}`,
-      { headers: { Accept: 'application/json' } },
-      { userId: user.id }
-    )
-
-    if (format === 'raw' && result?.value) {
-      return NextResponse.json({ value: result.value })
+    const result = await getWhatsAppSessionQr(user.id, session, { forceReconnect })
+    if (result.alreadyConnected) {
+      return NextResponse.json({ alreadyConnected: true, message: 'WhatsApp is already linked on this session.' })
     }
-    if (result?.data) {
-      return NextResponse.json({ qrcode: result.data, mimetype: 'image/png' })
+    if (format === 'raw' && result.qrString) {
+      return NextResponse.json({ value: result.qrString })
+    }
+    if (result.qrcode) {
+      return NextResponse.json({ qrcode: result.qrcode, mimetype: result.mimetype || 'image/png' })
     }
     return NextResponse.json({ error: 'No QR data' }, { status: 404 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to get QR'
+    const status = err instanceof WhatsAppApiError ? err.status : 500
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

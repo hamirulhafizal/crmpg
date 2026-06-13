@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { handleUserServerAssignmentChange } from '@/app/lib/whatsapp/provider-switch'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -30,6 +31,12 @@ export async function PATCH(request: Request, props: RouteParams) {
   try {
     const admin = createServiceRoleClient()
 
+    const { data: existingProfile } = await admin
+      .from('profiles')
+      .select('waha_server_id')
+      .eq('id', id)
+      .maybeSingle()
+
     const authUpdate: Record<string, unknown> = {}
     if (typeof body.email === 'string' && body.email.trim()) authUpdate.email = body.email.trim()
     if (typeof body.password === 'string' && body.password.trim()) authUpdate.password = body.password.trim()
@@ -57,7 +64,14 @@ export async function PATCH(request: Request, props: RouteParams) {
       return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    let providerSwitch: { cleared: boolean; reason?: string } | null = null
+    if ('waha_server_id' in profileUpdates) {
+      const previousServerId = (existingProfile?.waha_server_id || null) as string | null
+      const nextServerId = (profileUpdates.waha_server_id as string | null) ?? previousServerId
+      providerSwitch = await handleUserServerAssignmentChange(id, previousServerId, nextServerId)
+    }
+
+    return NextResponse.json({ success: true, provider_switch: providerSwitch })
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })

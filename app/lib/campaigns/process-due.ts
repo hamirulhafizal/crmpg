@@ -49,6 +49,11 @@ import {
   type CampaignWorkflowPlan,
 } from '@/app/lib/workflows/plan'
 import { waitSecondsBeforeNextCustomer, waitSecondsOnPath } from '@/app/lib/workflows/wait-pacing'
+import {
+  getWhatsAppServerConfig,
+  loadUserWhatsAppSessionByName,
+  resolveEffectiveWhatsAppProvider,
+} from '@/app/lib/whatsapp/resolve'
 
 export type ProcessSummary = {
   campaigns_scanned: number
@@ -86,7 +91,7 @@ function cronLog(debugLines: string[] | undefined, message: string) {
 }
 
 const CUSTOMER_PAGE = 250
-const SEND_BATCH = 25
+const SEND_BATCH = 10
 const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
@@ -138,16 +143,54 @@ function campaignInWindow(c: CampaignRow, now: Date): boolean {
   return true
 }
 
-async function pickWahaSession(supabase: ReturnType<typeof createServiceRoleClient>, userId: string): Promise<string | null> {
+type WhatsAppSessionPick = {
+  sessionName: string
+  provider: 'waha' | 'wasender'
+  ready: boolean
+  reason?: string
+}
+
+async function pickWhatsAppSession(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  userId: string
+): Promise<WhatsAppSessionPick | null> {
   const { data: rows } = await supabase
     .from('waha_user_sessions')
-    .select('session_name, last_known_waha_status')
+    .select('session_name, last_known_waha_status, provider_type, session_api_key')
     .eq('user_id', userId)
 
   const list = rows ?? []
+  if (list.length === 0) return null
+
   const working = list.find((r) => String(r.last_known_waha_status || '').toUpperCase() === 'WORKING')
-  if (working?.session_name) return working.session_name
-  return list[0]?.session_name ?? null
+  const pick = working ?? list[0]
+  if (!pick?.session_name) return null
+
+  const cfg = await getWhatsAppServerConfig({ userId })
+  const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
+  const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+
+  if (provider === 'wasender') {
+    if (!sessionRow?.session_api_key?.trim()) {
+      return {
+        sessionName: pick.session_name,
+        provider,
+        ready: false,
+        reason: 'Wasender session API key missing. Reconnect WhatsApp in Integration settings.',
+      }
+    }
+    const status = String(sessionRow.last_known_waha_status || pick.last_known_waha_status || '').toUpperCase()
+    if (status && status !== 'WORKING' && status !== 'CONNECTED') {
+      return {
+        sessionName: pick.session_name,
+        provider,
+        ready: false,
+        reason: `WhatsApp session not connected (${status}). Scan QR in Integration settings.`,
+      }
+    }
+  }
+
+  return { sessionName: pick.session_name, provider, ready: true }
 }
 
 function startOfUtcDay(d: Date): Date {
@@ -834,10 +877,10 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    const session = await pickWahaSession(supabase, campaign.user_id)
-    if (!session) {
+    const sessionPick = await pickWhatsAppSession(supabase, campaign.user_id)
+    if (!sessionPick) {
       summary.messages_failed++
-      cronLog(debugLines, `fail enrollment=${row.id} campaign=${campaign.id}: no WAHA session user=${campaign.user_id}`)
+      cronLog(debugLines, `fail enrollment=${row.id} campaign=${campaign.id}: no WhatsApp session user=${campaign.user_id}`)
       await supabase.from('campaign_message_logs').insert({
         campaign_id: campaign.id,
         campaign_step_id: nextStep.id,
@@ -847,10 +890,36 @@ async function processDueEnrollmentRows(
         phone: customer.phone,
         rendered_message: null,
         send_status: 'failed',
-        error_message: 'No WAHA session configured',
+        error_message: 'No WhatsApp session configured',
       })
       continue
     }
+
+    if (!sessionPick.ready) {
+      summary.messages_failed++
+      cronLog(
+        debugLines,
+        `fail enrollment=${row.id} campaign=${campaign.id}: ${sessionPick.reason ?? 'WhatsApp session not ready'}`
+      )
+      await supabase.from('campaign_message_logs').insert({
+        campaign_id: campaign.id,
+        campaign_step_id: nextStep.id,
+        enrollment_id: row.id,
+        customer_id: customer.id,
+        user_id: campaign.user_id,
+        phone: customer.phone,
+        rendered_message: null,
+        send_status: 'failed',
+        error_message: sessionPick.reason ?? 'WhatsApp session not ready',
+      })
+      continue
+    }
+
+    const session = sessionPick.sessionName
+    cronLog(
+      debugLines,
+      `send enrollment=${row.id} provider=${sessionPick.provider} session=${session} step=${nextStep.step_order}`
+    )
 
     const stepNode = whatsAppNodeForStep(plan, nextStep.step_order)
     const isImageStep = isImageStepNode(stepNode)

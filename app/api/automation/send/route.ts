@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
-import { getWahaConfig, WahaApiError, wahaFetch } from '@/app/lib/waha'
+import { sendWhatsAppText as sendUnifiedWhatsAppText } from '@/app/lib/whatsapp/send'
+import { checkWhatsAppNumberExists as checkNumberOnWhatsApp } from '@/app/lib/whatsapp/contacts'
+import { fetchLiveWhatsAppSessionStatus, isWorkingWhatsAppSessionStatus } from '@/app/lib/whatsapp/session-status'
+import { getWhatsAppServerConfig, loadUserWhatsAppSession } from '@/app/lib/whatsapp/resolve'
+import { wasenderSendImage, wasenderUploadMedia } from '@/app/lib/wasender'
+import { WahaApiError, wahaFetch } from '@/app/lib/waha'
 import {
   formatLastPurchaseForTemplate,
   formatRegistrationForTemplate,
@@ -307,78 +312,14 @@ function humanizeWhatsAppText(input: string): string {
 }
 
 async function sendWhatsAppMessage(userId: string, session: string, phone: string, text: string) {
-  const digits = normalisePhoneToMsisdn(phone)
-  const lidChatId = await resolveWahaLidChatId(userId, session, digits)
-  const chatCandidates = Array.from(
-    new Set([...(lidChatId ? [lidChatId] : []), `${digits}@c.us`, `${digits}@s.whatsapp.net`])
-  )
-  const typingChatId = chatCandidates[0]
-  const humanText = humanizeWhatsAppText(text)
-
-  // WAHA "human-like" typing indicators.
-  // These should never block the actual send; if typing endpoints fail,
-  // we still proceed with sending the text.
-  const baseDelayMs = 900
-  const perCharExtraMs = 6
-  const maxDelayMs = 2600
-  const computed = baseDelayMs + Math.min(humanText.length, 250) * perCharExtraMs
-  const typingDelayMs = Math.max(baseDelayMs, Math.min(maxDelayMs, computed))
-  const minTyping = Math.max(400, Math.floor(typingDelayMs * 0.8))
-  const maxTyping = Math.max(minTyping + 50, Math.floor(typingDelayMs * 1.1))
-
-  try {
-    await wahaFetch('/api/startTyping', {
-      method: 'POST',
-      body: JSON.stringify({
-        session,
-        chatId: typingChatId,
-      }),
-    }, { userId })
-  } catch (e) {
-    if (isTypingChatNotFoundError(e)) {
-      console.info('startTyping skipped: chat not found (continuing with sendText)')
-    } else {
-      console.warn('startTyping failed; continuing with sendText:', e)
-    }
-  }
-
-  await randomDelayBetween(minTyping, maxTyping)
-
-  try {
-    await wahaFetch('/api/stopTyping', {
-      method: 'POST',
-      body: JSON.stringify({
-        session,
-        chatId: typingChatId,
-      }),
-    }, { userId })
-  } catch (e) {
-    if (isTypingChatNotFoundError(e)) {
-      console.info('stopTyping skipped: chat not found (continuing with sendText)')
-    } else {
-      console.warn('stopTyping failed; continuing with sendText:', e)
-    }
-  }
-
-  let lastErr: unknown = null
-  for (const chatId of chatCandidates) {
-    try {
-      await wahaFetch('/api/sendText', {
-        method: 'POST',
-        body: JSON.stringify({
-          session,
-          chatId,
-          text: humanText,
-        }),
-      }, { userId })
-      return
-    } catch (e) {
-      lastErr = e
-      if (isRetryableSendChatError(e)) continue
-      throw e
-    }
-  }
-  if (lastErr) throw lastErr
+  await sendUnifiedWhatsAppText({
+    userId,
+    session,
+    phone,
+    text,
+    enableTyping: true,
+    randomizeSpaces: true,
+  })
 }
 
 function normalisePhoneToMsisdn(phone: string): string {
@@ -433,8 +374,18 @@ async function sendWhatsAppImageToChat(userId: string, session: string, chatId: 
     throw new Error(`Poster fetch failed: ${posterRes.status} ${posterRes.statusText}`)
   }
   const posterBuffer = Buffer.from(await posterRes.arrayBuffer())
-  const posterBase64 = posterBuffer.toString('base64')
+  const cfg = await getWhatsAppServerConfig({ userId })
 
+  if (cfg.provider === 'wasender') {
+    const row = await loadUserWhatsAppSession(userId)
+    if (!row?.session_api_key) throw new Error('Wasender session API key missing')
+    const publicUrl = await wasenderUploadMedia(cfg, row.session_api_key, posterBuffer, 'image/png')
+    const to = chatId.replace(/@.+$/, '').replace(/\D/g, '')
+    await wasenderSendImage(cfg, row.session_api_key, `+${to.startsWith('60') ? to : `60${to}`}`, publicUrl)
+    return
+  }
+
+  const posterBase64 = posterBuffer.toString('base64')
   await wahaFetch(
     '/api/sendImage',
     {
@@ -459,36 +410,9 @@ type WhatsAppContactCheck =
   | { ok: false; reason: string }
 
 async function checkWhatsAppNumberExists(userId: string, session: string, phone: string): Promise<WhatsAppContactCheck> {
-  const { baseUrl, apiKey } = await getWahaConfig({ userId })
-  if (!baseUrl || !apiKey) {
-    console.warn('WAHA_API_BASE_URL or WAHA_API_KEY missing; contact check unavailable')
-    return { ok: false, reason: 'waha_not_configured' }
-  }
-
   try {
-    const digits = normalisePhoneToMsisdn(phone)
-    const url = `${baseUrl}/api/contacts/check-exists?phone=${encodeURIComponent(digits)}&session=${encodeURIComponent(session)}`
-
-    const res = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Api-Key': apiKey,
-      },
-    })
-
-    if (!res.ok) {
-      console.error('WhatsApp contact check HTTP error:', res.status)
-      return { ok: false, reason: `http_${res.status}` }
-    }
-
-    const data: unknown = await res.json().catch(() => null)
-    const rec = data && typeof data === 'object' ? (data as Record<string, unknown>) : null
-    if (rec && typeof rec.numberExists === 'boolean') {
-      return { ok: true, numberExists: rec.numberExists }
-    }
-
-    console.error('WhatsApp contact check: unexpected response shape')
-    return { ok: false, reason: 'bad_response' }
+    const exists = await checkNumberOnWhatsApp(userId, phone)
+    return { ok: true, numberExists: exists }
   } catch (err) {
     console.error('WhatsApp contact check failed:', err)
     return { ok: false, reason: 'network_or_fetch' }
@@ -864,14 +788,9 @@ export async function GET(request: Request) {
     for (const [userId, sessionRow] of sessionByUser.entries()) {
       const sessionName = sessionRow.session_name
       try {
-        const waSession = await wahaFetch<WahaSessionInfo>(
-          `/api/sessions/${encodeURIComponent(sessionName)}`,
-          {},
-          { userId }
-        )
-        const currentStatus = normalizeWahaStatus(waSession?.status)
+        const currentStatus = await fetchLiveWhatsAppSessionStatus(userId, sessionName)
         // Strict gate: scheduled message delivery is allowed only on WORKING sessions.
-        if (!isWorkingWahaSessionStatus(currentStatus)) {
+        if (!isWorkingWhatsAppSessionStatus(currentStatus)) {
           usersWithUnavailableSession.add(userId)
         }
 

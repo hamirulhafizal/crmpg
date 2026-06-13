@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { mapWasenderStatusToDisplay, wasenderGetSessionStatus } from '@/app/lib/wasender'
 
 function normalizeBaseUrl(url: string): string {
   return (url || '').trim().replace(/\/+$/, '')
 }
 
-async function fetchLiveSessions(apiBaseUrl: string, apiKey: string): Promise<Map<string, string> | null> {
+async function fetchWahaLiveSessions(apiBaseUrl: string, apiKey: string): Promise<Map<string, string> | null> {
   const base = normalizeBaseUrl(apiBaseUrl)
   if (!base || !apiKey) return null
 
@@ -36,9 +37,11 @@ export async function POST() {
     const admin = createServiceRoleClient()
     const [{ data: servers, error: serversError }, { data: profiles, error: profilesError }, { data: mappings, error: mappingsError }] =
       await Promise.all([
-        admin.from('waha_servers').select('id, name, api_base_url, api_key, is_default'),
+        admin.from('waha_servers').select('id, name, api_base_url, api_key, is_default, provider_type'),
         admin.from('profiles').select('id, waha_server_id'),
-        admin.from('waha_user_sessions').select('id, user_id, session_name, last_known_waha_status'),
+        admin
+          .from('waha_user_sessions')
+          .select('id, user_id, session_name, session_api_key, provider_type, last_known_waha_status'),
       ])
 
     if (serversError) return NextResponse.json({ error: serversError.message }, { status: 500 })
@@ -51,13 +54,16 @@ export async function POST() {
 
     const defaultServerId = (serverRows.find((s) => s.is_default)?.id || '').toString()
     const profileServerByUser = new Map(profileRows.map((p) => [p.id, (p.waha_server_id || '').toString()]))
-    const liveByServerId = new Map<string, Map<string, string> | null>()
+    const wahaLiveByServerId = new Map<string, Map<string, string> | null>()
+    const serverById = new Map(serverRows.map((s) => [s.id, s]))
 
     await Promise.all(
-      serverRows.map(async (s) => {
-        const live = await fetchLiveSessions(s.api_base_url, s.api_key)
-        liveByServerId.set(s.id, live)
-      })
+      serverRows
+        .filter((s) => s.provider_type !== 'wasender')
+        .map(async (s) => {
+          const live = await fetchWahaLiveSessions(s.api_base_url, s.api_key)
+          wahaLiveByServerId.set(s.id, live)
+        })
     )
 
     let updated = 0
@@ -72,13 +78,40 @@ export async function POST() {
         continue
       }
 
-      const liveForServer = liveByServerId.get(resolvedServerId)
-      if (!liveForServer) {
-        unreachableServer++
-        continue
+      const server = serverById.get(resolvedServerId)
+      let nextStatus = 'STOPPED'
+
+      if (server?.provider_type === 'wasender' || row.provider_type === 'wasender') {
+        const sessionApiKey = (row.session_api_key || '').trim()
+        if (!sessionApiKey || !server) {
+          unreachableServer++
+          continue
+        }
+        try {
+          const raw = await wasenderGetSessionStatus(
+            {
+              serverId: server.id,
+              provider: 'wasender',
+              baseUrl: normalizeBaseUrl(server.api_base_url),
+              platformApiKey: server.api_key,
+              dashboardPass: null,
+            },
+            sessionApiKey
+          )
+          nextStatus = mapWasenderStatusToDisplay(raw)
+        } catch {
+          unreachableServer++
+          continue
+        }
+      } else {
+        const liveForServer = wahaLiveByServerId.get(resolvedServerId)
+        if (!liveForServer) {
+          unreachableServer++
+          continue
+        }
+        nextStatus = (liveForServer.get(row.session_name) || 'STOPPED').trim()
       }
 
-      const nextStatus = (liveForServer.get(row.session_name) || 'STOPPED').trim()
       const prevStatus = (row.last_known_waha_status || '').trim()
       if (nextStatus === prevStatus) {
         unchanged++
@@ -105,6 +138,6 @@ export async function POST() {
     })
   } catch (e) {
     console.error(e)
-    return NextResponse.json({ error: 'Failed to sync WAHA sessions' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to sync WhatsApp sessions' }, { status: 500 })
   }
 }

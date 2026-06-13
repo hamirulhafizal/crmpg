@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
-import { listWhatsAppGroups } from '@/app/lib/whatsapp/contacts'
+import { isWhatsAppConfigured, getProviderForUser } from '@/app/lib/whatsapp/resolve'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ session: string }> }
-) {
+export async function GET() {
   try {
     const supabase = await createClient()
     const {
@@ -19,12 +15,10 @@ export async function GET(
     if (!(await isWhatsAppConfigured({ userId: user.id }))) {
       return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
-
-    const { session } = await params
-    const groups = await listWhatsAppGroups(user.id, session)
-    return NextResponse.json({ groups })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to list groups'
+    const provider = await getProviderForUser(user.id)
+    return NextResponse.json({ provider })
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

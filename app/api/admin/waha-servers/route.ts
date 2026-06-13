@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import type { WhatsAppProvider } from '@/app/lib/whatsapp/types'
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '')
@@ -8,37 +9,35 @@ function normalizeBaseUrl(url: string): string {
 
 type ServerStatus = 'online' | 'offline'
 
-function indicatesServerReachable(status: number): boolean {
-  // Any non-5xx HTTP response proves the server is reachable.
-  // 4xx can happen for auth/route differences, but server is still online.
-  return status >= 200 && status < 500
-}
-
-async function checkServerStatus(baseUrl: string, apiKey: string): Promise<ServerStatus> {
+async function checkServerStatus(
+  baseUrl: string,
+  apiKey: string,
+  provider: WhatsAppProvider
+): Promise<ServerStatus> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 4000)
   try {
     const root = normalizeBaseUrl(baseUrl)
-    const candidates = [
-      `${root}/api/sessions?all=true`,
-      `${root}/api/sessions`,
-      `${root}/api/health`,
-      `${root}/`,
-    ]
+    const headers: Record<string, string> =
+      provider === 'wasender'
+        ? { Authorization: `Bearer ${apiKey}` }
+        : { 'X-Api-Key': apiKey }
+    const candidates =
+      provider === 'wasender'
+        ? [`${root}/api/whatsapp-sessions`, `${root}/api/status`]
+        : [`${root}/api/sessions?all=true`, `${root}/api/sessions`, `${root}/api/health`, `${root}/`]
 
     for (const url of candidates) {
       try {
         const res = await fetch(url, {
           method: 'GET',
-          headers: {
-            'X-Api-Key': apiKey,
-          },
+          headers,
           signal: controller.signal,
           cache: 'no-store',
         })
-        if (indicatesServerReachable(res.status)) return 'online'
+        if (res.status >= 200 && res.status < 500) return 'online'
       } catch {
-        // Try the next candidate endpoint.
+        // try next
       }
     }
     return 'offline'
@@ -57,7 +56,7 @@ export async function GET() {
     const admin = createServiceRoleClient()
     const { data, error } = await admin
       .from('waha_servers')
-      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, provider_type, is_default, created_at, updated_at')
       .order('name', { ascending: true })
 
     if (error) {
@@ -72,7 +71,8 @@ export async function GET() {
         api_base_url: row.api_base_url,
         api_key: row.api_key,
         dashboard_pass: row.dashboard_pass ?? null,
-        status: await checkServerStatus(row.api_base_url, row.api_key),
+        provider_type: row.provider_type === 'wasender' ? 'wasender' : 'waha',
+        status: await checkServerStatus(row.api_base_url, row.api_key, row.provider_type === 'wasender' ? 'wasender' : 'waha'),
         is_default: row.is_default,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -95,6 +95,7 @@ export async function POST(request: Request) {
     api_base_url?: string
     api_key?: string
     dashboard_pass?: string | null
+    provider_type?: WhatsAppProvider
     is_default?: boolean
   }
   try {
@@ -113,8 +114,11 @@ export async function POST(request: Request) {
         ? body.dashboard_pass.trim() || null
         : null
   const is_default = Boolean(body.is_default)
+  const provider_type: WhatsAppProvider = body.provider_type === 'wasender' ? 'wasender' : 'waha'
+  const resolvedBaseUrl =
+    provider_type === 'wasender' && !api_base_url ? 'https://wasenderapi.com' : api_base_url
 
-  if (!name || !api_base_url || !api_key) {
+  if (!name || !resolvedBaseUrl || !api_key) {
     return NextResponse.json(
       { error: 'name, api_base_url, and api_key are required' },
       { status: 400 }
@@ -132,12 +136,13 @@ export async function POST(request: Request) {
       .from('waha_servers')
       .insert({
         name,
-        api_base_url,
+        api_base_url: resolvedBaseUrl,
         api_key,
-        dashboard_pass,
+        dashboard_pass: provider_type === 'wasender' ? null : dashboard_pass,
+        provider_type,
         is_default,
       })
-      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, provider_type, is_default, created_at, updated_at')
       .single()
 
     if (error) {

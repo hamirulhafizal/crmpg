@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
-import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
-import { isWahaConfigured, wahaFetch } from '@/app/lib/waha'
+import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
+import { sendWhatsAppText as deliverWhatsAppText } from '@/app/lib/whatsapp/send'
 import { PORTAL_BRAND } from '@/app/lib/customer-portal/brand'
 
 async function pickWahaSession(userId: string): Promise<string | null> {
@@ -12,13 +12,12 @@ async function pickWahaSession(userId: string): Promise<string | null> {
     .eq('user_id', userId)
 
   const list = rows ?? []
-  const working = list.find((r) => String(r.last_known_waha_status || '').toUpperCase() === 'WORKING')
+  const working = list.find((r) => {
+    const s = String(r.last_known_waha_status || '').toUpperCase()
+    return s === 'WORKING' || s === 'CONNECTED'
+  })
   if (working?.session_name) return working.session_name
   return list[0]?.session_name ?? null
-}
-
-function toChatId(phone: string): string {
-  return `${normalizePhoneToMsisdn(phone)}@c.us`
 }
 
 function tacIntroMessage(pgCode?: string | null): string {
@@ -30,20 +29,22 @@ function tacIntroMessage(pgCode?: string | null): string {
   )
 }
 
-async function sendWhatsAppText(
+async function sendWhatsAppTextMessages(
   session: string,
-  chatId: string,
-  text: string,
+  phone: string,
+  messages: string[],
   ownerUserId: string
 ): Promise<void> {
-  await wahaFetch(
-    '/api/sendText',
-    {
-      method: 'POST',
-      body: JSON.stringify({ session, chatId, text }),
-    },
-    { userId: ownerUserId }
-  )
+  for (const text of messages) {
+    await deliverWhatsAppText({
+      userId: ownerUserId,
+      session,
+      phone,
+      text,
+      enableTyping: false,
+      randomizeSpaces: false,
+    })
+  }
 }
 
 async function getGmailSmtp(userId: string): Promise<{ fromEmail: string; appPassword: string } | null> {
@@ -70,7 +71,7 @@ async function sendViaWhatsApp(params: {
   code: string
   pgCode?: string | null
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!(await isWahaConfigured({ userId: params.ownerUserId }))) {
+  if (!(await isWhatsAppConfigured({ userId: params.ownerUserId }))) {
     return { ok: false, error: 'WhatsApp is not configured.' }
   }
 
@@ -79,13 +80,11 @@ async function sendViaWhatsApp(params: {
     return { ok: false, error: 'No active WhatsApp session is available.' }
   }
 
-  const chatId = toChatId(params.customerPhone)
   const intro = tacIntroMessage(params.pgCode)
   const codeOnly = params.code.trim()
 
   try {
-    await sendWhatsAppText(session, chatId, intro, params.ownerUserId)
-    await sendWhatsAppText(session, chatId, codeOnly, params.ownerUserId)
+    await sendWhatsAppTextMessages(session, params.customerPhone, [intro, codeOnly], params.ownerUserId)
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to send WhatsApp message'

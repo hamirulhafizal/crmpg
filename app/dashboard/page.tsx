@@ -64,7 +64,7 @@ function WahaStatusBadge({
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
         <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-        Checking WAHA...
+        Checking WhatsApp...
       </span>
     )
   }
@@ -73,7 +73,7 @@ function WahaStatusBadge({
     return (
       <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        WAHA connected
+        WhatsApp connected
       </span>
     )
   }
@@ -81,7 +81,7 @@ function WahaStatusBadge({
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
       <span className="h-2 w-2 rounded-full bg-amber-500" />
-      WAHA not connected
+      WhatsApp not connected
     </span>
   )
 }
@@ -645,7 +645,7 @@ export default function DashboardPage() {
 
             <ServiceTile
               href="/waha-integration"
-              title="WAHA"
+              title="WhatsApp Provider"
               description="WhatsApp integration"
               borderClassName="border-teal-200"
               gradientClassName="from-teal-50 to-white"

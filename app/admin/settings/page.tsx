@@ -10,6 +10,7 @@ type WahaServerRow = {
   api_base_url: string
   api_key: string
   dashboard_pass?: string | null
+  provider_type?: 'waha' | 'wasender'
   status?: 'online' | 'offline'
   is_default: boolean
   created_at: string
@@ -51,7 +52,7 @@ function normalizeStatus(value: string | null | undefined): string {
 
 function statusBadgeClass(status: string): string {
   const normalized = normalizeStatus(status)
-  if (normalized === 'WORKING') {
+  if (normalized === 'WORKING' || normalized === 'CONNECTED') {
     return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
   }
   if (normalized === 'FAILED') {
@@ -110,6 +111,7 @@ export default function AdminSettingsPage() {
   const [serverApiBaseUrl, setServerApiBaseUrl] = useState('')
   const [serverApiKey, setServerApiKey] = useState('')
   const [serverDashboardPass, setServerDashboardPass] = useState('')
+  const [serverProviderType, setServerProviderType] = useState<'waha' | 'wasender'>('waha')
   const [serverIsDefault, setServerIsDefault] = useState(false)
   const [serverApiKeyCopied, setServerApiKeyCopied] = useState(false)
 
@@ -358,6 +360,7 @@ export default function AdminSettingsPage() {
     setServerApiBaseUrl('')
     setServerApiKey('')
     setServerDashboardPass('')
+    setServerProviderType('waha')
     setServerIsDefault(false)
     setServerError(null)
     setServerApiKeyCopied(false)
@@ -370,6 +373,7 @@ export default function AdminSettingsPage() {
     setServerApiBaseUrl(s.api_base_url)
     setServerApiKey(s.api_key || '')
     setServerDashboardPass(s.dashboard_pass || '')
+    setServerProviderType(s.provider_type === 'wasender' ? 'wasender' : 'waha')
     setServerIsDefault(s.is_default)
     setServerError(null)
     setServerApiKeyCopied(false)
@@ -400,9 +404,10 @@ export default function AdminSettingsPage() {
     try {
       const payload: Record<string, unknown> = {
         name: serverName.trim(),
-        api_base_url: serverApiBaseUrl.trim(),
+        api_base_url: serverApiBaseUrl.trim() || (serverProviderType === 'wasender' ? 'https://wasenderapi.com' : ''),
+        provider_type: serverProviderType,
         is_default: serverIsDefault,
-        dashboard_pass: serverDashboardPass.trim() || null,
+        dashboard_pass: serverProviderType === 'waha' ? serverDashboardPass.trim() || null : null,
       }
       if (serverApiKey.trim()) {
         payload.api_key = serverApiKey.trim()
@@ -601,7 +606,7 @@ export default function AdminSettingsPage() {
           onClick={() => setTab('servers')}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
         >
-          WAHA Servers
+          WhatsApp Servers
         </button>
 
         <button
@@ -664,7 +669,7 @@ export default function AdminSettingsPage() {
               onChange={(e) => setFilterServerId(e.target.value)}
               className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900"
             >
-              <option value="all">All WAHA servers</option>
+              <option value="all">All WhatsApp servers</option>
               <option value="">Default/Fallback</option>
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -813,9 +818,9 @@ export default function AdminSettingsPage() {
         <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">WAHA servers</h2>
-              <p className="text-sm text-slate-600">CRUD WAHA API base URLs and keys.</p>
-            </div>
+              <h2 className="text-lg font-semibold text-slate-900">WhatsApp servers</h2>
+              <p className="text-sm text-slate-600">Manage WAHA and WasenderAPI connections for dealers.</p>
+            </div>    
             <button
               type="button"
               onClick={openCreateServer}
@@ -837,6 +842,7 @@ export default function AdminSettingsPage() {
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Provider</th>
                     <th className="px-4 py-3">Base URL</th>
                     <th className="px-4 py-3">API key</th>
                     <th className="px-4 py-3">Dashboard pass</th>
@@ -849,6 +855,17 @@ export default function AdminSettingsPage() {
                   {servers.map((s) => (
                     <tr key={s.id}>
                       <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ring-1 ${
+                            s.provider_type === 'wasender'
+                              ? 'bg-violet-50 text-violet-800 ring-violet-200'
+                              : 'bg-sky-50 text-sky-800 ring-sky-200'
+                          }`}
+                        >
+                          {s.provider_type === 'wasender' ? 'Wasender' : 'WAHA'}
+                        </span>
+                      </td>
                       <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-700">{s.api_base_url}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.api_key || '—'}</td>
                       <td className="px-4 py-3 text-xs text-slate-600">
@@ -1090,14 +1107,32 @@ export default function AdminSettingsPage() {
       {serverModalOpen && (
         <div className="fixed inset-0 z-50 top-[-2rem] flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && closeServerModal()}>
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900">{editingServerId ? 'Edit WAHA server' : 'Add WAHA server'}</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{editingServerId ? 'Edit WhatsApp server' : 'Add WhatsApp server'}</h3>
             <form onSubmit={(e) => void handleServerSubmit(e)} className="mt-6 space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Provider</label>
+                <select
+                  value={serverProviderType}
+                  onChange={(e) => {
+                    const next = e.target.value === 'wasender' ? 'wasender' : 'waha'
+                    setServerProviderType(next)
+                    if (next === 'wasender' && !serverApiBaseUrl.trim()) {
+                      setServerApiBaseUrl('https://wasenderapi.com')
+                    }
+                  }}
+                  className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                >
+                  <option value="waha">WAHA (self-hosted)</option>
+                  <option value="wasender">WasenderAPI (cloud)</option>
+                </select>
+              </div>
               <input value={serverName} onChange={(e) => setServerName(e.target.value)} required placeholder="Name" className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5" />
-              <input value={serverApiBaseUrl} onChange={(e) => setServerApiBaseUrl(e.target.value)} required placeholder="API base URL" className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm" />
+              <input value={serverApiBaseUrl} onChange={(e) => setServerApiBaseUrl(e.target.value)} required placeholder={serverProviderType === 'wasender' ? 'https://wasenderapi.com' : 'API base URL'} className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm" />
               <div className="flex gap-2">
-                <input value={serverApiKey} onChange={(e) => setServerApiKey(e.target.value)} required={!editingServerId} placeholder={editingServerId ? 'Leave blank to keep current key' : 'API key'} className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm" />
+                <input value={serverApiKey} onChange={(e) => setServerApiKey(e.target.value)} required={!editingServerId} placeholder={editingServerId ? 'Leave blank to keep current key' : serverProviderType === 'wasender' ? 'Wasender personal access token' : 'API key'} className="text-slate-900 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm" />
                 <button type="button" onClick={() => void handleCopyServerApiKey()} disabled={!serverApiKey.trim()} className="rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900">{serverApiKeyCopied ? 'Copied' : 'Copy'}</button>
               </div>
+              {serverProviderType === 'waha' ? (
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">WAHA dashboard password (optional)</label>
                 <input
@@ -1112,6 +1147,11 @@ export default function AdminSettingsPage() {
                   Stored on this server row for your reference (e.g. WAHA web UI). Clear the field and save to remove.
                 </p>
               </div>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Wasender uses one platform token for all dealers. Each dealer gets their own session after scanning QR.
+                </p>
+              )}
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={serverIsDefault} onChange={(e) => setServerIsDefault(e.target.checked)} />
                 <span className="text-sm text-slate-700">Set as default</span>
@@ -1142,9 +1182,14 @@ export default function AdminSettingsPage() {
               <select value={userWahaServerId} onChange={(e) => setUserWahaServerId(e.target.value)} className="rounded-xl border border-slate-300 px-3 py-2.5 md:col-span-2 text-slate-900">
                 <option value="">Use default/fallback</option>
                 {servers.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.api_base_url})</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.provider_type === 'wasender' ? 'Wasender' : 'WAHA'})
+                  </option>
                 ))}
               </select>
+              <p className="md:col-span-2 text-xs text-amber-700">
+                Changing the assigned server clears the dealer&apos;s WhatsApp session — they must scan QR again.
+              </p>
 
               {editingUserId && (
                 <div className="mt-2 rounded-xl border border-slate-200 p-3 md:col-span-2">

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
+import { getProviderForUser } from '@/app/lib/whatsapp/resolve'
+import { fetchWhatsAppChatMessages } from '@/app/lib/whatsapp/chat-messages'
 import { fetchWahaChatMessages } from '@/app/lib/waha-chat-messages'
 import { wahaFetch, WahaApiError, type WahaAttempt } from '@/app/lib/waha'
 
@@ -197,6 +199,18 @@ export async function GET(request: Request, context: Params) {
     }
 
     const sessionName = String(sessionRow.session_name)
+    const provider = await getProviderForUser(user.id)
+
+    if (provider === 'wasender') {
+      const { messages } = await fetchWhatsAppChatMessages(user.id, sessionName, String(customer.phone), limit)
+      return NextResponse.json({
+        messages,
+        session: sessionName,
+        provider,
+        note: 'Wasender shows outbound API message logs for this contact.',
+      })
+    }
+
     const msisdn = normalizePhoneToMsisdn(String(customer.phone))
     const chatId = `${msisdn}@c.us`
 

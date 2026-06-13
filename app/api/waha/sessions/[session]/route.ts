@@ -1,111 +1,97 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { isWahaConfigured, wahaFetch } from '@/app/lib/waha'
+import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
+import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
+import { startWhatsAppSession, stopWhatsAppSession, deleteWhatsAppSession } from '@/app/lib/whatsapp/sessions'
+import { getProviderForUser } from '@/app/lib/whatsapp/resolve'
+import { listWhatsAppSessions } from '@/app/lib/whatsapp/sessions'
 
-// GET /api/waha/sessions/[session] - Get session status
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!(await isWahaConfigured({ userId: user.id }))) {
-      return NextResponse.json(
-        { error: 'WAHA integration is not configured' },
-        { status: 503 }
-      )
+    if (!(await isWhatsAppConfigured({ userId: user.id }))) {
+      return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
 
     const { session } = await params
-    if (!session) {
-      return NextResponse.json({ error: 'Session name required' }, { status: 400 })
+    const sessions = await listWhatsAppSessions(user.id)
+    const found = sessions.find((s) => s.name === session)
+    if (!found) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
-
-    const result = await wahaFetch<{
-      name: string
-      status: string
-      me?: { id?: string; pushName?: string } | null
-      engine?: { engine?: string }
-      config?: unknown
-    }>(`/api/sessions/${encodeURIComponent(session)}`, {}, { userId: user.id })
-    return NextResponse.json(result)
+    return NextResponse.json(found)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to get session'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-// DELETE /api/waha/sessions/[session] - Delete a session
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!(await isWahaConfigured({ userId: user.id }))) {
-      return NextResponse.json(
-        { error: 'WAHA integration is not configured' },
-        { status: 503 }
-      )
+    if (!(await isWhatsAppConfigured({ userId: user.id }))) {
+      return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
 
     const { session } = await params
-    if (!session) {
-      return NextResponse.json({ error: 'Session name required' }, { status: 400 })
-    }
-
-    // Ensure this session belongs to the current user
-    const { data: mapping, error: mapError } = await supabase
-      .from('waha_user_sessions')
-      .select('session_name')
-      .eq('user_id', user.id)
-      .eq('session_name', session)
-      .maybeSingle()
-
-    if (mapError) {
-      return NextResponse.json(
-        { error: 'Failed to verify session owner' },
-        { status: 500 }
-      )
-    }
-
-    if (!mapping) {
-      return NextResponse.json(
-        { error: 'Session not found for this user' },
-        { status: 404 }
-      )
-    }
-
-    // Best-effort: tell WAHA backend to delete the session, but
-    // don't block UI cleanup if that fails.
-    try {
-      await wahaFetch<unknown>(
-        `/api/sessions/${encodeURIComponent(session)}`,
-        { method: 'DELETE' },
-        { userId: user.id }
-      )
-    } catch (err) {
-      console.error('Failed to delete WAHA backend session, continuing with local cleanup:', err)
-    }
-
-    // Remove mapping record so it disappears from UI, even if WAHA call failed
-    await supabase
-      .from('waha_user_sessions')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('session_name', session)
-
-    return NextResponse.json({ success: true })
+    await deleteWhatsAppSession(user.id, session)
+    return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to delete session'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = err instanceof WhatsAppApiError ? err.status : 500
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ session: string }> }
+) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { session } = await params
+    const provider = await getProviderForUser(user.id)
+    const body = await request.json().catch(() => ({}))
+    const action = (body.action || '').toString()
+
+    if (action === 'stop') {
+      const result = await stopWhatsAppSession(user.id, session)
+      return NextResponse.json(result)
+    }
+
+    const result = await startWhatsAppSession(user.id, session)
+    return NextResponse.json({ ...result, provider })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed'
+    const status = err instanceof WhatsAppApiError ? err.status : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

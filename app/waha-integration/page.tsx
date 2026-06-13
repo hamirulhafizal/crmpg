@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { buildDefaultGmailMessage } from '@/app/lib/profile/gmail-template'
 
@@ -15,6 +15,37 @@ interface WahaSession {
 
 function normalizeSessionNameToPhone(sessionName: string): string {
   return (sessionName || '').replace(/\D/g, '')
+}
+
+function isSessionConnected(status: string): boolean {
+  const s = (status || '').toUpperCase()
+  return s === 'WORKING' || s === 'CONNECTED'
+}
+
+function needsQrScan(status: string): boolean {
+  const s = (status || '').toUpperCase()
+  return (
+    s === 'STARTING' ||
+    s === 'SCAN_QR_CODE' ||
+    s === 'SCAN_QR' ||
+    s === 'NEED_SCAN' ||
+    s === 'DISCONNECTED' ||
+    s === 'LOGGED_OUT' ||
+    s === 'EXPIRED' ||
+    s === 'FAILED' ||
+    s === 'STOPPED'
+  )
+}
+
+function formatSessionStatus(status: string, provider: 'waha' | 'wasender'): string {
+  const s = (status || '').toUpperCase()
+  if (provider === 'wasender') {
+    if (s === 'WORKING' || s === 'CONNECTED') return 'Connected'
+    if (s === 'SCAN_QR' || s === 'NEED_SCAN') return 'Scan QR'
+    if (s === 'STARTING') return 'Connecting'
+    if (s === 'STOPPED') return 'Disconnected'
+  }
+  return status
 }
 
 export default function WahaIntegrationPage() {
@@ -38,6 +69,8 @@ export default function WahaIntegrationPage() {
   const [qrSession, setQrSession] = useState<string | null>(null)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [loadingQr, setLoadingQr] = useState(false)
+  const [qrError, setQrError] = useState<string | null>(null)
+  const [qrAlreadyConnected, setQrAlreadyConnected] = useState(false)
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
@@ -64,8 +97,10 @@ export default function WahaIntegrationPage() {
   const [savingEmailFallback, setSavingEmailFallback] = useState(false)
   const [emailFallbackMessage, setEmailFallbackMessage] = useState<string | null>(null)
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
+  const [whatsappProvider, setWhatsappProvider] = useState<'waha' | 'wasender'>('waha')
 
-  const showQrForSession = qrSession && sessions.find((s) => s.name === qrSession)?.status !== 'WORKING'
+  const showQrForSession =
+    qrSession && !isSessionConnected(sessions.find((s) => s.name === qrSession)?.status || '')
 
   useEffect(() => {
     if (!loading && !user) {
@@ -74,7 +109,20 @@ export default function WahaIntegrationPage() {
   }, [user, loading, router])
 
   useEffect(() => {
-    if (user) loadSessions()
+    if (user) {
+      void (async () => {
+        try {
+          const res = await fetch('/api/whatsapp/provider')
+          const data = await res.json()
+          if (res.ok && (data.provider === 'wasender' || data.provider === 'waha')) {
+            setWhatsappProvider(data.provider)
+          }
+        } catch {
+          // keep default
+        }
+        await loadSessions()
+      })()
+    }
   }, [user])
 
   const loadSessions = async () => {
@@ -88,7 +136,7 @@ export default function WahaIntegrationPage() {
       if (data.sessions?.length && !selectedSession) {
         setSelectedSession(data.sessions[0].name)
       }
-      if (qrSession && data.sessions?.find((s: WahaSession) => s.name === qrSession)?.status === 'WORKING') {
+      if (qrSession && isSessionConnected(data.sessions?.find((s: WahaSession) => s.name === qrSession)?.status || '')) {
         setQrSession(null)
         setQrCode(null)
       }
@@ -180,28 +228,79 @@ export default function WahaIntegrationPage() {
     }
   }
 
-  const fetchQr = async (sessionName: string) => {
+  const fetchQr = useCallback(async (sessionName: string, opts?: { force?: boolean }) => {
     setQrSession(sessionName)
     setLoadingQr(true)
     setQrCode(null)
+    setQrError(null)
+    setQrAlreadyConnected(false)
     setError(null)
     try {
+      const force = opts?.force ? '&force=1' : ''
       const res = await fetch(
-        `/api/waha/sessions/${encodeURIComponent(sessionName)}/qr?format=image`
+        `/api/waha/sessions/${encodeURIComponent(sessionName)}/qr?format=image${force}`
       )
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to get QR')
+      if (data.alreadyConnected) {
+        setQrAlreadyConnected(true)
+        return
+      }
       if (data.qrcode) {
         setQrCode(data.qrcode)
       } else {
-        setError('No QR code returned')
+        setQrError('No QR code returned. Tap refresh to try again.')
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to get QR')
+      const msg = e instanceof Error ? e.message : 'Failed to get QR'
+      setQrError(msg)
     } finally {
       setLoadingQr(false)
     }
-  }
+  }, [])
+
+  const loginDialogStatus = loginDialogSession
+    ? sessions.find((s) => s.name === loginDialogSession)?.status || ''
+    : ''
+
+  const showLoginConnectedPanel =
+    whatsappProvider === 'wasender'
+      ? qrAlreadyConnected || (isSessionConnected(loginDialogStatus) && !qrCode && !loadingQr)
+      : qrAlreadyConnected || isSessionConnected(loginDialogStatus)
+
+  const prevLoginDialogStatusRef = useRef('')
+
+  useEffect(() => {
+    if (!loginDialogSession || whatsappProvider !== 'wasender') return
+    const prev = prevLoginDialogStatusRef.current
+    prevLoginDialogStatusRef.current = loginDialogStatus
+    if (
+      isSessionConnected(loginDialogStatus) &&
+      !isSessionConnected(prev) &&
+      qrCode &&
+      !loadingQr
+    ) {
+      setQrCode(null)
+      setQrAlreadyConnected(true)
+    }
+  }, [loginDialogSession, whatsappProvider, loginDialogStatus, qrCode, loadingQr])
+
+  useEffect(() => {
+    if (!loginDialogSession || whatsappProvider !== 'wasender') return
+    if (showLoginConnectedPanel) return
+    const timer = window.setInterval(() => {
+      void fetchQr(loginDialogSession)
+    }, 40000)
+    return () => window.clearInterval(timer)
+  }, [loginDialogSession, whatsappProvider, showLoginConnectedPanel, fetchQr])
+
+  useEffect(() => {
+    if (!loginDialogSession || !qrCode) return
+    const timer = window.setInterval(() => {
+      void loadSessions()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [loginDialogSession, qrCode])
 
   const openLoginDialog = (sessionName: string) => {
     setLoginDialogSession(sessionName)
@@ -210,9 +309,20 @@ export default function WahaIntegrationPage() {
     setPairingPhone(sessionName.replace(/\D/g, ''))
     setQrSession(sessionName)
     setQrCode(null)
+    setQrError(null)
+    setQrAlreadyConnected(false)
+    prevLoginDialogStatusRef.current =
+      sessions.find((x) => x.name === sessionName)?.status || ''
     const s = sessions.find((x) => x.name === sessionName)
-    if (s && (s.status === 'STARTING' || s.status === 'SCAN_QR_CODE')) {
-      fetchQr(sessionName)
+    const connected = s ? isSessionConnected(s.status) : false
+
+    if (whatsappProvider === 'wasender') {
+      void fetchQr(sessionName)
+      return
+    }
+
+    if (s && (needsQrScan(s.status) || !connected)) {
+      void fetchQr(sessionName)
     }
   }
 
@@ -224,6 +334,8 @@ export default function WahaIntegrationPage() {
     if (qrSession === was) {
       setQrSession(null)
       setQrCode(null)
+      setQrError(null)
+      setQrAlreadyConnected(false)
     }
   }
 
@@ -343,9 +455,12 @@ export default function WahaIntegrationPage() {
   const statusColor = (status: string) => {
     switch (status) {
       case 'WORKING':
+      case 'CONNECTED':
         return 'text-emerald-600 bg-emerald-50'
       case 'STARTING':
       case 'SCAN_QR_CODE':
+      case 'SCAN_QR':
+      case 'NEED_SCAN':
         return 'text-amber-600 bg-amber-50'
       case 'STOPPED':
         return 'text-slate-600 bg-slate-100'
@@ -393,7 +508,10 @@ export default function WahaIntegrationPage() {
                 </svg>
               </Link>
 
-              <h1 className="text-xl font-semibold text-slate-900">WAHA WhatsApp Integration</h1>
+              <h1 className="text-xl font-semibold text-slate-900">WhatsApp Integration</h1>
+              <p className="text-sm text-slate-600">
+                Provider: <span className="font-medium">{whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}</span>
+              </p>
             </div>
           </div>
         </div>
@@ -531,7 +649,7 @@ export default function WahaIntegrationPage() {
                 >
                   <span className="font-medium text-slate-900">{s.name}</span>
                   <span className={`px-2.5 py-1 rounded-lg text-sm font-medium ${statusColor(s.status)}`}>
-                    {s.status}
+                    {formatSessionStatus(s.status, whatsappProvider)}
                   </span>
                   {s.me?.pushName && (
                     <span className="text-sm text-slate-600">({s.me.pushName})</span>
@@ -540,7 +658,7 @@ export default function WahaIntegrationPage() {
                     <button
                       type="button"
                       onClick={() => openLoginDialog(s.name)}
-                      title="Login (QR or code)"
+                      title={whatsappProvider === 'wasender' ? 'Scan QR (Wasender)' : 'Login (QR or code)'}
                       className="p-2 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors"
                       aria-label="Login"
                     >
@@ -548,6 +666,7 @@ export default function WahaIntegrationPage() {
                         transform: 'rotate(180deg)'
                       }} className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
                     </button>
+                    {whatsappProvider === 'waha' ? (
                     <button
                       type="button"
                       onClick={() => openScreenshotDialog(s.name)}
@@ -557,6 +676,7 @@ export default function WahaIntegrationPage() {
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 13v2a2 2 0 01-2 2H7a2 2 0 01-2-2v-2" /></svg>
                     </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => openTestDialog(s.name)}
@@ -635,42 +755,105 @@ export default function WahaIntegrationPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 top-[-2rem]" onClick={() => closeLoginDialog()}>
             <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-lg font-semibold text-slate-900">{loginDialogSession}</span>
-                  <span className="px-2 py-0.5 rounded text-sm font-medium bg-amber-100 text-amber-800">SCAN_QR_CODE (WAHA)</span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide ${
+                      whatsappProvider === 'wasender'
+                        ? 'bg-violet-100 text-violet-800'
+                        : 'bg-sky-100 text-sky-800'
+                    }`}
+                  >
+                    {whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}
+                  </span>
+                  {loginDialogStatus ? (
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        isSessionConnected(loginDialogStatus)
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {formatSessionStatus(loginDialogStatus, whatsappProvider)}
+                    </span>
+                  ) : null}
                 </div>
-                <button type="button" onClick={() => closeLoginDialog()} className="p-2 text-slate-500 hover:text-slate-700" aria-label="Close">×</button>
+                <button type="button" onClick={() => closeLoginDialog()} className="p-2 text-slate-500 hover:text-slate-700 text-2xl leading-none" aria-label="Close">×</button>
               </div>
-              <div className="flex border-b border-slate-200">
-                <button type="button" onClick={() => setLoginTab('scan')} className={`px-6 py-3 text-sm font-medium ${loginTab === 'scan' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-600'}`}>Scan QR</button>
-                <button type="button" onClick={() => setLoginTab('code')} className={`px-6 py-3 text-sm font-medium ${loginTab === 'code' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-600'}`}>Enter Code</button>
-              </div>
+              {whatsappProvider === 'waha' ? (
+                <div className="flex border-b border-slate-200">
+                  <button type="button" onClick={() => setLoginTab('scan')} className={`px-6 py-3 text-sm font-medium ${loginTab === 'scan' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-600'}`}>Scan QR</button>
+                  <button type="button" onClick={() => setLoginTab('code')} className={`px-6 py-3 text-sm font-medium ${loginTab === 'code' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-600'}`}>Enter Code</button>
+                </div>
+              ) : null}
               <div className="p-6 overflow-auto flex-1">
-                {loginTab === 'scan' && (
+                {(whatsappProvider === 'wasender' || loginTab === 'scan') && (
                   <>
-                    <p className="text-sm text-slate-600 mb-4">Scan QR Code to authorize this session.</p>
+                    {whatsappProvider === 'wasender' ? (
+                      <p className="text-sm text-slate-600 mb-4">
+                        Link WhatsApp via <span className="font-medium text-violet-700">WasenderAPI</span>. Scan the QR code with your phone — it refreshes every ~45 seconds.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-slate-600 mb-4">Scan QR Code to authorize this session.</p>
+                    )}
                     <ul className="text-sm text-slate-600 mb-4 list-disc list-inside space-y-1">
                       <li>Open WhatsApp on your phone</li>
-                      <li>Tap More Options ⋮ or Settings ⚙️</li>
-                      <li>Tap Linked Devices → Link a device</li>
-                      <li>Point your phone at this screen to capture the QR code</li>
+                      <li>Tap Settings → Linked Devices</li>
+                      <li>Tap Link a device and scan the code below</li>
                     </ul>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-medium text-slate-700">QR</span>
-                      <button type="button" onClick={() => fetchQr(loginDialogSession)} disabled={loadingQr} className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" aria-label="Refresh QR">↻</button>
-                    </div>
-                    {loadingQr ? (
-                      <p className="text-slate-500">Loading QR…</p>
-                    ) : qrSession === loginDialogSession && qrCode ? (
-                      <div className="inline-block p-4 bg-white rounded-xl border border-slate-200">
-                        <img src={`data:image/png;base64,${qrCode}`} alt="WhatsApp QR" className="w-64 h-64 object-contain" />
+
+                    {showLoginConnectedPanel ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+                        <p className="font-medium">WhatsApp is linked on this session.</p>
+                        <p className="mt-1 text-emerald-800/90">You can send messages from campaigns and automation.</p>
+                        {whatsappProvider === 'wasender' ? (
+                          <button
+                            type="button"
+                            onClick={() => void fetchQr(loginDialogSession, { force: true })}
+                            disabled={loadingQr}
+                            className="mt-3 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                          >
+                            {loadingQr ? 'Preparing…' : 'Link a different device'}
+                          </button>
+                        ) : null}
                       </div>
                     ) : (
-                      <p className="text-slate-500">Click refresh to load QR code.</p>
+                      <>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-sm font-medium text-slate-700">QR code</span>
+                          <button
+                            type="button"
+                            onClick={() => void fetchQr(loginDialogSession, whatsappProvider === 'wasender' ? { force: false } : undefined)}
+                            disabled={loadingQr}
+                            className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                          >
+                            {loadingQr ? 'Loading…' : 'Refresh QR'}
+                          </button>
+                        </div>
+                        {qrError ? (
+                          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{qrError}</div>
+                        ) : null}
+                        {loadingQr ? (
+                          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
+                            <p className="text-slate-500">Generating QR code…</p>
+                          </div>
+                        ) : qrSession === loginDialogSession && qrCode ? (
+                          <div className="inline-block rounded-xl border-2 border-violet-200 bg-white p-4 shadow-sm">
+                            <img src={`data:image/png;base64,${qrCode}`} alt="WhatsApp QR" className="h-64 w-64 object-contain" />
+                            {whatsappProvider === 'wasender' ? (
+                              <p className="mt-2 text-center text-xs text-slate-500">Expires in ~45s · tap Refresh QR if needed</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50">
+                            <p className="text-slate-500">Tap Refresh QR to load the code.</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </>
                 )}
-                {loginTab === 'code' && (
+                {whatsappProvider === 'waha' && loginTab === 'code' && (
                   <>
                     <p className="text-sm text-slate-600 mb-4">Request a pairing code and enter it in WhatsApp: Linked Devices → Link with phone number.</p>
                     <div className="space-y-3">

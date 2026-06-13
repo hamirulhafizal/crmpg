@@ -1,38 +1,32 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
-import { isWahaConfigured, wahaFetch } from '@/app/lib/waha'
+import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
+import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
+import { startWhatsAppSession } from '@/app/lib/whatsapp/sessions'
 
-// POST /api/waha/sessions/[session]/start - Start a session
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (!(await isWahaConfigured({ userId: user.id }))) {
-      return NextResponse.json(
-        { error: 'WAHA integration is not configured' },
-        { status: 503 }
-      )
+    if (!(await isWhatsAppConfigured({ userId: user.id }))) {
+      return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
 
     const { session } = await params
-    if (!session) {
-      return NextResponse.json({ error: 'Session name required' }, { status: 400 })
-    }
-
-    const result = await wahaFetch<{ name: string; status: string }>(
-      `/api/sessions/${encodeURIComponent(session)}/start`,
-      { method: 'POST' },
-      { userId: user.id }
-    )
+    const result = await startWhatsAppSession(user.id, session)
     return NextResponse.json(result)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to start session'
+    const status = err instanceof WhatsAppApiError ? err.status : 500
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

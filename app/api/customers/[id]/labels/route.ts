@@ -1,16 +1,7 @@
 import { NextResponse } from 'next/server'
-import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 import { createClient } from '@/app/lib/supabase/server'
-import { wahaFetch, WahaApiError } from '@/app/lib/waha'
+import { fetchWhatsAppLabels } from '@/app/lib/whatsapp/contacts'
 
-type WahaLabel = {
-  id?: string | number
-  name?: string
-  color?: number
-  colorHex?: string
-}
-
-// GET /api/customers/[id]/labels - Get WhatsApp labels for a customer chat
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> }
@@ -56,60 +47,19 @@ export async function GET(
       return NextResponse.json({ error: sessionError.message }, { status: 500 })
     }
     if (!sessionRow?.session_name) {
-      return NextResponse.json({ error: 'No WAHA session configured' }, { status: 400 })
+      return NextResponse.json({ error: 'No WhatsApp session configured' }, { status: 400 })
     }
 
     const sessionName = String(sessionRow.session_name)
-    const msisdn = normalizePhoneToMsisdn(customer.phone)
-    const chatId = `${msisdn}@c.us`
-    const encS = encodeURIComponent(sessionName)
-
-    const labelPaths = [
-      `/api/${encS}/labels/chats/${encodeURIComponent(chatId)}`,
-      `/api/${encS}/labels/chats/${encodeURIComponent(chatId)}/`,
-      `/api/${encS}/labels/chats/${encodeURIComponent(`${msisdn}@s.whatsapp.net`)}/`,
-      `/api/${encS}/labels/chats/${encodeURIComponent(`${msisdn}@s.whatsapp.net`)}`,
-      `/api/sessions/${encS}/labels/chats/${encodeURIComponent(chatId)}`,
-    ]
-
-    let labels: WahaLabel[] = []
-    let lastErr: unknown
-    let gotOk = false
-    for (const path of labelPaths) {
-      try {
-        const data = await wahaFetch<WahaLabel[]>(path, {}, { userId: user.id })
-        labels = Array.isArray(data) ? data : []
-        gotOk = true
-        break
-      } catch (e) {
-        lastErr = e
-        if (e instanceof WahaApiError && (e.status === 404 || e.status === 405)) continue
-        throw e
-      }
-    }
-    if (!gotOk && lastErr instanceof WahaApiError && lastErr.status === 404) {
-      return NextResponse.json({
-        labels: [],
-        chatId,
-        session: sessionName,
-        message:
-          'WhatsApp labels API returned 404 for all known paths. Check WAHA build and that labels are supported for this session.',
-      })
-    }
-    if (!gotOk && lastErr) {
-      throw lastErr instanceof Error ? lastErr : new Error('Failed to fetch WAHA labels')
-    }
-
+    const result = await fetchWhatsAppLabels(user.id, sessionName, customer.phone)
     return NextResponse.json({
-      labels: Array.isArray(labels) ? labels : [],
-      chatId,
+      labels: result.labels,
+      chatId: result.chatId,
       session: sessionName,
+      ...(result.message ? { message: result.message } : {}),
     })
-  } catch (error: any) {
-    console.error('Error in GET /api/customers/[id]/labels:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch customer labels' },
-      { status: 500 }
-    )
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Failed to fetch labels'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

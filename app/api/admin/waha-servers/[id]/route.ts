@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { handleServerProviderTypeChange } from '@/app/lib/whatsapp/provider-switch'
+import type { WhatsAppProvider } from '@/app/lib/whatsapp/types'
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '')
@@ -22,6 +24,7 @@ export async function PATCH(request: Request, props: RouteParams) {
     api_base_url?: string
     api_key?: string | null
     dashboard_pass?: string | null
+    provider_type?: WhatsAppProvider
     is_default?: boolean
   }
   try {
@@ -57,6 +60,9 @@ export async function PATCH(request: Request, props: RouteParams) {
   if (typeof body.is_default === 'boolean') {
     updates.is_default = body.is_default
   }
+  if (body.provider_type === 'wasender' || body.provider_type === 'waha') {
+    updates.provider_type = body.provider_type
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
@@ -64,6 +70,12 @@ export async function PATCH(request: Request, props: RouteParams) {
 
   try {
     const admin = createServiceRoleClient()
+
+    const { data: existing } = await admin
+      .from('waha_servers')
+      .select('provider_type')
+      .eq('id', id)
+      .maybeSingle()
 
     if (updates.is_default === true) {
       await admin.from('waha_servers').update({ is_default: false }).eq('is_default', true)
@@ -73,7 +85,7 @@ export async function PATCH(request: Request, props: RouteParams) {
       .from('waha_servers')
       .update(updates)
       .eq('id', id)
-      .select('id, name, api_base_url, api_key, dashboard_pass, is_default, created_at, updated_at')
+      .select('id, name, api_base_url, api_key, dashboard_pass, provider_type, is_default, created_at, updated_at')
       .maybeSingle()
 
     if (error) {
@@ -84,16 +96,33 @@ export async function PATCH(request: Request, props: RouteParams) {
       return NextResponse.json({ error: 'Server not found' }, { status: 404 })
     }
 
+    if (
+      updates.provider_type &&
+      existing?.provider_type &&
+      existing.provider_type !== updates.provider_type
+    ) {
+      await handleServerProviderTypeChange(
+        id,
+        existing.provider_type === 'wasender' ? 'wasender' : 'waha',
+        updates.provider_type as WhatsAppProvider
+      )
+    }
+
     return NextResponse.json({
       server: {
         id: data.id,
         name: data.name,
         api_base_url: data.api_base_url,
         api_key: data.api_key,
+        provider_type: data.provider_type,
         is_default: data.is_default,
         created_at: data.created_at,
         updated_at: data.updated_at,
       },
+      sessions_cleared:
+        updates.provider_type && existing?.provider_type !== updates.provider_type
+          ? true
+          : undefined,
     })
   } catch (e) {
     console.error(e)
