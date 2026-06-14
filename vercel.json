@@ -10,6 +10,9 @@
     },
     "app/api/cron/campaigns/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/saas/route.ts": {
+      "maxDuration": 120
     }
   }
 }

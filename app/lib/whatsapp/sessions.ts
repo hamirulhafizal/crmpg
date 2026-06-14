@@ -1,4 +1,5 @@
 import QRCode from 'qrcode'
+import { canUseWasenderForUser } from '@/app/lib/saas/enforce'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import {
   mapWasenderStatusToDisplay,
@@ -78,6 +79,14 @@ export async function createWhatsAppSession(
   const admin = createServiceRoleClient()
 
   if (cfg.provider === 'wasender') {
+    if (!(await canUseWasenderForUser(userId))) {
+      throw new WhatsAppApiError(
+        'WasenderAPI is available on Pro only. Upgrade at Billing & plans.',
+        403,
+        'create',
+        'wasender'
+      )
+    }
     const created = await wasenderCreateSession(cfg, {
       name: `CRM ${sessionName}`,
       phoneNumber: `+${sessionName}`,

@@ -3,7 +3,7 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
@@ -92,6 +92,8 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), [])
   const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
   const [checkingWahaSession, setCheckingWahaSession] = useState(true)
+  const [wahaStatusLoaded, setWahaStatusLoaded] = useState(false)
+  const wahaStatusLoadedRef = useRef(false)
 
   const [accountChecksLoading, setAccountChecksLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
@@ -105,6 +107,12 @@ export default function DashboardPage() {
   const [checkingAdmin, setCheckingAdmin] = useState(true)
   const [googleAdsEnrolled, setGoogleAdsEnrolled] = useState(false)
   const [checkingGoogleAds, setCheckingGoogleAds] = useState(true)
+  const [saasPlanLabel, setSaasPlanLabel] = useState<string | null>(null)
+  const [saasActiveCampaigns, setSaasActiveCampaigns] = useState<number | null>(null)
+  const [saasMaxCampaigns, setSaasMaxCampaigns] = useState<number | null>(null)
+  const [saasWasenderAvailable, setSaasWasenderAvailable] = useState(false)
+  const [saasAlert, setSaasAlert] = useState<string | null>(null)
+  const [checkingSaas, setCheckingSaas] = useState(true)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -130,6 +138,53 @@ export default function DashboardPage() {
       cancelled = true
     }
   }, [user, supabase])
+
+  useEffect(() => {
+    if (!user) {
+      setSaasPlanLabel(null)
+      setSaasActiveCampaigns(null)
+      setSaasMaxCampaigns(null)
+      setSaasAlert(null)
+      setCheckingSaas(false)
+      return
+    }
+    let cancelled = false
+    setCheckingSaas(true)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/saas/me')
+        const j = await res.json()
+        if (cancelled || !res.ok) return
+        const planName = j.subscription?.plan?.name ?? 'Free'
+        const isPro = j.flags?.is_pro_active
+        const isPlatformAdminUser = j.flags?.is_platform_admin === true
+        setSaasPlanLabel(isPlatformAdminUser ? 'Admin (unlimited)' : isPro ? planName : 'Free')
+        setSaasActiveCampaigns(j.usage?.active_campaigns ?? 0)
+        setSaasMaxCampaigns(j.entitlements?.maxActiveCampaigns ?? 1)
+        setSaasWasenderAvailable(j.alerts?.wasender_available === true)
+
+        const alerts = j.alerts ?? {}
+        if (alerts.plan_expired) {
+          setSaasAlert('Your Pro subscription has expired. Renew to restore unlimited campaigns and WasenderAPI.')
+        } else if (alerts.trial_ending_soon && alerts.days_until_expiry != null) {
+          setSaasAlert(`Pro trial ends in ${alerts.days_until_expiry} day(s). Subscribe to keep Pro features.`)
+        } else if (alerts.subscription_expiring_soon && alerts.days_until_expiry != null) {
+          setSaasAlert(`Pro renews in ${alerts.days_until_expiry} day(s).`)
+        } else if (alerts.at_campaign_limit) {
+          setSaasAlert('You have reached your active campaign limit on the Free plan.')
+        } else {
+          setSaasAlert(null)
+        }
+      } catch {
+        if (!cancelled) setSaasAlert(null)
+      } finally {
+        if (!cancelled) setCheckingSaas(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) {
@@ -160,10 +215,13 @@ export default function DashboardPage() {
     if (!user) return
     let cancelled = false
 
-    const checkActiveWahaSession = async () => {
-      if (!cancelled) setCheckingWahaSession(true)
+    const checkActiveWahaSession = async (showChecking = false) => {
+      if (!cancelled && (showChecking || !wahaStatusLoadedRef.current)) setCheckingWahaSession(true)
       try {
-        const res = await fetch('/api/waha/sessions', { cache: 'no-store' })
+        const controller = new AbortController()
+        const timeout = window.setTimeout(() => controller.abort(), 25000)
+        const res = await fetch('/api/waha/sessions', { cache: 'no-store', signal: controller.signal })
+        window.clearTimeout(timeout)
         if (!res.ok) {
           if (!cancelled) setHasActiveWahaSession(false)
           return
@@ -173,28 +231,32 @@ export default function DashboardPage() {
         const sessions = Array.isArray(data?.sessions) ? data.sessions : []
         const active = sessions.some((session: { status?: string }) => {
           const status = String(session?.status || '').toUpperCase()
-          return status === 'WORKING'
+          return status === 'WORKING' || status === 'CONNECTED'
         })
         setHasActiveWahaSession(active)
       } catch {
         if (!cancelled) setHasActiveWahaSession(false)
       } finally {
-        if (!cancelled) setCheckingWahaSession(false)
+        if (!cancelled) {
+          wahaStatusLoadedRef.current = true
+          setCheckingWahaSession(false)
+          setWahaStatusLoaded(true)
+        }
       }
     }
 
-    void checkActiveWahaSession()
+    void checkActiveWahaSession(true)
 
     const handleWindowFocus = () => {
-      void checkActiveWahaSession()
+      void checkActiveWahaSession(false)
     }
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void checkActiveWahaSession()
+        void checkActiveWahaSession(false)
       }
     }
     const handlePageShow = () => {
-      void checkActiveWahaSession()
+      void checkActiveWahaSession(false)
     }
 
     window.addEventListener('focus', handleWindowFocus)
@@ -503,6 +565,48 @@ export default function DashboardPage() {
           <p className="text-slate-600">You&apos;re successfully signed in to your account.</p>
         </div>
 
+        {!checkingSaas && saasPlanLabel ? (
+          <div className="rounded-2xl border border-violet-200/80 bg-white p-6 shadow-xl">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Plan usage</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Current plan: <span className="font-medium text-slate-900">{saasPlanLabel}</span>
+                </p>
+              </div>
+              <Link
+                href="/dashboard/billing"
+                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
+              >
+                Manage billing
+              </Link>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active campaigns</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
+                  {saasActiveCampaigns ?? 0}
+                  {saasMaxCampaigns != null && saasMaxCampaigns >= 0 ? ` / ${saasMaxCampaigns}` : ''}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">WhatsApp</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {saasWasenderAvailable ? 'WAHA + WasenderAPI' : 'WAHA only'}
+                </p>
+              </div>
+            </div>
+            {saasAlert ? (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {saasAlert}{' '}
+                <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">
+                  View billing
+                </Link>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* Admin tools — only for platform admins */}
         {!checkingAdmin && isAdmin && (
           <div className="rounded-2xl border border-slate-300/80 bg-white p-6 shadow-xl md:p-8">
@@ -526,6 +630,25 @@ export default function DashboardPage() {
                       d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
                     />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                }
+              />
+
+              <ServiceTile
+                href="/admin/plans"
+                title="SaaS plans"
+                description="Free & Pro packages"
+                borderClassName="border-violet-200"
+                gradientClassName="from-violet-50/80 to-white"
+                iconClassName="bg-violet-600"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                    />
                   </svg>
                 }
               />
@@ -625,6 +748,25 @@ export default function DashboardPage() {
             )}
 
             <ServiceTile
+              href="/dashboard/billing"
+              title="Billing & plans"
+              description="Free / Pro subscription"
+              borderClassName="border-violet-200"
+              gradientClassName="from-violet-50 to-white"
+              iconClassName="bg-violet-600"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                  />
+                </svg>
+              }
+            />
+
+            <ServiceTile
               href="/customers"
               title="Customers"
               description="Customer management"
@@ -662,7 +804,7 @@ export default function DashboardPage() {
               }
             />
 
-            {checkingWahaSession && <ServiceTileSkeleton />}
+            {checkingWahaSession && !wahaStatusLoaded && <ServiceTileSkeleton />}
 
             {!checkingWahaSession && hasActiveWahaSession && (
               <>

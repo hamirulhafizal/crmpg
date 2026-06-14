@@ -1,3 +1,8 @@
+import {
+  allowedActiveCampaignIds,
+  canUseWasenderForUser,
+  loadUserEntitlements,
+} from '@/app/lib/saas/enforce'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import {
   countActiveQueueSlots,
@@ -175,6 +180,16 @@ async function pickWhatsAppSession(
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
   const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+
+  if (provider === 'wasender' && !(await canUseWasenderForUser(userId))) {
+    return {
+      sessionName: pick.session_name,
+      provider,
+      ready: false,
+      reason: 'WasenderAPI requires Pro. Upgrade at Billing & plans.',
+    }
+  }
+
   const cachedStatus = String(sessionRow?.last_known_waha_status || pick.last_known_waha_status || '')
 
   if (provider === 'wasender') {
@@ -1300,6 +1315,18 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   const plansByCampaignId = new Map<string, CampaignWorkflowPlan>()
 
   for (const c of active) {
+    const entitlements = await loadUserEntitlements(c.user_id)
+    if (entitlements && entitlements.maxActiveCampaigns >= 0) {
+      const allowed = await allowedActiveCampaignIds(c.user_id, entitlements.maxActiveCampaigns)
+      if (!allowed.has(c.id)) {
+        cronLog(
+          debugLines,
+          `skip campaign=${c.id} "${c.name}": exceeds plan limit (${entitlements.maxActiveCampaigns} active)`
+        )
+        continue
+      }
+    }
+
     const { data: stepRows } = await supabase
       .from('campaign_steps')
       .select('*')

@@ -111,6 +111,11 @@ function CampaignsListInner() {
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastSeqRef = useRef(0)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const [saasUsage, setSaasUsage] = useState<{
+    maxActiveCampaigns: number
+    activeCampaigns: number
+    atCampaignLimit: boolean
+  } | null>(null)
 
   const panelMode = useMemo(() => panelModeFromSearchParams(searchParams), [searchParams])
 
@@ -188,6 +193,31 @@ function CampaignsListInner() {
     }
   }, [user])
 
+  useEffect(() => {
+    if (!user) {
+      setSaasUsage(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/saas/me')
+        const j = await res.json()
+        if (cancelled || !res.ok) return
+        setSaasUsage({
+          maxActiveCampaigns: j.entitlements?.maxActiveCampaigns ?? 1,
+          activeCampaigns: j.usage?.active_campaigns ?? 0,
+          atCampaignLimit: j.alerts?.at_campaign_limit ?? false,
+        })
+      } catch {
+        if (!cancelled) setSaasUsage(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
+
   const patchStatus = async (id: string, status: string) => {
     setBusy(id)
     try {
@@ -199,6 +229,29 @@ function CampaignsListInner() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: json.data.status } : r)))
+      if (status === 'active') {
+        setSaasUsage((prev) =>
+          prev
+            ? {
+                ...prev,
+                activeCampaigns: prev.activeCampaigns + 1,
+                atCampaignLimit:
+                  prev.maxActiveCampaigns >= 0 && prev.activeCampaigns + 1 >= prev.maxActiveCampaigns,
+              }
+            : prev
+        )
+      } else if (status === 'paused') {
+        setSaasUsage((prev) =>
+          prev
+            ? {
+                ...prev,
+                activeCampaigns: Math.max(0, prev.activeCampaigns - 1),
+                atCampaignLimit:
+                  prev.maxActiveCampaigns >= 0 && Math.max(0, prev.activeCampaigns - 1) >= prev.maxActiveCampaigns,
+              }
+            : prev
+        )
+      }
       pushToast('success', status === 'active' ? 'Campaign activated.' : 'Campaign updated.')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed'
@@ -555,6 +608,18 @@ function CampaignsListInner() {
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
           ) : null}
 
+          {saasUsage?.atCampaignLimit ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Active campaign limit reached ({saasUsage.activeCampaigns}
+              {saasUsage.maxActiveCampaigns >= 0 ? ` / ${saasUsage.maxActiveCampaigns}` : ''}). Pause another
+              campaign or{' '}
+              <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">
+                upgrade to Pro
+              </Link>
+              .
+            </div>
+          ) : null}
+
           {listLoading ? (
             <TableSkeleton />
           ) : (
@@ -663,9 +728,18 @@ function CampaignsListInner() {
                             {r.status !== 'active' ? (
                               <button
                                 type="button"
-                                disabled={busy === r.id}
+                                disabled={
+                                  busy === r.id ||
+                                  (saasUsage?.atCampaignLimit === true && r.status !== 'active')
+                                }
                                 onClick={() => void patchStatus(r.id, 'active')}
-                                title={r.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
+                                title={
+                                  saasUsage?.atCampaignLimit
+                                    ? 'Active campaign limit reached — upgrade to Pro'
+                                    : r.status === 'paused'
+                                      ? 'Resume campaign'
+                                      : 'Activate campaign'
+                                }
                                 aria-label={r.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
                                 className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
                               >

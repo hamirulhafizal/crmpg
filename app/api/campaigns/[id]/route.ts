@@ -5,6 +5,7 @@ import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
+import { canActivateCampaign } from '@/app/lib/saas/enforce'
 import {
   computeDueAudiencePreview,
   computeEligibleAudiencePreview,
@@ -166,6 +167,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (body.cooldown_days != null) updates.cooldown_days = Math.max(0, Number(body.cooldown_days))
     if ('start_at' in body) updates.start_at = body.start_at
     if ('end_at' in body) updates.end_at = body.end_at
+
+    if (typeof body.status === 'string' && body.status === 'active') {
+      const gate = await canActivateCampaign(user.id, id)
+      if (!gate.ok) {
+        return NextResponse.json({ error: gate.error, code: gate.code }, { status: 403 })
+      }
+    }
 
     const { data: campaign, error: uErr } = await supabase
       .from('campaigns')

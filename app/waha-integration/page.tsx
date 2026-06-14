@@ -98,6 +98,7 @@ export default function WahaIntegrationPage() {
   const [emailFallbackMessage, setEmailFallbackMessage] = useState<string | null>(null)
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
   const [whatsappProvider, setWhatsappProvider] = useState<'waha' | 'wasender'>('waha')
+  const [wasenderAvailable, setWasenderAvailable] = useState(true)
 
   const showQrForSession =
     qrSession && !isSessionConnected(sessions.find((s) => s.name === qrSession)?.status || '')
@@ -116,6 +117,9 @@ export default function WahaIntegrationPage() {
           const data = await res.json()
           if (res.ok && (data.provider === 'wasender' || data.provider === 'waha')) {
             setWhatsappProvider(data.provider)
+          }
+          if (res.ok && typeof data.wasender_available === 'boolean') {
+            setWasenderAvailable(data.wasender_available)
           }
         } catch {
           // keep default
@@ -518,6 +522,15 @@ export default function WahaIntegrationPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {!wasenderAvailable ? (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+            WasenderAPI is included with Pro. Your account uses WAHA on the Free plan.{' '}
+            <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">
+              Upgrade to Pro
+            </Link>
+          </div>
+        ) : null}
+
         {error && (
           <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 flex items-center justify-between">
             <span>{error}</span>

@@ -5,6 +5,7 @@ import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
+import { canActivateCampaign } from '@/app/lib/saas/enforce'
 
 export async function GET() {
   try {
@@ -112,6 +113,13 @@ export async function POST(request: Request) {
     const steps = Array.isArray(body.steps) ? (body.steps as StepInput[]) : []
     if (steps.length === 0 && !payload.workflow_definition) {
       return NextResponse.json({ error: 'At least one step is required' }, { status: 400 })
+    }
+
+    if (payload.status === 'active') {
+      const gate = await canActivateCampaign(user.id)
+      if (!gate.ok) {
+        return NextResponse.json({ error: gate.error, code: gate.code }, { status: 403 })
+      }
     }
 
     const { data: campaign, error: cErr } = await supabase.from('campaigns').insert(payload as never).select('*').single()
