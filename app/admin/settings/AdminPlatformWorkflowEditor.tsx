@@ -42,7 +42,7 @@ export function AdminPlatformWorkflowEditor({ open, onClose, defaults, onSaved, 
   const steps = useMemo(
     () =>
       (defaults?.compiled_steps ?? []).map((s) => ({
-        id: undefined,
+        id: `step-${s.step_order}`,
         step_order: s.step_order,
         delay_days: s.delay_days,
         send_time: sendTimeFromDb(s.send_time),
