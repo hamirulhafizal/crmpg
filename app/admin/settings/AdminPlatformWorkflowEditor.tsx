@@ -26,7 +26,6 @@ export function AdminPlatformWorkflowEditor({ open, onClose, defaults, onSaved, 
     }))
     return draftFromCampaignPayload(
       {
-        name: defaults.name,
         trigger_type: defaults.trigger_type,
         trigger_offset_days: defaults.trigger_offset_days,
         timezone: defaults.timezone,
