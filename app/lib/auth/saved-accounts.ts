@@ -69,6 +69,12 @@ export function findSavedAccountByEmail(email: string): SavedAccount | undefined
   return loadSavedAccounts().find((a) => a.email.trim().toLowerCase() === normalized)
 }
 
+export function removeSavedAccount(userId: string): SavedAccount[] {
+  const next = loadSavedAccounts().filter((a) => a.userId !== userId)
+  saveSavedAccounts(next)
+  return next
+}
+
 export function upsertSavedAccount(
   account: Omit<SavedAccount, 'lastUsedAt'> & { lastUsedAt?: number }
 ): SavedAccount[] {
