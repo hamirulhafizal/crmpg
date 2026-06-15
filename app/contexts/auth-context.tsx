@@ -47,7 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-    await clearAllClientStorage()
+    await clearAllClientStorage({ preserveSavedAccounts: true })
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include', cache: 'no-store' })
     } catch {

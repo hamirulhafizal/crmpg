@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatedSheetDialog } from '@/app/components/AnimatedSheetDialog'
@@ -266,11 +267,14 @@ export default function LuckyDrawDashboardPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
-          <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-700">
-            ← Dashboard
-          </Link>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">Lucky Draw</h1>
+        <div className="mx-auto flex max-w-5xl items-start justify-between gap-4 px-4 py-4 sm:px-6">
+          <div>
+            <Link href="/dashboard" className="text-sm text-blue-600 hover:text-blue-700">
+              ← Dashboard
+            </Link>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-900">Lucky Draw</h1>
+          </div>
+          <UserProfileMenu />
         </div>
       </header>
 

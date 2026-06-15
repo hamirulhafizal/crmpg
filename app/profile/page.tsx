@@ -5,6 +5,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 
 type ProfileRow = {
   id: string
@@ -272,6 +273,7 @@ export default function ProfilePage() {
               </Link>
               <h1 className="text-2xl font-semibold text-slate-900">Edit Profile</h1>
             </div>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

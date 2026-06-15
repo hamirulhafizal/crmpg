@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
 
 type ServiceTileProps = {
@@ -367,10 +368,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleSignOut = () => {
-    window.location.href = '/logout'
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -543,12 +540,7 @@ export default function DashboardPage() {
                 </svg>
                 Excel Processor
               </Link>
-              <button
-                onClick={handleSignOut}
-                className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200 active:scale-[0.98]"
-              >
-                Sign Out
-              </button>
+              <UserProfileMenu />
             </div>
           </div>
         </div>

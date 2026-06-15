@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import {
+  findSavedAccount,
+  findSavedAccountByEmail,
+  recordAccountFromSession,
+  switchToSavedAccount,
+} from '@/app/lib/auth/saved-accounts'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -18,14 +24,44 @@ export default function LoginPage() {
   const passwordVisibilityToggleRef = useRef<HTMLInputElement>(null)
   const passwordVisibilityLabelRef = useRef<HTMLSpanElement>(null)
 
+  const [addAccountMode, setAddAccountMode] = useState(false)
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     if (params.get('logged_out') === '1') {
       setMessage({ type: 'success', text: 'You have been signed out. Sign in again to continue.' })
       window.history.replaceState({}, '', '/login')
+      return
     }
-  }, [])
+    if (params.get('add_account') === '1') {
+      setAddAccountMode(true)
+      setMessage({
+        type: 'success',
+        text: 'Sign in with another account. Saved accounts stay on this browser only (up to 5).',
+      })
+    }
+    const switchEmail = params.get('email')?.trim()
+    if (params.get('switch') === '1' && switchEmail) {
+      setEmail(switchEmail)
+      void (async () => {
+        const saved = findSavedAccountByEmail(switchEmail)
+        if (saved) {
+          const result = await switchToSavedAccount(supabase, saved)
+          if (result.ok) {
+            window.location.replace('/dashboard')
+            return
+          }
+        }
+        setMessage({
+          type: 'success',
+          text: `Sign in as ${switchEmail} to switch accounts.`,
+        })
+      })()
+    } else if (switchEmail) {
+      setEmail(switchEmail)
+    }
+  }, [supabase])
 
   useEffect(() => {
     const input = passwordInputRef.current
@@ -90,6 +126,19 @@ export default function LoginPage() {
 
     try {
       const nextPath = getNextPath()
+
+      if (addAccountMode) {
+        const {
+          data: { session: currentSession },
+        } = await supabase.auth.getSession()
+        if (currentSession?.user) {
+          const currentSaved = findSavedAccount(currentSession.user.id)
+          await recordAccountFromSession(supabase, currentSession.user, currentSession, {
+            password: currentSaved?.password ?? undefined,
+          })
+        }
+      }
+
       console.log('Attempting email/password login for:', email)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -102,6 +151,10 @@ export default function LoginPage() {
       }
 
       console.log('Login successful:', data)
+
+      if (data.user && data.session) {
+        await recordAccountFromSession(supabase, data.user, data.session, { password })
+      }
 
       // Wait a moment for session to be set
       await new Promise(resolve => setTimeout(resolve, 100))

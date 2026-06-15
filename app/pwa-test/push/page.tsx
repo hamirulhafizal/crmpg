@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 
 export default function DeclarativeWebPushTestPage() {
   const { user, loading: authLoading } = useAuth()
@@ -469,26 +470,29 @@ export default function DeclarativeWebPushTestPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard"
-              className="text-slate-600 hover:text-slate-900 transition-colors"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href="/dashboard"
+                className="text-slate-600 hover:text-slate-900 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-semibold text-slate-900">Declarative Web Push Test</h1>
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+              </Link>
+              <h1 className="text-2xl font-semibold text-slate-900">Declarative Web Push Test</h1>
+            </div>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

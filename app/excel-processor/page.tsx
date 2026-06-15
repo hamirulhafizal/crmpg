@@ -4,6 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
@@ -898,6 +899,7 @@ export default function ExcelProcessorPage() {
               </Link>
               {/* <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Excel Processor</h1> */}
             </div>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

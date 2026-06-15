@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
-import { clearAllClientStorage } from '@/app/lib/auth/clear-client-storage'
-import { clearAccountCredentials } from '@/app/lib/auth/saved-accounts'
+import { findSavedAccount, switchToSavedAccount } from '@/app/lib/auth/saved-accounts'
 
-export default function LogoutPage() {
+export default function SwitchAccountPage() {
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
 
@@ -15,33 +14,31 @@ export default function LogoutPage() {
 
     void (async () => {
       try {
+        const userId = new URLSearchParams(window.location.search).get('user_id')?.trim() ?? ''
+        if (!userId) {
+          window.location.replace('/dashboard')
+          return
+        }
+
+        const target = findSavedAccount(userId)
+        if (!target) {
+          window.location.replace('/dashboard')
+          return
+        }
+
         const supabase = createClient()
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        const userId = session?.user?.id
+        const result = await switchToSavedAccount(supabase, target)
 
-        try {
-          await supabase.auth.signOut({ scope: 'global' })
-        } catch {
-          // Continue — session may already be invalid.
+        if (result.ok) {
+          window.location.replace('/dashboard')
+          return
         }
 
-        if (userId) {
-          clearAccountCredentials(userId)
-        }
-
-        await clearAllClientStorage({ preserveSavedAccounts: true })
-
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          credentials: 'include',
-          cache: 'no-store',
-        })
-
-        window.location.replace('/login?logged_out=1')
+        window.location.replace(
+          `/login?switch=1&email=${encodeURIComponent(target.email)}`
+        )
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Could not sign out')
+        setError(e instanceof Error ? e.message : 'Could not switch account')
       }
     })()
   }, [])
@@ -53,16 +50,16 @@ export default function LogoutPage() {
           <>
             <p className="text-sm font-medium text-red-700">{error}</p>
             <a
-              href="/login"
+              href="/dashboard"
               className="mt-4 inline-block text-sm font-semibold text-blue-600 hover:text-blue-700"
             >
-              Go to login
+              Back to dashboard
             </a>
           </>
         ) : (
           <>
             <svg
-              className="mx-auto h-8 w-8 animate-spin text-blue-600"
+              className="mx-auto h-8 w-8 animate-spin text-violet-600"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -82,7 +79,7 @@ export default function LogoutPage() {
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            <p className="mt-4 text-sm text-slate-600">Signing out…</p>
+            <p className="mt-4 text-sm text-slate-600">Switching account…</p>
           </>
         )}
       </div>

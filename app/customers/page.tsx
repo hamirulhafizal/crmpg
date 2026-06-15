@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 import {
   CustomerEditModalShell,
@@ -1290,6 +1291,8 @@ function CustomersPage() {
 
             </Link>
 
+
+            <UserProfileMenu />
 
             {/* <h1 className="text-2xl font-semibold text-slate-900">Customer Management</h1>
                 <p className="text-sm text-slate-600 mt-1">

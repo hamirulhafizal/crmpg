@@ -37,8 +37,21 @@ async function performServerLogout(): Promise<void> {
 }
 
 /** POST — clear Supabase session + all auth cookies (called from /logout page). */
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    let localOnly = false
+    try {
+      const body = (await request.json()) as { localOnly?: boolean }
+      localOnly = body.localOnly === true
+    } catch {
+      // Empty body — full logout.
+    }
+
+    if (localOnly) {
+      await clearAllServerCookies()
+      return NextResponse.json({ success: true })
+    }
+
     await performServerLogout()
     return NextResponse.json({ success: true })
   } catch (e: unknown) {

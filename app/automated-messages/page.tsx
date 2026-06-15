@@ -5,6 +5,7 @@ import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context
 import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   isBroadcastScheduledTitle,
@@ -988,6 +989,7 @@ export default function AutomatedMessagesPage() {
               </svg>
               Dashboard
             </Link>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

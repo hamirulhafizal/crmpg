@@ -4,6 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { buildDefaultGmailMessage } from '@/app/lib/profile/gmail-template'
 
 interface WahaSession {
@@ -517,6 +518,7 @@ export default function WahaIntegrationPage() {
                 Provider: <span className="font-medium">{whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}</span>
               </p>
             </div>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

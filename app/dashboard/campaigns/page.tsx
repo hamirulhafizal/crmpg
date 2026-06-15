@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/auth-context'
@@ -406,6 +407,7 @@ function CampaignsListInner() {
               </svg>
               Dashboard
             </Link>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

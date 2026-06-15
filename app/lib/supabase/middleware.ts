@@ -62,10 +62,14 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages (logout is handled at /logout)
+  const addAccount = request.nextUrl.searchParams.get('add_account') === '1'
+  const isSwitchAccount = pathname === '/switch-account'
   if (
     user &&
     pathname !== '/logout' &&
-    (pathname === '/login' || pathname === '/register')
+    !isSwitchAccount &&
+    (pathname === '/login' || pathname === '/register') &&
+    !(pathname === '/login' && addAccount)
   ) {
     const url = request.nextUrl.clone()
     const next = request.nextUrl.searchParams.get('next')

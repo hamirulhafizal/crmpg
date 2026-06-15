@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { canRequestRenewal, effectivePackageStatus } from '@/app/lib/google-ads/billing'
@@ -246,8 +247,7 @@ export default function GoogleAdsParticipantPage() {
           <Link href="/dashboard" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
             ← Dashboard
           </Link>
-          {/* <span className="text-sm font-semibold text-slate-900">Google Ads subscription</span> */}
-          <span className="w-10 sm:w-16" aria-hidden="true" />
+          <UserProfileMenu />
         </div>
       </header>
 

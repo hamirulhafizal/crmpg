@@ -4,6 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 
 /** Replace with your user guide video ID (e.g. from YouTube) or set to empty to hide. */
 const USER_GUIDE_VIDEO_ID = ''
@@ -70,6 +71,7 @@ export default function ExtensionDownloadPage() {
               </svg>
               Back to Dashboard
             </Link>
+            <UserProfileMenu />
           </div>
         </div>
       </header>

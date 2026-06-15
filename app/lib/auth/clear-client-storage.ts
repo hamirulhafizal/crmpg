@@ -1,7 +1,17 @@
+import { loadSavedAccounts, saveSavedAccounts } from '@/app/lib/auth/saved-accounts'
+
 const INDEXED_DB_NAMES = ['ExcelProcessorDB'] as const
 
+export type ClearClientStorageOptions = {
+  /** Keep saved account list for profile switching (default true). */
+  preserveSavedAccounts?: boolean
+}
+
 /** Wipe browser-side auth and app state (localStorage, sessionStorage, caches, SW, IndexedDB). */
-export async function clearAllClientStorage(): Promise<void> {
+export async function clearAllClientStorage(options?: ClearClientStorageOptions): Promise<void> {
+  const preserveSavedAccounts = options?.preserveSavedAccounts !== false
+  const savedAccounts = preserveSavedAccounts ? loadSavedAccounts() : []
+
   if (typeof window === 'undefined') return
 
   try {
@@ -46,5 +56,9 @@ export async function clearAllClientStorage(): Promise<void> {
           })
       )
     )
+  }
+
+  if (preserveSavedAccounts && savedAccounts.length > 0) {
+    saveSavedAccounts(savedAccounts)
   }
 }

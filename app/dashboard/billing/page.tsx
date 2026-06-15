@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type PlanRow = {
@@ -170,7 +171,11 @@ export default function DashboardBillingPage() {
     data.flags.can_checkout && !data.flags.can_start_trial && (data.flags.can_upgrade_from_trial || !data.flags.is_pro_active || sub.status === 'active')
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-4xl px-4 sm:px-6">
+      <div className="flex justify-end py-4">
+        <UserProfileMenu />
+      </div>
+      <div className="space-y-8 pb-8">
       <div>
         <Link href="/dashboard" className="text-sm font-medium text-slate-500 hover:text-slate-800">
           ← Dashboard
@@ -358,6 +363,7 @@ export default function DashboardBillingPage() {
           </div>
         </section>
       ) : null}
+      </div>
     </div>
   )
 }
