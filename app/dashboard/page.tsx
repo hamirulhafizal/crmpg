@@ -87,7 +87,7 @@ function WahaStatusBadge({
 }
 
 export default function DashboardPage() {
-  const { user, loading, signOut, refreshUser } = useAuth()
+  const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
@@ -367,9 +367,8 @@ export default function DashboardPage() {
     }
   }
 
-  const handleSignOut = async () => {
-    await signOut()
-    router.push('/login')
+  const handleSignOut = () => {
+    window.location.href = '/logout'
   }
 
   if (loading) {

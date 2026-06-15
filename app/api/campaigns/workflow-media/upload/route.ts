@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { CAMPAIGN_WORKFLOW_MEDIA_BUCKET } from '@/app/lib/campaigns/image-step/defaults'
+import { platformDefaultMediaPath } from '@/app/lib/campaigns/platform-defaults'
+import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createClient } from '@/app/lib/supabase/server'
+import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { signedWorkflowMediaUrl } from '@/app/lib/campaigns/image-step/storage'
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -71,9 +75,19 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(ab)
     const dims = readImageDimensions(buffer)
     const ext = extForMime(file.type)
-    const path = `${user.id}/${campaignId}/${nodeId}/background.${ext}`
+    const isPlatformDefault = campaignId === 'platform-default'
 
-    const { error: uploadError } = await supabase.storage
+    if (isPlatformDefault) {
+      const adminAuth = await requireAdminApi(request)
+      if (!adminAuth.ok) return adminAuth.response
+    }
+
+    const path = isPlatformDefault
+      ? platformDefaultMediaPath(nodeId, file.type)
+      : `${user.id}/${campaignId}/${nodeId}/background.${ext}`
+
+    const storageClient = isPlatformDefault ? createServiceRoleClient() : supabase
+    const { error: uploadError } = await storageClient.storage
       .from(CAMPAIGN_WORKFLOW_MEDIA_BUCKET)
       .upload(path, buffer, {
         contentType: file.type,
@@ -84,16 +98,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 })
     }
 
-    const { data: signed } = await supabase.storage
-      .from(CAMPAIGN_WORKFLOW_MEDIA_BUCKET)
-      .createSignedUrl(path, 3600)
+    const preview_url = isPlatformDefault
+      ? await signedWorkflowMediaUrl(path, 3600).catch(() => null)
+      : (
+          await supabase.storage.from(CAMPAIGN_WORKFLOW_MEDIA_BUCKET).createSignedUrl(path, 3600)
+        ).data?.signedUrl ?? null
 
     return NextResponse.json({
       path,
       mimetype: file.type,
       width: dims?.width ?? 1080,
       height: dims?.height ?? 1080,
-      preview_url: signed?.signedUrl ?? null,
+      preview_url,
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Upload failed'

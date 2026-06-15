@@ -56,6 +56,7 @@ export type CampaignRow = {
   audience_filters: CampaignAudienceFilters
   workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
   workflow_definition?: { version?: number; nodes?: unknown[]; edges?: unknown[] }
+  uses_platform_defaults?: boolean
   daily_send_limit: number
   cooldown_days: number
   start_at: string | null

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { AdminPlatformWorkflowEditor } from '@/app/admin/settings/AdminPlatformWorkflowEditor'
+import type { PlatformCampaignDefault } from '@/app/lib/campaigns/platform-defaults'
 import { TagAdminSidebar, type CategoryRow } from '@/app/admin/settings/tag-admin-sidebar'
 
 type WahaServerRow = {
@@ -98,7 +100,9 @@ const EMPTY_AUTOMATION_TEMPLATES: AutomationTemplateSettings = {
 }
 
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<'servers' | 'users' | 'tags' | 'payment' | 'automation_templates'>('servers')
+  const [tab, setTab] = useState<
+    'servers' | 'users' | 'tags' | 'payment' | 'automation_templates' | 'campaign_workflow_defaults'
+  >('servers')
 
   const [servers, setServers] = useState<WahaServerRow[]>([])
   const [loadingServers, setLoadingServers] = useState(true)
@@ -155,6 +159,31 @@ export default function AdminSettingsPage() {
   const [automationTemplateError, setAutomationTemplateError] = useState<string | null>(null)
   const [automationTemplateSuccess, setAutomationTemplateSuccess] = useState<string | null>(null)
   const [automationTemplateCacheReady, setAutomationTemplateCacheReady] = useState(false)
+
+  const [campaignDefaultLoading, setCampaignDefaultLoading] = useState(false)
+  const [campaignDefaultSaving, setCampaignDefaultSaving] = useState(false)
+  const [campaignDefaultError, setCampaignDefaultError] = useState<string | null>(null)
+  const [campaignDefaultSuccess, setCampaignDefaultSuccess] = useState<string | null>(null)
+  const [campaignDefaultCacheReady, setCampaignDefaultCacheReady] = useState(false)
+  const [campaignDefaultSourceId, setCampaignDefaultSourceId] = useState('825c980a-ca90-45c7-b375-3b143ade5369')
+  const [campaignDefaultInfo, setCampaignDefaultInfo] = useState<{
+    configured: boolean
+    name: string | null
+    nodeCount: number
+    stepCount: number
+    updatedAt: string | null
+    syncedCampaigns: number
+  }>({
+    configured: false,
+    name: null,
+    nodeCount: 0,
+    stepCount: 0,
+    updatedAt: null,
+    syncedCampaigns: 0,
+  })
+  const [campaignDefaultData, setCampaignDefaultData] = useState<PlatformCampaignDefault | null>(null)
+  const [campaignDefaultName, setCampaignDefaultName] = useState('Birthday')
+  const [campaignWorkflowEditorOpen, setCampaignWorkflowEditorOpen] = useState(false)
 
   const loadTagCatalog = useCallback(async () => {
     setTagCatalogLoading(true)
@@ -245,6 +274,44 @@ export default function AdminSettingsPage() {
     if (tab !== 'automation_templates' || automationTemplateCacheReady) return
     void loadAutomationTemplates().finally(() => setAutomationTemplateCacheReady(true))
   }, [tab, automationTemplateCacheReady, loadAutomationTemplates])
+
+  const loadCampaignWorkflowDefaults = useCallback(async () => {
+    setCampaignDefaultLoading(true)
+    setCampaignDefaultError(null)
+    try {
+      const res = await fetch('/api/admin/campaign-workflow-defaults', { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setCampaignDefaultError(typeof data.error === 'string' ? data.error : 'Failed to load default workflow')
+        return
+      }
+      const def = data.data
+      const nodes = Array.isArray(def?.workflow_definition?.nodes) ? def.workflow_definition.nodes : []
+      const steps = Array.isArray(def?.compiled_steps) ? def.compiled_steps : []
+      setCampaignDefaultData(def ?? null)
+      setCampaignDefaultName(typeof def?.name === 'string' ? def.name : 'Birthday')
+      setCampaignDefaultInfo({
+        configured: Boolean(data.configured),
+        name: typeof def?.name === 'string' ? def.name : null,
+        nodeCount: nodes.length,
+        stepCount: steps.length,
+        updatedAt: typeof def?.updated_at === 'string' ? def.updated_at : null,
+        syncedCampaigns: Number(data.synced_campaigns ?? 0),
+      })
+      if (typeof def?.source_campaign_id === 'string' && def.source_campaign_id.trim()) {
+        setCampaignDefaultSourceId(def.source_campaign_id)
+      }
+    } catch {
+      setCampaignDefaultError('Failed to load default workflow')
+    } finally {
+      setCampaignDefaultLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab !== 'campaign_workflow_defaults' || campaignDefaultCacheReady) return
+    void loadCampaignWorkflowDefaults().finally(() => setCampaignDefaultCacheReady(true))
+  }, [tab, campaignDefaultCacheReady, loadCampaignWorkflowDefaults])
 
   const currentUserSessions = useMemo(() => {
     if (!editingUserId) return [] as UserSessionRow[]
@@ -630,6 +697,13 @@ export default function AdminSettingsPage() {
           className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'automation_templates' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
         >
           Automation templates
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('campaign_workflow_defaults')}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'campaign_workflow_defaults' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+        >
+          Default workflow
         </button>
       </div>
 
@@ -1103,6 +1177,176 @@ export default function AdminSettingsPage() {
           </form>
         </section>
       )}
+
+      {tab === 'campaign_workflow_defaults' && (
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Default campaign workflow</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                New users receive this workflow as a draft campaign on signup. Updates sync to user
+                campaigns until they edit their copy.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadCampaignWorkflowDefaults()}
+              disabled={campaignDefaultLoading || campaignDefaultSaving}
+              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {campaignDefaultLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {campaignDefaultError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {campaignDefaultError}
+            </div>
+          )}
+          {campaignDefaultSuccess && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {campaignDefaultSuccess}
+            </div>
+          )}
+
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+            {campaignDefaultInfo.configured ? (
+              <dl className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Template</dt>
+                  <dd className="font-medium text-slate-900">{campaignDefaultInfo.name ?? 'Birthday'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Workflow nodes</dt>
+                  <dd>{campaignDefaultInfo.nodeCount}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Send steps</dt>
+                  <dd>{campaignDefaultInfo.stepCount}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Synced user campaigns</dt>
+                  <dd>{campaignDefaultInfo.syncedCampaigns}</dd>
+                </div>
+                {campaignDefaultInfo.updatedAt && (
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Last updated</dt>
+                    <dd>{new Date(campaignDefaultInfo.updatedAt).toLocaleString()}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p>No default workflow configured yet. Set one from your Birthday campaign below.</p>
+            )}
+          </div>
+
+          {campaignDefaultInfo.configured && (
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Template name</label>
+                <input
+                  type="text"
+                  value={campaignDefaultName}
+                  onChange={(e) => setCampaignDefaultName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setCampaignWorkflowEditorOpen(true)}
+                disabled={!campaignDefaultData || campaignDefaultLoading}
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                Edit workflow
+              </button>
+            </div>
+          )}
+
+          <details className="mb-6 rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
+              Import from existing campaign
+            </summary>
+            <form
+              className="space-y-4 border-t border-slate-100 px-4 py-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void (async () => {
+                setCampaignDefaultSaving(true)
+                setCampaignDefaultError(null)
+                setCampaignDefaultSuccess(null)
+                try {
+                  const res = await fetch('/api/admin/campaign-workflow-defaults', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ campaign_id: campaignDefaultSourceId.trim() }),
+                  })
+                  const data = await res.json().catch(() => ({}))
+                  if (!res.ok) {
+                    setCampaignDefaultError(
+                      typeof data.error === 'string' ? data.error : 'Failed to save default workflow'
+                    )
+                    return
+                  }
+                  const synced = Number(data.synced_campaigns ?? 0)
+                  setCampaignDefaultSuccess(
+                    `Default workflow saved.${synced > 0 ? ` Synced ${synced} user campaign(s).` : ''}`
+                  )
+                  await loadCampaignWorkflowDefaults()
+                } catch {
+                  setCampaignDefaultError('Failed to save default workflow')
+                } finally {
+                  setCampaignDefaultSaving(false)
+                }
+              })()
+            }}
+          >
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Source campaign ID</label>
+              <input
+                type="text"
+                value={campaignDefaultSourceId}
+                onChange={(e) => setCampaignDefaultSourceId(e.target.value)}
+                placeholder="825c980a-ca90-45c7-b375-3b143ade5369"
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm text-slate-900"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Uses the campaign workflow graph, steps, and image backgrounds (stored as shared platform
+                assets). New users get a draft copy on signup.
+              </p>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={campaignDefaultSaving || campaignDefaultLoading || !campaignDefaultSourceId.trim()}
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {campaignDefaultSaving ? 'Saving…' : 'Set as platform default'}
+              </button>
+            </div>
+          </form>
+          </details>
+        </section>
+      )}
+
+      <AdminPlatformWorkflowEditor
+        open={campaignWorkflowEditorOpen}
+        onClose={() => setCampaignWorkflowEditorOpen(false)}
+        defaults={
+          campaignDefaultData
+            ? { ...campaignDefaultData, name: campaignDefaultName.trim() || campaignDefaultData.name }
+            : null
+        }
+        onSaved={() => {
+          setCampaignWorkflowEditorOpen(false)
+          setCampaignDefaultSuccess('Platform default workflow saved.')
+          void loadCampaignWorkflowDefaults()
+        }}
+        pushToast={(type, text) => {
+          if (type === 'success') setCampaignDefaultSuccess(text)
+          else setCampaignDefaultError(text)
+        }}
+      />
 
       {serverModalOpen && (
         <div className="fixed inset-0 z-50 top-[-2rem] flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && closeServerModal()}>

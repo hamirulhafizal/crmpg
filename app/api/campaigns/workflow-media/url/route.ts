@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { CAMPAIGN_WORKFLOW_MEDIA_BUCKET } from '@/app/lib/campaigns/image-step/defaults'
+import { isPlatformDefaultMediaPath } from '@/app/lib/campaigns/platform-defaults'
 import { createClient } from '@/app/lib/supabase/server'
 
 export async function GET(request: Request) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     if (!path) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 })
     }
-    if (!path.startsWith(`${user.id}/`)) {
+    if (!path.startsWith(`${user.id}/`) && !isPlatformDefaultMediaPath(path)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

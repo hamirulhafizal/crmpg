@@ -61,10 +61,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from auth pages (but allow forgot/reset password)
+  // Redirect authenticated users away from auth pages (logout is handled at /logout)
   if (
     user &&
-    (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/register')
+    pathname !== '/logout' &&
+    (pathname === '/login' || pathname === '/register')
   ) {
     const url = request.nextUrl.clone()
     const next = request.nextUrl.searchParams.get('next')

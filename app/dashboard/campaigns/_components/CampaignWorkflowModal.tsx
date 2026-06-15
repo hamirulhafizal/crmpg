@@ -95,6 +95,8 @@ type Props = {
   urlSelectedNodeId?: string | null
   /** Keep `?node=` in sync when a single node is selected on the canvas */
   onUrlSelectionChange?: (nodeId: string | null) => void
+  /** Admin platform default template — saves to /api/admin/campaign-workflow-defaults */
+  saveAsPlatformDefault?: boolean
 }
 
 function useIsMobile() {
@@ -243,6 +245,7 @@ function CampaignWorkflowView(props: Props) {
     pushToast,
     urlSelectedNodeId,
     onUrlSelectionChange,
+    saveAsPlatformDefault = false,
   } = props
 
   const isMobile = useIsMobile()
@@ -454,21 +457,37 @@ function CampaignWorkflowView(props: Props) {
   )
 
   const saveWorkflow = async () => {
-    if (!campaignId || !editable) return
+    if (!editable) return
+    if (!saveAsPlatformDefault && !campaignId) return
     setSaving(true)
     setSaveError(null)
     try {
       const workflow_definition = draftToDefinition(draft)
-      const res = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow_definition }),
-      })
+      const res = saveAsPlatformDefault
+        ? await fetch('/api/admin/campaign-workflow-defaults', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: campaignName,
+              workflow_definition,
+              workflow_layout: draft.layout ?? null,
+            }),
+          })
+        : await fetch(`/api/campaigns/${campaignId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workflow_definition }),
+          })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Save failed')
       savedSnapshot.current = JSON.stringify(draft)
       resetHistory(draft)
       onSaved?.()
+      if (saveAsPlatformDefault && typeof json.synced_campaigns === 'number' && json.synced_campaigns > 0) {
+        pushToast?.('success', `Saved and synced ${json.synced_campaigns} user campaign(s).`)
+      } else if (saveAsPlatformDefault) {
+        pushToast?.('success', 'Platform default workflow saved.')
+      }
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Save failed')
     } finally {
@@ -534,7 +553,11 @@ function CampaignWorkflowView(props: Props) {
                 ) : null}
               </div>
               <p className="hidden truncate text-xs text-slate-500 sm:block sm:text-sm">
-                {editable ? 'Workflow editor' : 'Campaign workflow · view only'}
+                {saveAsPlatformDefault
+                  ? 'Platform default template · changes sync to user copies'
+                  : editable
+                    ? 'Workflow editor'
+                    : 'Campaign workflow · view only'}
               </p>
             </div>
 

@@ -6,6 +6,8 @@ import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 import { canActivateCampaign } from '@/app/lib/saas/enforce'
+import { ensureUserDefaultCampaign } from '@/app/lib/campaigns/platform-defaults'
+import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export async function GET() {
   try {
@@ -16,6 +18,12 @@ export async function GET() {
     } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    try {
+      await ensureUserDefaultCampaign(createServiceRoleClient(), user.id)
+    } catch (e) {
+      console.error('[campaigns] ensureUserDefaultCampaign failed', e)
     }
 
     const { data: campaigns, error } = await supabase

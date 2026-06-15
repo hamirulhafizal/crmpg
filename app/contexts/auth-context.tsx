@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { createClient } from '@/app/lib/supabase/client'
+import { clearAllClientStorage } from '@/app/lib/auth/clear-client-storage'
 
 interface AuthContextType {
   user: User | null
@@ -41,7 +42,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase.auth])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut({ scope: 'global' })
+    } catch {
+      // ignore
+    }
+    await clearAllClientStorage()
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include', cache: 'no-store' })
+    } catch {
+      // ignore
+    }
     setUser(null)
     setSession(null)
   }

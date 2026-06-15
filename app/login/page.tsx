@@ -19,6 +19,15 @@ export default function LoginPage() {
   const passwordVisibilityLabelRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('logged_out') === '1') {
+      setMessage({ type: 'success', text: 'You have been signed out. Sign in again to continue.' })
+      window.history.replaceState({}, '', '/login')
+    }
+  }, [])
+
+  useEffect(() => {
     const input = passwordInputRef.current
     const toggle = passwordVisibilityToggleRef.current
     const labelEl = passwordVisibilityLabelRef.current

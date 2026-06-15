@@ -168,6 +168,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if ('start_at' in body) updates.start_at = body.start_at
     if ('end_at' in body) updates.end_at = body.end_at
 
+    if (Object.keys(updates).length > 0) {
+      updates.uses_platform_defaults = false
+    }
+
     if (typeof body.status === 'string' && body.status === 'active') {
       const gate = await canActivateCampaign(user.id, id)
       if (!gate.ok) {
