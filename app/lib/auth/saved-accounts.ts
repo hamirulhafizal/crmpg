@@ -201,49 +201,38 @@ export async function switchToSavedAccount(
     })
   }
 
-  if (target.password?.trim()) {
-    const { data, error } = await supabase.auth.signInWithPassword({
+  const response = await fetch('/api/auth/switch-account', {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId: target.userId,
       email: target.email,
-      password: target.password,
-    })
-    if (!error && data.user && data.session) {
-      await recordAccountFromSession(supabase, data.user, data.session, {
-        password: target.password,
-      })
-      return { ok: true }
-    }
+      password: target.password ?? undefined,
+      refreshToken: target.refreshToken ?? undefined,
+      accessToken: target.accessToken ?? undefined,
+    }),
+  })
+
+  if (!response.ok) {
+    return { ok: false, reason: 'auth_failed' }
   }
 
-  if (target.refreshToken?.trim()) {
-    try {
-      await supabase.auth.signOut({ scope: 'local' })
-    } catch {
-      // ignore
-    }
-
-    const { data, error } = await supabase.auth.refreshSession({
-      refresh_token: target.refreshToken,
-    })
-    if (!error && data.user && data.session) {
-      const prev = findSavedAccount(data.user.id)
-      await recordAccountFromSession(supabase, data.user, data.session, {
-        password: prev?.password ?? undefined,
-      })
-      return { ok: true }
-    }
-
-    const { data: setData, error: setError } = await supabase.auth.setSession({
-      access_token: target.accessToken ?? '',
-      refresh_token: target.refreshToken,
-    })
-    if (!setError && setData.user && setData.session) {
-      const prev = findSavedAccount(setData.user.id)
-      await recordAccountFromSession(supabase, setData.user, setData.session, {
-        password: prev?.password ?? undefined,
-      })
-      return { ok: true }
-    }
+  const payload = (await response.json()) as { userId?: string }
+  if (payload.userId !== target.userId) {
+    return { ok: false, reason: 'auth_failed' }
   }
 
-  return { ok: false, reason: 'auth_failed' }
+  const {
+    data: { session: nextSession },
+  } = await supabase.auth.getSession()
+
+  if (nextSession?.user?.id === target.userId) {
+    await recordAccountFromSession(supabase, nextSession.user, nextSession, {
+      password: target.password ?? undefined,
+    })
+  }
+
+  return { ok: true }
 }

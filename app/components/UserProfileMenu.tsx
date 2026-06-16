@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import {
@@ -53,18 +54,30 @@ function RemoveAccountDialog({
   onConfirm: () => void
 }) {
   const label = account.fullName?.trim() || account.email
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel()
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
   }, [onCancel])
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel()
       }}
@@ -73,7 +86,7 @@ function RemoveAccountDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="remove-account-title"
-        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
       >
         <h3 id="remove-account-title" className="text-lg font-semibold text-slate-900">
           Remove account?
@@ -99,11 +112,18 @@ function RemoveAccountDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
-export function UserProfileMenu() {
+type UserProfileMenuProps = {
+  /** Raise z-index so the menu works above fullscreen overlays (e.g. profile setup). */
+  elevated?: boolean
+}
+
+export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
+  const menuZClass = elevated ? 'z-[250]' : 'z-[100]'
   const { user, loading } = useAuth()
   const [open, setOpen] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -136,7 +156,7 @@ export function UserProfileMenu() {
   }, [user, refreshSaved])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || accountToRemove) return
     const onDoc = (e: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
     }
@@ -149,7 +169,7 @@ export function UserProfileMenu() {
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, accountToRemove])
 
   const handleConfirmRemove = () => {
     if (!accountToRemove) return
@@ -186,7 +206,7 @@ export function UserProfileMenu() {
         {open ? (
           <div
             role="menu"
-            className="absolute right-0 z-[100] mt-2 w-[min(100vw-2rem,320px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
+            className={`absolute right-0 ${menuZClass} mt-2 w-[min(100vw-2rem,320px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10`}
           >
             <div className="border-b border-slate-100 px-4 py-4">
               <div className="flex items-center gap-3">
@@ -253,6 +273,7 @@ export function UserProfileMenu() {
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
+                        setOpen(false)
                         setAccountToRemove(account)
                       }}
                     >

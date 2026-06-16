@@ -13,6 +13,7 @@ import {
   type RequiredProfileField,
 } from '@/app/lib/profile/completion'
 import { buildDefaultGmailMessage } from '@/app/lib/profile/gmail-template'
+import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 
 type Props = {
   userId: string
@@ -433,9 +434,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               Complete your dealer profile
             </h1>
           </div>
-          {userEmail && (
-            <p className="hidden truncate text-xs text-slate-500 sm:block">{userEmail}</p>
-          )}
+          <UserProfileMenu elevated />
         </div>
       </header>
 

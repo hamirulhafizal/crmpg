@@ -30,7 +30,7 @@ export default function SwitchAccountPage() {
         const result = await switchToSavedAccount(supabase, target)
 
         if (result.ok) {
-          window.location.replace('/dashboard')
+          window.location.href = '/dashboard'
           return
         }
 
