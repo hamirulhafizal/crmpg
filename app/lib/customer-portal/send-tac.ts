@@ -1,8 +1,21 @@
 import nodemailer from 'nodemailer'
+import { sleep } from '@/app/lib/campaigns/whatsapp-humanize'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
-import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
+import {
+  getWhatsAppServerConfig,
+  isWhatsAppConfigured,
+  loadUserWhatsAppSession,
+  loadUserWhatsAppSessionByName,
+  resolveEffectiveWhatsAppProvider,
+} from '@/app/lib/whatsapp/resolve'
 import { sendWhatsAppText as deliverWhatsAppText } from '@/app/lib/whatsapp/send'
 import { PORTAL_BRAND } from '@/app/lib/customer-portal/brand'
+
+/** Wasender account protection allows ~1 outbound message per 5s. */
+const WASENDER_TAC_GAP_MS = Math.min(
+  Math.max(Number(process.env.WASENDER_TAC_GAP_MS || 5500) || 5500, 5000),
+  15000
+)
 
 async function pickWahaSession(userId: string): Promise<string | null> {
   const admin = createServiceRoleClient()
@@ -29,22 +42,11 @@ function tacIntroMessage(pgCode?: string | null): string {
   )
 }
 
-async function sendWhatsAppTextMessages(
-  session: string,
-  phone: string,
-  messages: string[],
-  ownerUserId: string
-): Promise<void> {
-  for (const text of messages) {
-    await deliverWhatsAppText({
-      userId: ownerUserId,
-      session,
-      phone,
-      text,
-      enableTyping: false,
-      randomizeSpaces: false,
-    })
-  }
+function isDeliverableEmail(email: string): boolean {
+  const trimmed = email.trim().toLowerCase()
+  if (!trimmed.includes('@')) return false
+  const domain = trimmed.split('@')[1] || ''
+  return domain !== 'invalid.local' && !domain.endsWith('.invalid')
 }
 
 async function getGmailSmtp(userId: string): Promise<{ fromEmail: string; appPassword: string } | null> {
@@ -63,6 +65,32 @@ async function getGmailSmtp(userId: string): Promise<{ fromEmail: string; appPas
   if (error || !data?.user?.email) return null
 
   return { fromEmail: data.user.email, appPassword }
+}
+
+async function sendWhatsAppTextMessages(params: {
+  ownerUserId: string
+  session: string
+  phone: string
+  messages: string[]
+}): Promise<void> {
+  const cfg = await getWhatsAppServerConfig({ userId: params.ownerUserId })
+  const sessionRow =
+    (await loadUserWhatsAppSessionByName(params.ownerUserId, params.session)) ??
+    (await loadUserWhatsAppSession(params.ownerUserId))
+  const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  const gapMs = provider === 'wasender' ? WASENDER_TAC_GAP_MS : 0
+
+  for (let i = 0; i < params.messages.length; i++) {
+    if (i > 0 && gapMs > 0) await sleep(gapMs)
+    await deliverWhatsAppText({
+      userId: params.ownerUserId,
+      session: params.session,
+      phone: params.phone,
+      text: params.messages[i],
+      enableTyping: false,
+      randomizeSpaces: false,
+    })
+  }
 }
 
 async function sendViaWhatsApp(params: {
@@ -84,7 +112,12 @@ async function sendViaWhatsApp(params: {
   const codeOnly = params.code.trim()
 
   try {
-    await sendWhatsAppTextMessages(session, params.customerPhone, [intro, codeOnly], params.ownerUserId)
+    await sendWhatsAppTextMessages({
+      ownerUserId: params.ownerUserId,
+      session,
+      phone: params.customerPhone,
+      messages: [intro, codeOnly],
+    })
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to send WhatsApp message'
@@ -143,7 +176,8 @@ export async function deliverCustomerPortalTac(params: {
   pgCode?: string | null
 }): Promise<DeliverTacResult> {
   const phone = params.customerPhone?.trim() || null
-  const email = params.customerEmail?.trim() || null
+  const emailRaw = params.customerEmail?.trim() || null
+  const email = emailRaw && isDeliverableEmail(emailRaw) ? emailRaw : null
 
   if (!phone && !email) {
     return {
@@ -175,7 +209,7 @@ export async function deliverCustomerPortalTac(params: {
       }
       return {
         ok: false,
-        error: `Could not send via WhatsApp or email. ${mail.error}`,
+        error: `Could not send via WhatsApp (${wa.error}) or email (${mail.error}).`,
       }
     }
 

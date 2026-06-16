@@ -29,6 +29,7 @@
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
+    "geist": "^1.7.2",
     "googleapis": "^166.0.0",
     "lucide-react": "^1.16.0",
     "malaysia-postcodes": "^2.7.3",

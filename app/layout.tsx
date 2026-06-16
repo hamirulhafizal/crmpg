@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { AuthProvider } from "./contexts/auth-context";
 import { CustomerEditModalProvider } from "./contexts/customer-edit-modal-context";
@@ -7,20 +8,6 @@ import DisableServiceWorkers from "./components/DisableServiceWorkers";
 import ViewTransitions from "./components/ViewTransitions";
 import ClientScripts from "./components/ClientScripts";
 import { MotionProvider } from "./components/motion-provider";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: 'swap',
-  preload: true,
-});
 
 export const metadata: Metadata = {
   title: "Public Gold",
@@ -54,7 +41,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning
       >
         {/* Google Tag Manager (noscript) */}
