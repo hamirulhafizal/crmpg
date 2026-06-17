@@ -92,6 +92,15 @@ export type WasenderSessionData = {
   api_key?: string
 }
 
+export async function wasenderListAllSessions(cfg: WhatsAppServerConfig): Promise<WasenderSessionData[]> {
+  const res = await wasenderPlatformFetch<WasenderEnvelope<WasenderSessionData[]>>(
+    cfg,
+    '/api/whatsapp-sessions',
+    { method: 'GET' }
+  )
+  return Array.isArray(res?.data) ? res.data : []
+}
+
 export async function wasenderCreateSession(
   cfg: WhatsAppServerConfig,
   input: { name: string; phoneNumber: string }

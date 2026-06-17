@@ -1,33 +1,13 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import {
+  adminServerRowToConfig,
+  fetchLiveSessionLookupForServer,
+  isWasenderServer,
+  resolveAdminSessionStatus,
+} from '@/app/lib/whatsapp/admin-live-sessions'
 import { mapWasenderStatusToDisplay, wasenderGetSessionStatus } from '@/app/lib/wasender'
-
-function normalizeBaseUrl(url: string): string {
-  return (url || '').trim().replace(/\/+$/, '')
-}
-
-async function fetchWahaLiveSessions(apiBaseUrl: string, apiKey: string): Promise<Map<string, string> | null> {
-  const base = normalizeBaseUrl(apiBaseUrl)
-  if (!base || !apiKey) return null
-
-  try {
-    const res = await fetch(`${base}/api/sessions?all=true`, {
-      headers: { 'X-Api-Key': apiKey },
-      cache: 'no-store',
-    })
-    if (!res.ok) return null
-    const data = (await res.json().catch(() => [])) as Array<{ name?: string; status?: string }>
-    const map = new Map<string, string>()
-    for (const row of Array.isArray(data) ? data : []) {
-      const name = (row?.name || '').trim()
-      if (name) map.set(name, (row?.status || '').toString())
-    }
-    return map
-  } catch {
-    return null
-  }
-}
 
 export async function POST() {
   const auth = await requireAdminApi()
@@ -41,7 +21,7 @@ export async function POST() {
         admin.from('profiles').select('id, waha_server_id'),
         admin
           .from('waha_user_sessions')
-          .select('id, user_id, session_name, session_api_key, provider_type, last_known_waha_status'),
+          .select('id, user_id, session_name, session_api_key, provider_type, external_session_id, last_known_waha_status'),
       ])
 
     if (serversError) return NextResponse.json({ error: serversError.message }, { status: 500 })
@@ -54,16 +34,14 @@ export async function POST() {
 
     const defaultServerId = (serverRows.find((s) => s.is_default)?.id || '').toString()
     const profileServerByUser = new Map(profileRows.map((p) => [p.id, (p.waha_server_id || '').toString()]))
-    const wahaLiveByServerId = new Map<string, Map<string, string> | null>()
+    const liveByServerId = new Map<string, Awaited<ReturnType<typeof fetchLiveSessionLookupForServer>>>()
     const serverById = new Map(serverRows.map((s) => [s.id, s]))
 
     await Promise.all(
-      serverRows
-        .filter((s) => s.provider_type !== 'wasender')
-        .map(async (s) => {
-          const live = await fetchWahaLiveSessions(s.api_base_url, s.api_key)
-          wahaLiveByServerId.set(s.id, live)
-        })
+      serverRows.map(async (s) => {
+        const live = await fetchLiveSessionLookupForServer(s)
+        liveByServerId.set(s.id, live)
+      })
     )
 
     let updated = 0
@@ -79,37 +57,34 @@ export async function POST() {
       }
 
       const server = serverById.get(resolvedServerId)
-      let nextStatus = 'STOPPED'
+      const liveForServer = liveByServerId.get(resolvedServerId)
+      const useWasender = isWasenderServer(server) || row.provider_type === 'wasender'
 
-      if (server?.provider_type === 'wasender' || row.provider_type === 'wasender') {
+      let nextStatus = resolveAdminSessionStatus(liveForServer, row, {
+        storedStatus: row.last_known_waha_status,
+      })
+
+      // Only trust per-session API keys when the provider list could not be fetched.
+      if (liveForServer == null && useWasender && server) {
         const sessionApiKey = (row.session_api_key || '').trim()
-        if (!sessionApiKey || !server) {
+        if (sessionApiKey) {
+          try {
+            const raw = await wasenderGetSessionStatus(adminServerRowToConfig(server), sessionApiKey)
+            nextStatus = mapWasenderStatusToDisplay(raw)
+          } catch {
+            if (!(row.session_api_key || '').trim()) {
+              unreachableServer++
+              continue
+            }
+            nextStatus = 'STOPPED'
+          }
+        } else {
           unreachableServer++
           continue
         }
-        try {
-          const raw = await wasenderGetSessionStatus(
-            {
-              serverId: server.id,
-              provider: 'wasender',
-              baseUrl: normalizeBaseUrl(server.api_base_url),
-              platformApiKey: server.api_key,
-              dashboardPass: null,
-            },
-            sessionApiKey
-          )
-          nextStatus = mapWasenderStatusToDisplay(raw)
-        } catch {
-          unreachableServer++
-          continue
-        }
-      } else {
-        const liveForServer = wahaLiveByServerId.get(resolvedServerId)
-        if (!liveForServer) {
-          unreachableServer++
-          continue
-        }
-        nextStatus = (liveForServer.get(row.session_name) || 'STOPPED').trim()
+      } else if (!useWasender && liveForServer == null) {
+        unreachableServer++
+        continue
       }
 
       const prevStatus = (row.last_known_waha_status || '').trim()

@@ -12,6 +12,10 @@ import {
 } from '@/app/lib/wasender'
 import { wahaFetch } from '@/app/lib/waha'
 import {
+  fetchWasenderLiveSessionLookup,
+  resolveAdminSessionStatus,
+} from '@/app/lib/whatsapp/admin-live-sessions'
+import {
   getWhatsAppServerConfig,
   loadUserWhatsAppSessions,
 } from '@/app/lib/whatsapp/resolve'
@@ -32,10 +36,20 @@ export async function listWhatsAppSessions(userId: string): Promise<WhatsAppSess
   if (rows.length === 0) return []
 
   if (cfg.provider === 'wasender') {
+    let platformLookup = null as Awaited<ReturnType<typeof fetchWasenderLiveSessionLookup>> | null
+    try {
+      platformLookup = await fetchWasenderLiveSessionLookup(cfg)
+    } catch {
+      platformLookup = null
+    }
+
     const out: WhatsAppSessionView[] = []
     for (const row of rows) {
       let status = row.last_known_waha_status || 'DISCONNECTED'
-      if (row.session_api_key) {
+      if (platformLookup) {
+        status = resolveAdminSessionStatus(platformLookup, row, { storedStatus: row.last_known_waha_status })
+        await persistWhatsAppSessionStatus(userId, row.session_name, status)
+      } else if (row.session_api_key) {
         try {
           const raw = await wasenderGetSessionStatus(cfg, row.session_api_key)
           status = mapWasenderStatusToDisplay(raw)

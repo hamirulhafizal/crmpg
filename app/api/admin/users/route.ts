@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import {
+  fetchLiveSessionLookupForServer,
+  resolveAdminSessionStatus,
+} from '@/app/lib/whatsapp/admin-live-sessions'
 
 type UserCreateBody = {
   email?: string
@@ -10,35 +14,6 @@ type UserCreateBody = {
   locale?: string | null
   timezone?: string | null
   waha_server_id?: string | null
-}
-
-function normalizeBaseUrl(url: string): string {
-  return (url || '').trim().replace(/\/+$/, '')
-}
-
-async function fetchLiveSessionsForServer(
-  apiBaseUrl: string,
-  apiKey: string
-): Promise<Map<string, string> | null> {
-  const base = normalizeBaseUrl(apiBaseUrl)
-  if (!base || !apiKey) return null
-
-  try {
-    const res = await fetch(`${base}/api/sessions?all=true`, {
-      headers: { 'X-Api-Key': apiKey },
-      cache: 'no-store',
-    })
-    if (!res.ok) return null
-    const data = (await res.json().catch(() => [])) as Array<{ name?: string; status?: string }>
-    const map = new Map<string, string>()
-    for (const row of Array.isArray(data) ? data : []) {
-      const name = (row?.name || '').trim()
-      if (name) map.set(name, (row?.status || '').toString())
-    }
-    return map
-  } catch {
-    return null
-  }
 }
 
 export async function GET() {
@@ -55,9 +30,9 @@ export async function GET() {
       admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
       admin
         .from('waha_user_sessions')
-        .select('id, user_id, session_name, last_known_waha_status, created_at')
+        .select('id, user_id, session_name, external_session_id, last_known_waha_status, created_at')
         .order('created_at', { ascending: false }),
-      admin.from('waha_servers').select('id, api_base_url, api_key, is_default'),
+      admin.from('waha_servers').select('id, api_base_url, api_key, is_default, provider_type'),
     ])
 
     if (profilesError) {
@@ -77,25 +52,28 @@ export async function GET() {
     const profileByUserId = new Map((profiles || []).map((p) => [p.id, p]))
     const allServers = serversResult.data || []
     const defaultServerId = (allServers.find((s) => s.is_default)?.id || '').toString()
-    const liveByServerId = new Map<string, Map<string, string> | null>()
+    const liveByServerId = new Map<string, Awaited<ReturnType<typeof fetchLiveSessionLookupForServer>>>()
 
-    for (const server of allServers) {
-      const liveMap = await fetchLiveSessionsForServer(server.api_base_url, server.api_key)
-      liveByServerId.set(server.id, liveMap)
-    }
+    await Promise.all(
+      allServers.map(async (server) => {
+        const liveMap = await fetchLiveSessionLookupForServer(server)
+        liveByServerId.set(server.id, liveMap)
+      })
+    )
 
     const sessionsByUserId = new Map<string, Array<Record<string, unknown>>>()
     for (const row of sessionsResult.data || []) {
       const profile = profileByUserId.get(row.user_id)
       const serverId = ((profile?.waha_server_id || defaultServerId || '') as string).trim()
       const liveForServer = serverId ? liveByServerId.get(serverId) || null : null
-      const liveStatus = liveForServer?.get(row.session_name) || null
+      const liveStatus = resolveAdminSessionStatus(liveForServer, row, {
+        storedStatus: row.last_known_waha_status,
+      })
 
       const list = sessionsByUserId.get(row.user_id) || []
       list.push({
         ...(row as unknown as Record<string, unknown>),
-        // Prefer live WAHA status when available, fallback to tracked DB status.
-        last_known_waha_status: liveStatus || row.last_known_waha_status || null,
+        last_known_waha_status: liveStatus,
       })
       sessionsByUserId.set(row.user_id, list)
     }
