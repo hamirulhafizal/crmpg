@@ -34,6 +34,7 @@ export function parseWhatsAppProviders(value: string | undefined): Array<'waha' 
   return [...out]
 }
 
+/** @deprecated Use hasPlatformWriteAccess from billing.ts */
 export function isPlatformSubscriptionUsable(status: SaasSubscriptionStatus): boolean {
   return status === 'active' || status === 'trialing'
 }
@@ -123,13 +124,14 @@ export async function assignSaasPlanToUser(opts: {
       ? opts.lockedPriceAmount
       : Number(planRow.price_amount)
 
-  if (planRow.slug !== 'free' && trialDays > 0 && status !== 'expired') {
+  if (trialDays > 0 && status !== 'expired' && status !== 'cancelled') {
     status = 'trialing'
     const trialEnd = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000)
     trialEndsAt = trialEnd.toISOString()
     periodEnd = trialEndsAt
   } else if (planRow.slug === 'free') {
-    status = 'active'
+    status = status === 'expired' || status === 'cancelled' ? status : 'active'
+    trialEndsAt = null
     periodStart = now.toISOString()
     periodEnd = null
   } else if (planRow.billing_period === 'monthly') {

@@ -652,6 +652,7 @@ export default function AdminSaasPlansPage() {
             <h3 className="text-lg font-semibold text-slate-900">Assign plan to dealer</h3>
             <p className="mt-1 text-sm text-slate-600">
               Manual assignment for comp accounts, Pro upgrades, or trials. Locked price is optional
+              for Pro. Use trial days override to extend a Free trial (e.g. 3 = 3 more days from now).
               (defaults to current plan list price).
             </p>
             <form onSubmit={saveAssign} className="mt-4 space-y-4">

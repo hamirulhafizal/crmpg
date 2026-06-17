@@ -40,13 +40,22 @@ type MeResponse = {
   }>
   flags: {
     is_pro_active: boolean
+    is_free_trial_active: boolean
+    has_platform_write_access: boolean
     can_start_trial: boolean
     can_checkout: boolean
     can_upgrade_from_trial: boolean
     bayarcash_checkout_enabled: boolean
     trial_days: number
+    free_trial_days: number
     renewal_price: number
     list_price: number
+  }
+  alerts?: {
+    plan_expired?: boolean
+    platform_read_only?: boolean
+    free_trial_ending_soon?: boolean
+    days_until_expiry?: number | null
   }
   entitlements: {
     maxActiveCampaigns: number
@@ -192,6 +201,20 @@ export default function DashboardBillingPage() {
         </p>
       ) : null}
 
+      {data.alerts?.platform_read_only ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          Your free trial has ended. You can still view customers (read-only). Upgrade to Pro to restore WhatsApp
+          and campaigns.
+        </p>
+      ) : null}
+
+      {data.flags.is_free_trial_active && sub.trial_ends_at ? (
+        <p className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900" role="status">
+          Free trial active — full access until {fmtDate(sub.trial_ends_at)}. After that, WhatsApp disconnects and
+          campaigns pause (customers remain viewable).
+        </p>
+      ) : null}
+
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Current plan</h2>
         <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
@@ -199,7 +222,9 @@ export default function DashboardBillingPage() {
             <p className="text-xl font-bold text-slate-900">{sub.plan.name}</p>
             <p className="mt-1 text-sm text-slate-600 capitalize">Status: {sub.status}</p>
             {sub.status === 'trialing' && sub.trial_ends_at ? (
-              <p className="mt-1 text-sm text-amber-700">Trial ends {fmtDate(sub.trial_ends_at)}</p>
+              <p className="mt-1 text-sm text-amber-700">
+                {sub.plan.slug === 'free' ? 'Free trial' : 'Pro trial'} ends {fmtDate(sub.trial_ends_at)}
+              </p>
             ) : null}
             {sub.current_period_end ? (
               <p className="mt-1 text-sm text-slate-500">Period ends {fmtDate(sub.current_period_end)}</p>
@@ -252,7 +277,11 @@ export default function DashboardBillingPage() {
 
       <section className="grid gap-4 md:grid-cols-2">
         {[freePlan, proPlan].filter(Boolean).map((plan) => {
-          const isCurrent = sub.plan.slug === plan!.slug && (plan!.slug === 'free' || data.flags.is_pro_active)
+          const isCurrent =
+            sub.plan.slug === plan!.slug &&
+            (plan!.slug === 'free'
+              ? data.flags.is_free_trial_active || (!data.flags.has_platform_write_access && sub.status === 'expired')
+              : data.flags.is_pro_active)
           const isPro = plan!.slug === 'pro'
           return (
             <div

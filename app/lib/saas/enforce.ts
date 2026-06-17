@@ -1,4 +1,4 @@
-import { isProSubscriptionActive } from '@/app/lib/saas/billing'
+import { hasPlatformWriteAccess, isProSubscriptionActive } from '@/app/lib/saas/billing'
 import {
   ADMIN_UNLIMITED_FEATURES,
   ADMIN_WHATSAPP_PROVIDERS,
@@ -24,6 +24,45 @@ export type UserEntitlements = {
   activeCampaigns: number
   atCampaignLimit: boolean
   isPlatformAdmin: boolean
+  hasPlatformWriteAccess: boolean
+}
+
+async function loadSubscriptionForUser(userId: string) {
+  const admin = createServiceRoleClient()
+  const { data: sub } = await admin.from('saas_subscriptions').select('*').eq('user_id', userId).maybeSingle()
+  if (!sub) return null
+  const { data: plan } = await admin.from('saas_plans').select('slug').eq('id', sub.plan_id).maybeSingle()
+  return {
+    sub,
+    planSlug: String(plan?.slug ?? 'free'),
+    status: sub.status as SaasSubscriptionStatus,
+    trialEndsAt: sub.trial_ends_at as string | null,
+    currentPeriodEnd: sub.current_period_end as string | null,
+  }
+}
+
+export async function userHasPlatformWriteAccess(userId: string): Promise<boolean> {
+  if (await isPlatformAdmin(userId)) return true
+  const row = await loadSubscriptionForUser(userId)
+  if (!row) return false
+  return hasPlatformWriteAccess({
+    planSlug: row.planSlug,
+    status: row.status,
+    trialEndsAt: row.trialEndsAt,
+    currentPeriodEnd: row.currentPeriodEnd,
+  })
+}
+
+export async function assertPlatformWriteAccess(
+  userId: string
+): Promise<{ ok: true } | { ok: false; error: string; code: 'platform_locked' }> {
+  if (await userHasPlatformWriteAccess(userId)) return { ok: true }
+  return {
+    ok: false,
+    error:
+      'Your free trial has ended. Upgrade to Pro to use WhatsApp and campaigns. You can still view customers.',
+    code: 'platform_locked',
+  }
 }
 
 async function loadEffectiveWhatsAppProviders(userId: string): Promise<WhatsAppProvider[]> {
@@ -45,6 +84,15 @@ async function loadEffectiveWhatsAppProviders(userId: string): Promise<WhatsAppP
     trialEndsAt: sub.trial_ends_at,
     currentPeriodEnd: sub.current_period_end,
   })
+
+  const writeAccess = hasPlatformWriteAccess({
+    planSlug,
+    status: sub.status as SaasSubscriptionStatus,
+    trialEndsAt: sub.trial_ends_at,
+    currentPeriodEnd: sub.current_period_end,
+  })
+
+  if (!writeAccess) return []
 
   if (proActive) {
     return parseWhatsAppProviders(planFeatures.whatsapp_providers)
@@ -71,6 +119,7 @@ export async function loadUserEntitlements(userId: string): Promise<UserEntitlem
       activeCampaigns,
       atCampaignLimit: false,
       isPlatformAdmin: true,
+      hasPlatformWriteAccess: true,
     }
   }
 
@@ -87,6 +136,7 @@ export async function loadUserEntitlements(userId: string): Promise<UserEntitlem
     activeCampaigns,
     atCampaignLimit: ent.atCampaignLimit,
     isPlatformAdmin: false,
+    hasPlatformWriteAccess: ent.hasPlatformWriteAccess,
   }
 }
 
@@ -112,8 +162,11 @@ export async function countActiveCampaigns(
 export async function canActivateCampaign(
   userId: string,
   excludeCampaignId?: string
-): Promise<{ ok: true } | { ok: false; error: string; code: 'campaign_limit' }> {
+): Promise<{ ok: true } | { ok: false; error: string; code: 'campaign_limit' | 'platform_locked' }> {
   if (await isPlatformAdmin(userId)) return { ok: true }
+
+  const writeGate = await assertPlatformWriteAccess(userId)
+  if (!writeGate.ok) return writeGate
 
   const entitlements = await loadUserEntitlements(userId)
   if (!entitlements) {
@@ -148,6 +201,7 @@ export function isWhatsAppProviderAllowed(
 /** Platform admin, Pro plan, admin-assigned Wasender, or existing Wasender session. */
 export async function canUseWasenderForUser(userId: string): Promise<boolean> {
   if (await isPlatformAdmin(userId)) return true
+  if (!(await userHasPlatformWriteAccess(userId))) return false
 
   const providers = await loadEffectiveWhatsAppProviders(userId)
   if (providers.includes('wasender')) return true
@@ -203,6 +257,10 @@ export async function pauseExcessActiveCampaigns(
 
   if (error) throw new Error(error.message)
   return toPause.length
+}
+
+export async function pauseAllActiveCampaigns(userId: string): Promise<number> {
+  return pauseExcessActiveCampaigns(userId, 0)
 }
 
 export function maxActiveFromFeatures(features: Record<string, string>): number {

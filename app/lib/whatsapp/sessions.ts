@@ -1,5 +1,5 @@
 import QRCode from 'qrcode'
-import { canUseWasenderForUser } from '@/app/lib/saas/enforce'
+import { canUseWasenderForUser, userHasPlatformWriteAccess } from '@/app/lib/saas/enforce'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import {
   mapWasenderStatusToDisplay,
@@ -74,6 +74,15 @@ export async function createWhatsAppSession(
   userId: string,
   input: { name: string; start?: boolean; config?: unknown }
 ): Promise<WhatsAppSessionView> {
+  if (!(await userHasPlatformWriteAccess(userId))) {
+    throw new WhatsAppApiError(
+      'Your free trial has ended. Upgrade to Pro to connect WhatsApp.',
+      403,
+      'create',
+      'waha'
+    )
+  }
+
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionName = normalizeSessionPhone(input.name)
   const admin = createServiceRoleClient()
@@ -168,6 +177,15 @@ export async function getWhatsAppSessionQr(
   sessionName: string,
   opts?: { forceReconnect?: boolean }
 ): Promise<{ qrcode?: string; qrString?: string; mimetype?: string; alreadyConnected?: boolean }> {
+  if (!(await userHasPlatformWriteAccess(userId))) {
+    throw new WhatsAppApiError(
+      'Your free trial has ended. Upgrade to Pro to connect WhatsApp.',
+      403,
+      'qr',
+      'waha'
+    )
+  }
+
   const cfg = await getWhatsAppServerConfig({ userId })
   const rows = await loadUserWhatsAppSessions(userId)
   const row = rows.find((r) => r.session_name === sessionName)
@@ -217,6 +235,15 @@ export async function getWhatsAppSessionQr(
 }
 
 export async function startWhatsAppSession(userId: string, sessionName: string): Promise<WhatsAppSessionView> {
+  if (!(await userHasPlatformWriteAccess(userId))) {
+    throw new WhatsAppApiError(
+      'Your free trial has ended. Upgrade to Pro to connect WhatsApp.',
+      403,
+      'start',
+      'waha'
+    )
+  }
+
   const cfg = await getWhatsAppServerConfig({ userId })
   if (cfg.provider === 'wasender') {
     const rows = await loadUserWhatsAppSessions(userId)
@@ -286,6 +313,20 @@ export async function deleteWhatsAppSession(userId: string, sessionName: string)
 
   const admin = createServiceRoleClient()
   await admin.from('waha_user_sessions').delete().eq('user_id', userId).eq('session_name', sessionName)
+}
+
+export async function deleteAllWhatsAppSessionsForUser(userId: string): Promise<number> {
+  const rows = await loadUserWhatsAppSessions(userId)
+  let deleted = 0
+  for (const row of rows) {
+    try {
+      await deleteWhatsAppSession(userId, row.session_name)
+      deleted += 1
+    } catch (e) {
+      console.error('[whatsapp] deleteAllWhatsAppSessionsForUser failed:', userId, row.session_name, e)
+    }
+  }
+  return deleted
 }
 
 export async function getWhatsAppProviderForUser(userId: string): Promise<WhatsAppProvider> {

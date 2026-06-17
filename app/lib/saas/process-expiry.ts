@@ -1,14 +1,21 @@
-import { pauseExcessActiveCampaigns } from '@/app/lib/saas/enforce'
+import {
+  pauseAllActiveCampaigns,
+  pauseExcessActiveCampaigns,
+} from '@/app/lib/saas/enforce'
 import { isPlatformAdmin } from '@/app/lib/saas/admin-access'
 import { sendSaasEmail, saasBillingLinkText } from '@/app/lib/saas/email'
-import { isProSubscriptionActive } from '@/app/lib/saas/billing'
+import { sendTrialReminder } from '@/app/lib/saas/trial-reminder'
+import { hasPlatformWriteAccess, isFreeTrialActive, isProSubscriptionActive } from '@/app/lib/saas/billing'
 import { loadSaasPlanBySlug } from '@/app/lib/saas/plans'
 import type { SaasSubscriptionRow } from '@/app/lib/saas/types'
+import { deleteAllWhatsAppSessionsForUser } from '@/app/lib/whatsapp/sessions'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export type SaasCronSummary = {
   expired_count: number
+  free_trial_expired_count: number
   campaigns_paused: number
+  whatsapp_sessions_deleted: number
   trial_reminders_sent: number
   renewal_reminders_sent: number
   expiry_notices_sent: number
@@ -26,11 +33,17 @@ function metaFlagSent(meta: Record<string, unknown>, key: string): boolean {
   return meta[key] === true || typeof meta[key] === 'string'
 }
 
+function freeTrialDays(planTrialDays: number): number {
+  return Math.max(planTrialDays, 1)
+}
+
 export async function processSaasSubscriptionsCron(now = new Date()): Promise<SaasCronSummary> {
   const admin = createServiceRoleClient()
   const summary: SaasCronSummary = {
     expired_count: 0,
+    free_trial_expired_count: 0,
     campaigns_paused: 0,
+    whatsapp_sessions_deleted: 0,
     trial_reminders_sent: 0,
     renewal_reminders_sent: 0,
     expiry_notices_sent: 0,
@@ -66,41 +79,54 @@ export async function processSaasSubscriptionsCron(now = new Date()): Promise<Sa
       now,
     })
 
-    // Expire lapsed Pro / trial
-    if (planSlug === 'pro' && !proActive && sub.status !== 'expired' && sub.status !== 'cancelled') {
+    const freeTrialActive = isFreeTrialActive({
+      planSlug,
+      status: sub.status,
+      trialEndsAt: sub.trial_ends_at,
+      now,
+    })
+
+    const writeAccess = hasPlatformWriteAccess({
+      planSlug,
+      status: sub.status,
+      trialEndsAt: sub.trial_ends_at,
+      currentPeriodEnd: sub.current_period_end,
+      now,
+    })
+
+    // Expire lapsed Free signup trial
+    if (planSlug === 'free' && sub.status === 'trialing' && !freeTrialActive) {
       const { error: updErr } = await admin
         .from('saas_subscriptions')
         .update({
           status: 'expired',
-          plan_id: freePlan.id,
-          locked_price_amount: 0,
-          trial_ends_at: null,
-          current_period_end: null,
+          trial_ends_at: sub.trial_ends_at,
+          current_period_end: sub.trial_ends_at,
           payment_metadata: {
             ...meta,
-            expired_at: now.toISOString(),
-            previous_plan_slug: 'pro',
+            free_trial_expired_at: now.toISOString(),
           },
           updated_at: now.toISOString(),
         })
         .eq('id', sub.id)
 
       if (!updErr) {
+        summary.free_trial_expired_count += 1
         summary.expired_count += 1
-        const paused = await pauseExcessActiveCampaigns(sub.user_id, 1)
-        summary.campaigns_paused += paused
+        summary.campaigns_paused += await pauseAllActiveCampaigns(sub.user_id)
+        summary.whatsapp_sessions_deleted += await deleteAllWhatsAppSessionsForUser(sub.user_id)
 
-        if (!metaFlagSent(meta, 'expired_notice_sent_at')) {
+        if (!metaFlagSent(meta, 'free_trial_expired_notice_sent_at')) {
           const sent = await sendSaasEmail({
             userId: sub.user_id,
-            subject: 'CRMPG - Your Pro subscription has expired',
+            subject: 'CRMPG - Your free trial has ended',
             text: [
-              'Your Pro subscription has ended and your account is now on the Free plan.',
+              'Your 3-day free trial has ended.',
               '',
-              'Free plan includes 1 active campaign and WAHA WhatsApp only.',
-              'Extra active campaigns have been paused automatically.',
+              'WhatsApp connections have been removed and active campaigns paused.',
+              'You can still sign in and view your customers (read-only).',
               '',
-              'Renew or start a new trial here:',
+              'Upgrade to Pro to restore WhatsApp and campaigns:',
               saasBillingLinkText(),
             ].join('\n'),
           })
@@ -110,7 +136,7 @@ export async function processSaasSubscriptionsCron(now = new Date()): Promise<Sa
               .update({
                 payment_metadata: {
                   ...meta,
-                  expired_notice_sent_at: now.toISOString(),
+                  free_trial_expired_notice_sent_at: now.toISOString(),
                 },
                 updated_at: now.toISOString(),
               })
@@ -122,41 +148,121 @@ export async function processSaasSubscriptionsCron(now = new Date()): Promise<Sa
       continue
     }
 
-    if (!proActive || planSlug !== 'pro') continue
+    // Expire lapsed Pro / Pro trial → fresh Free trial
+    if (planSlug === 'pro' && !proActive && sub.status !== 'expired' && sub.status !== 'cancelled') {
+      const trialDays = freeTrialDays(freePlan.trial_days)
+      const trialEnd = new Date(now.getTime() + trialDays * MS_DAY)
 
-    // Trial ending reminders (3d and 1d)
+      const { error: updErr } = await admin
+        .from('saas_subscriptions')
+        .update({
+          status: 'trialing',
+          plan_id: freePlan.id,
+          locked_price_amount: 0,
+          trial_ends_at: trialEnd.toISOString(),
+          current_period_start: now.toISOString(),
+          current_period_end: trialEnd.toISOString(),
+          payment_metadata: {
+            ...meta,
+            pro_expired_at: now.toISOString(),
+            previous_plan_slug: 'pro',
+            expired_notice_sent_at: undefined,
+          },
+          updated_at: now.toISOString(),
+        })
+        .eq('id', sub.id)
+
+      if (!updErr) {
+        summary.expired_count += 1
+        summary.campaigns_paused += await pauseExcessActiveCampaigns(sub.user_id, 1)
+
+        if (!metaFlagSent(meta, 'pro_expired_notice_sent_at')) {
+          const sent = await sendSaasEmail({
+            userId: sub.user_id,
+            subject: 'CRMPG - Your Pro subscription has ended',
+            text: [
+              'Your Pro subscription has ended.',
+              '',
+              `You now have a ${trialDays}-day Free trial (1 active campaign, WAHA WhatsApp).`,
+              'Extra active campaigns have been paused automatically.',
+              '',
+              'Upgrade to Pro anytime:',
+              saasBillingLinkText(),
+            ].join('\n'),
+          })
+          if (sent) {
+            await admin
+              .from('saas_subscriptions')
+              .update({
+                payment_metadata: {
+                  ...meta,
+                  pro_expired_notice_sent_at: now.toISOString(),
+                },
+                updated_at: now.toISOString(),
+              })
+              .eq('id', sub.id)
+            summary.expiry_notices_sent += 1
+          }
+        }
+      }
+      continue
+    }
+
+    if (!writeAccess) continue
+
+    // Free trial ending reminder (1 day)
+    if (planSlug === 'free' && sub.status === 'trialing' && sub.trial_ends_at) {
+      const days = daysUntil(sub.trial_ends_at, now)
+      if (days === 1 && !metaFlagSent(meta, 'free_trial_reminder_1d_sent_at')) {
+        const result = await sendTrialReminder({
+          userId: sub.user_id,
+          kind: 'free_1d',
+          trialEndsAt: sub.trial_ends_at,
+        })
+        if (result.ok) {
+          meta.free_trial_reminder_1d_sent_at = now.toISOString()
+          meta.free_trial_reminder_1d_channel = result.channel
+          metaDirty = true
+          summary.trial_reminders_sent += 1
+        }
+      }
+    }
+
+    if (!proActive || planSlug !== 'pro') {
+      if (metaDirty) {
+        await admin
+          .from('saas_subscriptions')
+          .update({ payment_metadata: meta, updated_at: now.toISOString() })
+          .eq('id', sub.id)
+      }
+      continue
+    }
+
+    // Pro trial ending reminders (3d and 1d)
     if (sub.status === 'trialing' && sub.trial_ends_at) {
       const days = daysUntil(sub.trial_ends_at, now)
       if (days === 3 && !metaFlagSent(meta, 'trial_reminder_3d_sent_at')) {
-        const sent = await sendSaasEmail({
+        const result = await sendTrialReminder({
           userId: sub.user_id,
-          subject: 'CRMPG - Pro trial ends in 3 days',
-          text: [
-            'Your Pro trial ends in 3 days.',
-            '',
-            'Subscribe now to keep unlimited campaigns and WasenderAPI:',
-            saasBillingLinkText(),
-          ].join('\n'),
+          kind: 'pro_3d',
+          trialEndsAt: sub.trial_ends_at,
         })
-        if (sent) {
+        if (result.ok) {
           meta.trial_reminder_3d_sent_at = now.toISOString()
+          meta.trial_reminder_3d_channel = result.channel
           metaDirty = true
           summary.trial_reminders_sent += 1
         }
       }
       if (days === 1 && !metaFlagSent(meta, 'trial_reminder_1d_sent_at')) {
-        const sent = await sendSaasEmail({
+        const result = await sendTrialReminder({
           userId: sub.user_id,
-          subject: 'CRMPG - Pro trial ends tomorrow',
-          text: [
-            'Your Pro trial ends tomorrow.',
-            '',
-            'Subscribe to continue with Pro features:',
-            saasBillingLinkText(),
-          ].join('\n'),
+          kind: 'pro_1d',
+          trialEndsAt: sub.trial_ends_at,
         })
-        if (sent) {
+        if (result.ok) {
           meta.trial_reminder_1d_sent_at = now.toISOString()
+          meta.trial_reminder_1d_channel = result.channel
           metaDirty = true
           summary.trial_reminders_sent += 1
         }

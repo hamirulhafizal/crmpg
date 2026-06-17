@@ -165,8 +165,14 @@ export default function DashboardPage() {
         setSaasWasenderAvailable(j.alerts?.wasender_available === true)
 
         const alerts = j.alerts ?? {}
-        if (alerts.plan_expired) {
-          setSaasAlert('Your Pro subscription has expired. Renew to restore unlimited campaigns and WasenderAPI.')
+        if (alerts.platform_read_only || alerts.plan_expired) {
+          setSaasAlert(
+            'Your free trial has ended. You can view customers only. Upgrade to Pro for WhatsApp and campaigns.'
+          )
+        } else if (alerts.free_trial_ending_soon && alerts.days_until_expiry != null) {
+          setSaasAlert(
+            `Free trial ends in ${alerts.days_until_expiry} day(s). Upgrade to Pro to keep WhatsApp and campaigns.`
+          )
         } else if (alerts.trial_ending_soon && alerts.days_until_expiry != null) {
           setSaasAlert(`Pro trial ends in ${alerts.days_until_expiry} day(s). Subscribe to keep Pro features.`)
         } else if (alerts.subscription_expiring_soon && alerts.days_until_expiry != null) {

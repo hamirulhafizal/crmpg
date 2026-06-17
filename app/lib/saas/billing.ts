@@ -32,6 +32,32 @@ export function isProSubscriptionActive(opts: {
   return false
 }
 
+/** Free plan signup trial (distinct from opt-in Pro trial). */
+export function isFreeTrialActive(opts: {
+  planSlug: string
+  status: SaasSubscriptionStatus
+  trialEndsAt: string | null
+  now?: Date
+}): boolean {
+  const now = opts.now ?? new Date()
+  if (opts.planSlug !== 'free') return false
+  if (opts.status !== 'trialing') return false
+  if (!opts.trialEndsAt) return false
+  return new Date(opts.trialEndsAt) > now
+}
+
+/** Full CRM write access: Pro active or Free trial in progress. */
+export function hasPlatformWriteAccess(opts: {
+  planSlug: string
+  status: SaasSubscriptionStatus
+  trialEndsAt: string | null
+  currentPeriodEnd: string | null
+  now?: Date
+}): boolean {
+  if (isProSubscriptionActive(opts)) return true
+  return isFreeTrialActive(opts)
+}
+
 export function isTrialUpgradeCheckout(opts: {
   planSlug: string
   status: SaasSubscriptionStatus

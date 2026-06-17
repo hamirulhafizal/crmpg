@@ -3,8 +3,11 @@ import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_URL || 'https://crmpg.vercel.app').replace(/\/$/, '')
 
-function billingUrl(): string {
-  return `${APP_ORIGIN}/dashboard/billing`
+const BILLING_PATH = '/dashboard/billing'
+
+/** Login first, then redirect to billing (renew / upgrade CTA). */
+export function saasBillingRenewUrl(): string {
+  return `${APP_ORIGIN}/login?next=${encodeURIComponent(BILLING_PATH)}`
 }
 
 async function loadUserEmail(userId: string): Promise<string | null> {
@@ -52,5 +55,5 @@ export async function sendSaasEmail(opts: {
 }
 
 export function saasBillingLinkText(): string {
-  return billingUrl()
+  return saasBillingRenewUrl()
 }

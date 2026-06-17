@@ -4,6 +4,8 @@ import {
 } from '@/app/lib/bayarcash/config'
 import {
   canCheckoutPro,
+  hasPlatformWriteAccess,
+  isFreeTrialActive,
   isProSubscriptionActive,
   isTrialUpgradeCheckout,
 } from '@/app/lib/saas/billing'
@@ -40,10 +42,13 @@ export type SaasMePayload = {
   }>
   flags: {
     is_pro_active: boolean
+    is_free_trial_active: boolean
+    has_platform_write_access: boolean
     can_start_trial: boolean
     can_checkout: boolean
     bayarcash_checkout_enabled: boolean
     trial_days: number
+    free_trial_days: number
     renewal_price: number
     list_price: number
     is_platform_admin: boolean
@@ -54,7 +59,9 @@ export type SaasMePayload = {
     days_until_expiry: number | null
     subscription_expiring_soon: boolean
     trial_ending_soon: boolean
+    free_trial_ending_soon: boolean
     plan_expired: boolean
+    platform_read_only: boolean
     wasender_available: boolean
   }
 }
@@ -139,17 +146,37 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     .limit(12)
 
   const planRow = plan as SaasPlanRow
+  const freePlanRow = (allPlans ?? []).find((p) => p.slug === 'free') as SaasPlanRow | undefined
   const proPlan = (allPlans ?? []).find((p) => p.slug === 'pro') as SaasPlanRow | undefined
   const meta = (subscription.payment_metadata ?? {}) as Record<string, unknown>
   const trialUsed = meta.trial_used === true
   const platformAdmin = await isPlatformAdmin(userId)
+  const now = new Date()
 
   let isProActive = isProSubscriptionActive({
     planSlug: planRow.slug,
     status: subscription.status,
     trialEndsAt: subscription.trial_ends_at,
     currentPeriodEnd: subscription.current_period_end,
+    now,
   })
+
+  const isFreeTrialActiveNow = isFreeTrialActive({
+    planSlug: planRow.slug,
+    status: subscription.status,
+    trialEndsAt: subscription.trial_ends_at,
+    now,
+  })
+
+  const hasWriteAccess =
+    platformAdmin ||
+    hasPlatformWriteAccess({
+      planSlug: planRow.slug,
+      status: subscription.status,
+      trialEndsAt: subscription.trial_ends_at,
+      currentPeriodEnd: subscription.current_period_end,
+      now,
+    })
 
   if (platformAdmin) {
     isProActive = true
@@ -173,7 +200,6 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     (proPlan?.trial_days ?? 0) > 0
 
   const subFeatureMap = featuresMapFromRows((subFeatures ?? []) as SaasPlanFeatureRow[])
-  const now = new Date()
 
   const plansWithFeatures = (allPlans ?? []).map((p) => {
     const pr = p as SaasPlanRow
@@ -190,18 +216,29 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
 
   if (platformAdmin) {
     effectiveFeatures = { ...freePlanFeatures, ...ADMIN_UNLIMITED_FEATURES }
+  } else if (!hasWriteAccess) {
+    effectiveFeatures = {
+      ...freePlanFeatures,
+      max_active_campaigns: '0',
+      whatsapp_providers: '',
+      platform_access: 'read_only',
+    }
   }
 
   const maxCampaigns = platformAdmin
     ? -1
-    : parseMaxActiveCampaigns(effectiveFeatures.max_active_campaigns)
+    : !hasWriteAccess
+      ? 0
+      : parseMaxActiveCampaigns(effectiveFeatures.max_active_campaigns)
   const whatsappProviders = platformAdmin
     ? ADMIN_WHATSAPP_PROVIDERS
-    : parseWhatsAppProviders(effectiveFeatures.whatsapp_providers)
+    : !hasWriteAccess
+      ? []
+      : parseWhatsAppProviders(effectiveFeatures.whatsapp_providers)
   let wasenderAvailable =
     platformAdmin ||
-    whatsappProviders.includes('wasender') ||
-    (await hasWasenderGrandfatherAccess(userId))
+    (hasWriteAccess &&
+      (whatsappProviders.includes('wasender') || (await hasWasenderGrandfatherAccess(userId))))
   const activeCount = activeCampaigns ?? 0
 
   const expiryIso =
@@ -211,6 +248,10 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
         ? subscription.current_period_end
         : null
   const daysLeft = daysUntil(expiryIso, now)
+  const planExpired =
+    !platformAdmin &&
+    (subscription.status === 'expired' ||
+      (planRow.slug === 'free' && !isFreeTrialActiveNow && subscription.status !== 'cancelled'))
 
   return {
     subscription: {
@@ -223,26 +264,30 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     payments: (payments ?? []) as SaasMePayload['payments'],
     flags: {
       is_pro_active: isProActive,
+      is_free_trial_active: platformAdmin ? false : isFreeTrialActiveNow,
+      has_platform_write_access: hasWriteAccess,
       can_start_trial: platformAdmin ? false : canStartTrial,
       can_checkout: platformAdmin ? false : canCheckout && (proPlan?.price_amount ?? 0) > 0,
       bayarcash_checkout_enabled:
         isGoogleAdsBayarcashRenewalEnabled() && isBayarcashConfiguredForCheckout(),
       trial_days: proPlan?.trial_days ?? 0,
+      free_trial_days: freePlanRow?.trial_days ?? 0,
       renewal_price: Number(subscription.locked_price_amount) || Number(proPlan?.price_amount ?? 0),
       list_price: Number(proPlan?.price_amount ?? 0),
       is_platform_admin: platformAdmin,
       can_upgrade_from_trial: platformAdmin ? false : upgradingFromTrial,
     },
     alerts: {
-      at_campaign_limit: platformAdmin ? false : maxCampaigns >= 0 && activeCount >= maxCampaigns,
-      days_until_expiry: platformAdmin ? null : isProActive ? daysLeft : null,
+      at_campaign_limit: platformAdmin ? false : hasWriteAccess && maxCampaigns >= 0 && activeCount >= maxCampaigns,
+      days_until_expiry: platformAdmin ? null : hasWriteAccess ? daysLeft : null,
       subscription_expiring_soon:
         platformAdmin ? false : isProActive && subscription.status === 'active' && daysLeft != null && daysLeft <= 7,
       trial_ending_soon:
         platformAdmin ? false : isProActive && subscription.status === 'trialing' && daysLeft != null && daysLeft <= 3,
-      plan_expired: platformAdmin
-        ? false
-        : subscription.status === 'expired' || (!isProActive && planRow.slug === 'pro'),
+      free_trial_ending_soon:
+        platformAdmin ? false : isFreeTrialActiveNow && daysLeft != null && daysLeft <= 1,
+      plan_expired: planExpired,
+      platform_read_only: platformAdmin ? false : !hasWriteAccess,
       wasender_available: wasenderAvailable,
     },
   }
@@ -256,13 +301,14 @@ export function entitlementsFromMe(payload: SaasMePayload) {
   const whatsappProviders = platformAdmin
     ? ADMIN_WHATSAPP_PROVIDERS
     : parseWhatsAppProviders(payload.subscription.features.whatsapp_providers)
-  const platformAccess = platformAdmin || payload.flags.is_pro_active || payload.subscription.plan.slug === 'free'
 
   return {
     maxActiveCampaigns: maxCampaigns,
     whatsappProviders,
-    platformAccess,
+    platformAccess: platformAdmin || payload.flags.has_platform_write_access,
+    hasPlatformWriteAccess: platformAdmin || payload.flags.has_platform_write_access,
     isProActive: platformAdmin || payload.flags.is_pro_active,
+    isFreeTrialActive: platformAdmin ? false : payload.flags.is_free_trial_active,
     planSlug: platformAdmin ? 'admin' : payload.flags.is_pro_active ? payload.subscription.plan.slug : 'free',
     status: payload.subscription.status,
     atCampaignLimit: platformAdmin ? false : payload.alerts.at_campaign_limit,
