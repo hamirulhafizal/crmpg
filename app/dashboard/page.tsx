@@ -827,7 +827,7 @@ export default function DashboardPage() {
                   }
                 />
 
-                <ServiceTile
+                {/* <ServiceTile
                   href="/automated-messages"
                   title="Automated Messages"
                   description="WAHA templates"
@@ -844,7 +844,7 @@ export default function DashboardPage() {
                       />
                     </svg>
                   }
-                />
+                /> */}
               </>
             )}
 
