@@ -156,4 +156,15 @@ export async function assignSaasPlanToUser(opts: {
 
   const { error } = await admin.from('saas_subscriptions').upsert(payload, { onConflict: 'user_id' })
   if (error) throw new Error(error.message)
+
+  if (planRow.slug === 'pro') {
+    const { applyProPaidWhatsAppMigration, applyProTrialWhatsAppSetup } = await import(
+      '@/app/lib/saas/whatsapp-access'
+    )
+    if (status === 'active') {
+      await applyProPaidWhatsAppMigration(opts.userId)
+    } else if (status === 'trialing') {
+      await applyProTrialWhatsAppSetup(opts.userId)
+    }
+  }
 }

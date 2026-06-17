@@ -6,7 +6,9 @@ import {
   canCheckoutPro,
   hasPlatformWriteAccess,
   isFreeTrialActive,
+  isProPaidActive,
   isProSubscriptionActive,
+  isProTrialActive,
   isTrialUpgradeCheckout,
 } from '@/app/lib/saas/billing'
 import {
@@ -22,9 +24,13 @@ import type {
 import {
   ADMIN_UNLIMITED_FEATURES,
   ADMIN_WHATSAPP_PROVIDERS,
-  hasWasenderGrandfatherAccess,
   isPlatformAdmin,
 } from '@/app/lib/saas/admin-access'
+import {
+  effectiveWhatsAppProviders,
+  loadUserWhatsAppAccess,
+  whatsAppProviderDisplayLabel,
+} from '@/app/lib/saas/whatsapp-access'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export type SaasMePayload = {
@@ -53,6 +59,8 @@ export type SaasMePayload = {
     list_price: number
     is_platform_admin: boolean
     can_upgrade_from_trial: boolean
+    is_pro_paid: boolean
+    is_pro_trial: boolean
   }
   alerts: {
     at_campaign_limit: boolean
@@ -63,6 +71,7 @@ export type SaasMePayload = {
     plan_expired: boolean
     platform_read_only: boolean
     wasender_available: boolean
+    whatsapp_provider_label: string
   }
 }
 
@@ -161,6 +170,20 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     now,
   })
 
+  const isProPaid = isProPaidActive({
+    planSlug: planRow.slug,
+    status: subscription.status,
+    currentPeriodEnd: subscription.current_period_end,
+    now,
+  })
+
+  const isProTrial = isProTrialActive({
+    planSlug: planRow.slug,
+    status: subscription.status,
+    trialEndsAt: subscription.trial_ends_at,
+    now,
+  })
+
   const isFreeTrialActiveNow = isFreeTrialActive({
     planSlug: planRow.slug,
     status: subscription.status,
@@ -225,21 +248,35 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     }
   }
 
+  const whatsappAccess = platformAdmin ? null : await loadUserWhatsAppAccess(userId)
+  const whatsappProviders = platformAdmin
+    ? ADMIN_WHATSAPP_PROVIDERS
+    : !hasWriteAccess
+      ? []
+      : whatsappAccess
+        ? effectiveWhatsAppProviders(whatsappAccess)
+        : parseWhatsAppProviders(freePlanFeatures.whatsapp_providers)
+
+  if (!platformAdmin && hasWriteAccess) {
+    effectiveFeatures = {
+      ...effectiveFeatures,
+      whatsapp_providers: whatsappProviders.join(','),
+    }
+  }
+
   const maxCampaigns = platformAdmin
     ? -1
     : !hasWriteAccess
       ? 0
       : parseMaxActiveCampaigns(effectiveFeatures.max_active_campaigns)
-  const whatsappProviders = platformAdmin
-    ? ADMIN_WHATSAPP_PROVIDERS
-    : !hasWriteAccess
-      ? []
-      : parseWhatsAppProviders(effectiveFeatures.whatsapp_providers)
-  let wasenderAvailable =
-    platformAdmin ||
-    (hasWriteAccess &&
-      (whatsappProviders.includes('wasender') || (await hasWasenderGrandfatherAccess(userId))))
   const activeCount = activeCampaigns ?? 0
+
+  const wasenderAvailable = whatsappProviders.includes('wasender')
+  const whatsappProviderLabel = platformAdmin
+    ? 'WAHA, WasenderAPI'
+    : whatsappAccess
+      ? whatsAppProviderDisplayLabel(whatsappAccess)
+      : 'WAHA'
 
   const expiryIso =
     subscription.status === 'trialing'
@@ -276,6 +313,8 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
       list_price: Number(proPlan?.price_amount ?? 0),
       is_platform_admin: platformAdmin,
       can_upgrade_from_trial: platformAdmin ? false : upgradingFromTrial,
+      is_pro_paid: platformAdmin ? false : isProPaid,
+      is_pro_trial: platformAdmin ? false : isProTrial,
     },
     alerts: {
       at_campaign_limit: platformAdmin ? false : hasWriteAccess && maxCampaigns >= 0 && activeCount >= maxCampaigns,
@@ -289,6 +328,7 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
       plan_expired: planExpired,
       platform_read_only: platformAdmin ? false : !hasWriteAccess,
       wasender_available: wasenderAvailable,
+      whatsapp_provider_label: whatsappProviderLabel,
     },
   }
 }
@@ -305,6 +345,7 @@ export function entitlementsFromMe(payload: SaasMePayload) {
   return {
     maxActiveCampaigns: maxCampaigns,
     whatsappProviders,
+    whatsappProviderLabel: payload.alerts.whatsapp_provider_label,
     platformAccess: platformAdmin || payload.flags.has_platform_write_access,
     hasPlatformWriteAccess: platformAdmin || payload.flags.has_platform_write_access,
     isProActive: platformAdmin || payload.flags.is_pro_active,

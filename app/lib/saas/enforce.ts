@@ -1,15 +1,16 @@
-import { hasPlatformWriteAccess, isProSubscriptionActive } from '@/app/lib/saas/billing'
+import { hasPlatformWriteAccess } from '@/app/lib/saas/billing'
 import {
   ADMIN_UNLIMITED_FEATURES,
   ADMIN_WHATSAPP_PROVIDERS,
-  hasWasenderGrandfatherAccess,
   isPlatformAdmin,
 } from '@/app/lib/saas/admin-access'
 import { buildSaasMePayload, entitlementsFromMe } from '@/app/lib/saas/entitlements'
 import {
-  featuresMapFromRows,
+  effectiveWhatsAppProviders,
+  loadUserWhatsAppAccess,
+} from '@/app/lib/saas/whatsapp-access'
+import {
   parseMaxActiveCampaigns,
-  parseWhatsAppProviders,
 } from '@/app/lib/saas/plans'
 import type { SaasSubscriptionStatus } from '@/app/lib/saas/types'
 import type { WhatsAppProvider } from '@/app/lib/whatsapp/types'
@@ -66,43 +67,9 @@ export async function assertPlatformWriteAccess(
 }
 
 async function loadEffectiveWhatsAppProviders(userId: string): Promise<WhatsAppProvider[]> {
-  if (await isPlatformAdmin(userId)) return ADMIN_WHATSAPP_PROVIDERS
-
-  const admin = createServiceRoleClient()
-  const { data: sub } = await admin.from('saas_subscriptions').select('*').eq('user_id', userId).maybeSingle()
-  if (!sub) return ['waha']
-
-  const { data: plan } = await admin.from('saas_plans').select('slug').eq('id', sub.plan_id).maybeSingle()
-  const planSlug = String(plan?.slug ?? 'free')
-
-  const { data: subFeatures } = await admin.from('saas_plan_features').select('*').eq('plan_id', sub.plan_id)
-  const planFeatures = featuresMapFromRows(subFeatures ?? [])
-
-  const proActive = isProSubscriptionActive({
-    planSlug,
-    status: sub.status as SaasSubscriptionStatus,
-    trialEndsAt: sub.trial_ends_at,
-    currentPeriodEnd: sub.current_period_end,
-  })
-
-  const writeAccess = hasPlatformWriteAccess({
-    planSlug,
-    status: sub.status as SaasSubscriptionStatus,
-    trialEndsAt: sub.trial_ends_at,
-    currentPeriodEnd: sub.current_period_end,
-  })
-
-  if (!writeAccess) return []
-
-  if (proActive) {
-    return parseWhatsAppProviders(planFeatures.whatsapp_providers)
-  }
-
-  const { data: freePlan } = await admin.from('saas_plans').select('id').eq('slug', 'free').maybeSingle()
-  if (!freePlan?.id) return ['waha']
-
-  const { data: freeFeatures } = await admin.from('saas_plan_features').select('*').eq('plan_id', freePlan.id)
-  return parseWhatsAppProviders(featuresMapFromRows(freeFeatures ?? []).whatsapp_providers)
+  const access = await loadUserWhatsAppAccess(userId)
+  if (!access) return ['waha']
+  return effectiveWhatsAppProviders(access)
 }
 
 export async function loadUserEntitlements(userId: string): Promise<UserEntitlements | null> {
@@ -198,15 +165,10 @@ export function isWhatsAppProviderAllowed(
   return providers.includes(provider)
 }
 
-/** Platform admin, Pro plan, admin-assigned Wasender, or existing Wasender session. */
+/** Platform admin, Pro paid, or admin-assigned Wasender server override. */
 export async function canUseWasenderForUser(userId: string): Promise<boolean> {
-  if (await isPlatformAdmin(userId)) return true
-  if (!(await userHasPlatformWriteAccess(userId))) return false
-
   const providers = await loadEffectiveWhatsAppProviders(userId)
-  if (providers.includes('wasender')) return true
-
-  return hasWasenderGrandfatherAccess(userId)
+  return providers.includes('wasender')
 }
 
 /** IDs of active campaigns allowed to run under the user's plan (oldest first). */
@@ -267,4 +229,5 @@ export function maxActiveFromFeatures(features: Record<string, string>): number 
   return parseMaxActiveCampaigns(features.max_active_campaigns)
 }
 
-export { ADMIN_UNLIMITED_FEATURES, isPlatformAdmin, hasWasenderGrandfatherAccess }
+export { ADMIN_UNLIMITED_FEATURES, isPlatformAdmin }
+export { hasAdminWasenderServerOverride as hasWasenderGrandfatherAccess } from '@/app/lib/saas/whatsapp-access'

@@ -50,16 +50,20 @@ type MeResponse = {
     free_trial_days: number
     renewal_price: number
     list_price: number
+    is_pro_paid: boolean
+    is_pro_trial: boolean
   }
   alerts?: {
     plan_expired?: boolean
     platform_read_only?: boolean
     free_trial_ending_soon?: boolean
     days_until_expiry?: number | null
+    whatsapp_provider_label?: string
   }
   entitlements: {
     maxActiveCampaigns: number
     whatsappProviders: string[]
+    whatsappProviderLabel?: string
     isProActive: boolean
     planSlug: string
     status: string
@@ -81,6 +85,12 @@ function fmtDate(iso: string | null) {
 
 function campaignLimitLabel(max: number) {
   return max < 0 ? 'Unlimited' : String(max)
+}
+
+function proPlanWhatsAppMarketing(data: MeResponse): string {
+  if (data.flags.is_pro_paid) return 'WasenderAPI'
+  if (data.flags.is_pro_trial) return 'WAHA (Wasender after payment)'
+  return 'WAHA during trial · WasenderAPI when paid'
 }
 
 export default function DashboardBillingPage() {
@@ -120,7 +130,7 @@ export default function DashboardBillingPage() {
       const res = await fetch('/api/saas/start-trial', { method: 'POST' })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Could not start trial')
-      setActionMessage('Pro trial started. Enjoy unlimited campaigns and WasenderAPI.')
+      setActionMessage('Pro trial started. WhatsApp uses WAHA until you upgrade to paid Pro (WasenderAPI).')
       await load()
     } catch (e) {
       setActionMessage(e instanceof Error ? e.message : 'Trial failed')
@@ -249,7 +259,9 @@ export default function DashboardBillingPage() {
             <p className="mt-1">
               WhatsApp:{' '}
               <span className="font-semibold text-slate-900">
-                {data.entitlements.whatsappProviders.join(', ')}
+                {data.entitlements.whatsappProviderLabel ||
+                  data.alerts?.whatsapp_provider_label ||
+                  data.entitlements.whatsappProviders.join(', ')}
               </span>
             </p>
           </div>
@@ -257,8 +269,8 @@ export default function DashboardBillingPage() {
         {data.flags.can_upgrade_from_trial && data.flags.can_checkout ? (
           <div className="mt-6 rounded-xl border border-violet-200 bg-violet-50/80 p-4">
             <p className="text-sm text-violet-900">
-              You&apos;re on a Pro trial. Upgrade now to start your paid monthly subscription — your trial
-              benefits continue until payment is confirmed.
+              You&apos;re on a Pro trial with WAHA WhatsApp. Upgrade to paid Pro to switch to WasenderAPI —
+              you&apos;ll scan a new QR code after payment.
             </p>
             <button
               type="button"
@@ -307,7 +319,7 @@ export default function DashboardBillingPage() {
               ) : null}
               <ul className="mt-4 space-y-2 text-sm text-slate-700">
                 <li>• {campaignLimitLabel(parseInt(plan!.features.max_active_campaigns ?? '1', 10))} active workflows</li>
-                <li>• WhatsApp: {plan!.features.whatsapp_providers ?? 'waha'}</li>
+                <li>• WhatsApp: {plan!.slug === 'pro' ? proPlanWhatsAppMarketing(data) : 'WAHA'}</li>
                 {plan!.bullets.map((b) => (
                   <li key={b}>• {b}</li>
                 ))}

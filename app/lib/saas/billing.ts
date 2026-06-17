@@ -32,6 +32,34 @@ export function isProSubscriptionActive(opts: {
   return false
 }
 
+/** Pro with confirmed paid subscription (not opt-in trial). */
+export function isProPaidActive(opts: {
+  planSlug: string
+  status: SaasSubscriptionStatus
+  currentPeriodEnd: string | null
+  now?: Date
+}): boolean {
+  const now = opts.now ?? new Date()
+  if (opts.planSlug !== 'pro') return false
+  if (opts.status !== 'active') return false
+  if (!opts.currentPeriodEnd) return true
+  return new Date(opts.currentPeriodEnd) > now
+}
+
+/** Pro opt-in trial (before first payment). */
+export function isProTrialActive(opts: {
+  planSlug: string
+  status: SaasSubscriptionStatus
+  trialEndsAt: string | null
+  now?: Date
+}): boolean {
+  const now = opts.now ?? new Date()
+  if (opts.planSlug !== 'pro') return false
+  if (opts.status !== 'trialing') return false
+  if (!opts.trialEndsAt) return true
+  return new Date(opts.trialEndsAt) > now
+}
+
 /** Free plan signup trial (distinct from opt-in Pro trial). */
 export function isFreeTrialActive(opts: {
   planSlug: string

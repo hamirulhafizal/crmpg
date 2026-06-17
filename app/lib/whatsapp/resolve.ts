@@ -1,4 +1,10 @@
 import { canUseWasenderForUser } from '@/app/lib/saas/enforce'
+import { isPlatformAdmin } from '@/app/lib/saas/admin-access'
+import {
+  loadPreferredWahaServerId,
+  loadPreferredWasenderServerId,
+  loadUserWhatsAppAccess,
+} from '@/app/lib/saas/whatsapp-access'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import type { WhatsAppProvider, WhatsAppServerConfig, UserWhatsAppSessionRow } from '@/app/lib/whatsapp/types'
 
@@ -102,6 +108,9 @@ export async function getWhatsAppServerConfig(opts: { userId?: string | null } =
   let cfg: WhatsAppServerConfig
 
   if (userId) {
+    const platformAdmin = await isPlatformAdmin(userId)
+    const access = platformAdmin ? null : await loadUserWhatsAppAccess(userId)
+
     const admin = createServiceRoleClient()
     const { data: profile } = await admin
       .from('profiles')
@@ -110,16 +119,34 @@ export async function getWhatsAppServerConfig(opts: { userId?: string | null } =
       .maybeSingle()
 
     const assignedServerId = (profile?.waha_server_id || '').toString().trim()
+    let serverRow: ServerRow | null = null
+
     if (assignedServerId) {
-      const assigned = await loadServerById(assignedServerId)
-      if (!assigned) throw new Error(`Assigned WhatsApp server not found: ${assignedServerId}`)
-      const assignedCfg = rowToConfig(assigned)
-      if (!assignedCfg.baseUrl || !assignedCfg.platformApiKey) {
-        throw new Error(`Assigned WhatsApp server is misconfigured: ${assignedServerId}`)
+      serverRow = await loadServerById(assignedServerId)
+    }
+
+    if (!platformAdmin && access) {
+      if (access.isProPaid) {
+        if (!serverRow || serverRow.provider_type !== 'wasender') {
+          const wasenderId = await loadPreferredWasenderServerId()
+          if (wasenderId) serverRow = await loadServerById(wasenderId)
+        }
+      } else if (!access.adminWasenderOverride) {
+        if (!serverRow || serverRow.provider_type === 'wasender') {
+          const wahaId = await loadPreferredWahaServerId()
+          if (wahaId) serverRow = await loadServerById(wahaId)
+        }
       }
-      cfg = assignedCfg
-    } else {
+    }
+
+    if (!serverRow) {
       cfg = await loadDefaultOrEnvConfig()
+    } else {
+      const resolved = rowToConfig(serverRow)
+      if (!resolved.baseUrl || !resolved.platformApiKey) {
+        throw new Error(`Assigned WhatsApp server is misconfigured: ${serverRow.id}`)
+      }
+      cfg = resolved
     }
 
     return enforceProviderEntitlement(userId, cfg)
@@ -151,7 +178,7 @@ async function enforceProviderEntitlement(
     if (wahaCfg.baseUrl && wahaCfg.platformApiKey) return wahaCfg
   }
 
-  throw new Error('WasenderAPI is available on Pro only. Upgrade at Billing & plans.')
+  throw new Error('WasenderAPI unlocks after paid Pro. Pro trial uses WAHA — upgrade at Billing & plans.')
 }
 
 export async function isWhatsAppConfigured(opts: { userId?: string | null } = {}): Promise<boolean> {

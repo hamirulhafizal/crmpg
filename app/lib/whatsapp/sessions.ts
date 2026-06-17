@@ -104,7 +104,7 @@ export async function createWhatsAppSession(
   if (cfg.provider === 'wasender') {
     if (!(await canUseWasenderForUser(userId))) {
       throw new WhatsAppApiError(
-        'WasenderAPI is available on Pro only. Upgrade at Billing & plans.',
+        'WasenderAPI unlocks after paid Pro. Pro trial uses WAHA — upgrade at Billing & plans.',
         403,
         'create',
         'wasender'

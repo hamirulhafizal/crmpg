@@ -70,6 +70,11 @@ export async function activateSaasSubscriptionAfterPayment(
 
   if (updErr) return { ok: false, error: updErr.message }
 
+  if (planRow.slug === 'pro') {
+    const { applyProPaidWhatsAppMigration } = await import('@/app/lib/saas/whatsapp-access')
+    await applyProPaidWhatsAppMigration(opts.userId)
+  }
+
   if (opts.externalPaymentId) {
     await admin
       .from('saas_subscriptions')
