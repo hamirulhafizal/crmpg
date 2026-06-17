@@ -6,7 +6,7 @@ import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
 import { compileWorkflowDefinition } from '@/app/lib/workflows/compile'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
 import { canActivateCampaign } from '@/app/lib/saas/enforce'
-import { ensureUserDefaultCampaign } from '@/app/lib/campaigns/platform-defaults'
+import { ensureUserDefaultCampaign, loadCampaignPlatformDefaultTier } from '@/app/lib/campaigns/platform-defaults'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export async function GET() {
@@ -57,11 +57,17 @@ export async function GET() {
       sentBy.set(k, (sentBy.get(k) ?? 0) + 1)
     }
 
-    const enriched = (campaigns ?? []).map((c) => ({
-      ...c,
-      enrolled_count: enrolledBy.get(c.id) ?? 0,
-      sent_count: sentBy.get(c.id) ?? 0,
-    }))
+    const enriched = await Promise.all(
+      (campaigns ?? []).map(async (c) => {
+        const tier = await loadCampaignPlatformDefaultTier(createServiceRoleClient(), c.platform_default_id)
+        return {
+          ...c,
+          platform_default_tier: tier,
+          enrolled_count: enrolledBy.get(c.id) ?? 0,
+          sent_count: sentBy.get(c.id) ?? 0,
+        }
+      })
+    )
 
     return NextResponse.json({ data: enriched })
   } catch (e: unknown) {

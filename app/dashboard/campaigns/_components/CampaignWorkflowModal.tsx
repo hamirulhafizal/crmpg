@@ -97,6 +97,7 @@ type Props = {
   onUrlSelectionChange?: (nodeId: string | null) => void
   /** Admin platform default template — saves to /api/admin/campaign-workflow-defaults */
   saveAsPlatformDefault?: boolean
+  platformDefaultId?: string
 }
 
 function useIsMobile() {
@@ -246,6 +247,7 @@ function CampaignWorkflowView(props: Props) {
     urlSelectedNodeId,
     onUrlSelectionChange,
     saveAsPlatformDefault = false,
+    platformDefaultId,
   } = props
 
   const isMobile = useIsMobile()
@@ -468,6 +470,7 @@ function CampaignWorkflowView(props: Props) {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              id: platformDefaultId,
               name: campaignName,
               workflow_definition,
               workflow_layout: draft.layout ?? null,
@@ -508,7 +511,7 @@ function CampaignWorkflowView(props: Props) {
 
   return (
     <motion.div
-      className={`campaign-workflow-shell fixed inset-0 z-[1000] flex flex-col bg-[#eceef1] ${shellTheme.className ?? ''}`}
+      className={`campaign-workflow-shell fixed inset-0 z-[1000] flex flex-col bg-[#eceef1] ${shellTheme.className ?? ''} top-[-2rem]`}
       data-workflow-theme={shellTheme['data-workflow-theme']}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}

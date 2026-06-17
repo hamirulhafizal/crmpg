@@ -59,7 +59,8 @@ export function AdminPlatformWorkflowEditor({ open, onClose, defaults, onSaved, 
       open={open}
       onClose={onClose}
       saveAsPlatformDefault
-      campaignId="platform-default"
+      platformDefaultId={defaults.id}
+      campaignId={`platform-default:${defaults.id}`}
       editable
       initialDraft={initialDraft}
       campaignName={defaults.name}

@@ -27,6 +27,7 @@ type Row = {
   start_at?: string | null
   enrolled_count?: number
   sent_count?: number
+  platform_default_tier?: 'free' | 'pro' | null
   created_at: string
 }
 
@@ -116,6 +117,7 @@ function CampaignsListInner() {
     maxActiveCampaigns: number
     activeCampaigns: number
     atCampaignLimit: boolean
+    isProActive: boolean
   } | null>(null)
 
   const panelMode = useMemo(() => panelModeFromSearchParams(searchParams), [searchParams])
@@ -209,6 +211,7 @@ function CampaignsListInner() {
           maxActiveCampaigns: j.entitlements?.maxActiveCampaigns ?? 1,
           activeCampaigns: j.usage?.active_campaigns ?? 0,
           atCampaignLimit: j.alerts?.at_campaign_limit ?? false,
+          isProActive: j.flags?.is_pro_active === true,
         })
       } catch {
         if (!cancelled) setSaasUsage(null)
@@ -218,6 +221,28 @@ function CampaignsListInner() {
       cancelled = true
     }
   }, [user])
+
+  const activateAllDrafts = async () => {
+    setBulkBusy(true)
+    try {
+      const res = await fetch('/api/campaigns/activate-all', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Failed to activate workflows')
+      const activated = Number(json.activated ?? 0)
+      const skippedPro = Number(json.skipped_pro ?? 0)
+      pushToast(
+        'success',
+        `Activated ${activated} workflow${activated === 1 ? '' : 's'}` +
+          (skippedPro > 0 ? ` (${skippedPro} Pro workflow${skippedPro === 1 ? '' : 's'} skipped — upgrade required)` : '')
+      )
+      refetchList()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed'
+      pushToast('error', msg)
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const patchStatus = async (id: string, status: string) => {
     setBusy(id)
@@ -467,6 +492,15 @@ function CampaignsListInner() {
                   })()
                 }}
               />
+              <button
+                type="button"
+                disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                onClick={() => void activateAllDrafts()}
+                title="Activate all draft workflows you are allowed to run"
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"
+              >
+                Activate all drafts
+              </button>
               <button
                 type="button"
                 disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
@@ -732,11 +766,14 @@ function CampaignsListInner() {
                                 type="button"
                                 disabled={
                                   busy === r.id ||
-                                  (saasUsage?.atCampaignLimit === true && r.status !== 'active')
+                                  (saasUsage?.atCampaignLimit === true && r.status !== 'active') ||
+                                  (r.platform_default_tier === 'pro' && saasUsage?.isProActive !== true)
                                 }
                                 onClick={() => void patchStatus(r.id, 'active')}
                                 title={
-                                  saasUsage?.atCampaignLimit
+                                  r.platform_default_tier === 'pro' && saasUsage?.isProActive !== true
+                                    ? 'Pro workflows require an active Pro subscription'
+                                    : saasUsage?.atCampaignLimit
                                     ? 'Active campaign limit reached — upgrade to Pro'
                                     : r.status === 'paused'
                                       ? 'Resume campaign'

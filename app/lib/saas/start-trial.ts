@@ -63,7 +63,9 @@ export async function startProTrialForUser(userId: string): Promise<{ ok: true }
   if (updErr) return { ok: false, error: updErr.message }
 
   const { applyProTrialWhatsAppSetup } = await import('@/app/lib/saas/whatsapp-access')
+  const { provisionProPlatformDefaults } = await import('@/app/lib/campaigns/platform-defaults')
   await applyProTrialWhatsAppSetup(userId)
+  await provisionProPlatformDefaults(admin, userId)
 
   return { ok: true }
 }

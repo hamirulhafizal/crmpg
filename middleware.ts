@@ -7,6 +7,10 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/automation/gold-poster')) {
     return NextResponse.next()
   }
+  // Large JSON workflow imports — skip middleware body handling; auth runs in the route handler.
+  if (pathname.startsWith('/api/admin/campaign-workflow-defaults')) {
+    return NextResponse.next()
+  }
   return await updateSession(request)
 }
 

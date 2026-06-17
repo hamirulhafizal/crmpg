@@ -161,10 +161,14 @@ export async function assignSaasPlanToUser(opts: {
     const { applyProPaidWhatsAppMigration, applyProTrialWhatsAppSetup } = await import(
       '@/app/lib/saas/whatsapp-access'
     )
+    const { provisionProPlatformDefaults } = await import('@/app/lib/campaigns/platform-defaults')
     if (status === 'active') {
       await applyProPaidWhatsAppMigration(opts.userId)
     } else if (status === 'trialing') {
       await applyProTrialWhatsAppSetup(opts.userId)
+    }
+    if (status === 'active' || status === 'trialing') {
+      await provisionProPlatformDefaults(admin, opts.userId)
     }
   }
 }

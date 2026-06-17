@@ -39,47 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <span className="text-slate-300">/</span>
             <span className="text-sm font-semibold text-slate-900">Admin</span>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <nav className="flex flex-wrap items-center gap-1 text-sm">
-              <Link
-                href="/admin/plans"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                SaaS plans
-              </Link>
-              <Link
-                href="/admin/settings"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                Settings
-              </Link>
-              <Link
-                href="/admin/workflow-nodes"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                Workflow nodes
-              </Link>
-              <Link
-                href="/admin/lucky-draw-defaults"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                Lucky draw defaults
-              </Link>
-              <Link
-                href="/admin/google-ads"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                Google Ads
-              </Link>
-              <Link
-                href="/admin/media"
-                className="rounded-lg px-3 py-1.5 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                Media
-              </Link>
-            </nav>
-            <UserProfileMenu />
-          </div>
+          <UserProfileMenu />
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</div>

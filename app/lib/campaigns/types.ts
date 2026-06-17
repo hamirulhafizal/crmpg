@@ -57,6 +57,8 @@ export type CampaignRow = {
   workflow_layout?: { nodes?: Record<string, { x: number; y: number }> }
   workflow_definition?: { version?: number; nodes?: unknown[]; edges?: unknown[] }
   uses_platform_defaults?: boolean
+  platform_default_id?: string | null
+  platform_default_tier?: 'free' | 'pro' | null
   daily_send_limit: number
   cooldown_days: number
   start_at: string | null

@@ -1,9 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AdminPlatformWorkflowEditor } from '@/app/admin/settings/AdminPlatformWorkflowEditor'
-import type { PlatformCampaignDefault } from '@/app/lib/campaigns/platform-defaults'
+import { importPlatformDefaultExportFile } from '@/app/admin/settings/platform-default-import-client'
+import type {
+  PlatformCampaignDefault,
+  PlatformCampaignDefaultListItem,
+} from '@/app/lib/campaigns/platform-defaults'
 import { TagAdminSidebar, type CategoryRow } from '@/app/admin/settings/tag-admin-sidebar'
 
 type WahaServerRow = {
@@ -166,23 +170,20 @@ export default function AdminSettingsPage() {
   const [campaignDefaultSuccess, setCampaignDefaultSuccess] = useState<string | null>(null)
   const [campaignDefaultCacheReady, setCampaignDefaultCacheReady] = useState(false)
   const [campaignDefaultSourceId, setCampaignDefaultSourceId] = useState('825c980a-ca90-45c7-b375-3b143ade5369')
-  const [campaignDefaultInfo, setCampaignDefaultInfo] = useState<{
-    configured: boolean
-    name: string | null
-    nodeCount: number
-    stepCount: number
-    updatedAt: string | null
-    syncedCampaigns: number
-  }>({
-    configured: false,
-    name: null,
-    nodeCount: 0,
-    stepCount: 0,
-    updatedAt: null,
-    syncedCampaigns: 0,
-  })
   const [campaignDefaultData, setCampaignDefaultData] = useState<PlatformCampaignDefault | null>(null)
   const [campaignDefaultName, setCampaignDefaultName] = useState('Birthday')
+  const [allPlatformDefaults, setAllPlatformDefaults] = useState<PlatformCampaignDefaultListItem[]>([])
+  const [syncedByDefaultId, setSyncedByDefaultId] = useState<Record<string, number>>({})
+  const [jsonImportTier, setJsonImportTier] = useState<'free' | 'pro'>('pro')
+  const [jsonImportBusy, setJsonImportBusy] = useState(false)
+  const [jsonImportProgress, setJsonImportProgress] = useState<{
+    percent: number
+    label: string
+  } | null>(null)
+  const [jsonImportDebug, setJsonImportDebug] = useState<string | null>(null)
+  const jsonImportTierRef = useRef<'free' | 'pro'>('pro')
+  const [selectedDefaultIds, setSelectedDefaultIds] = useState<Set<string>>(new Set())
+  const jsonImportInputRef = useRef<HTMLInputElement>(null)
   const [campaignWorkflowEditorOpen, setCampaignWorkflowEditorOpen] = useState(false)
 
   const loadTagCatalog = useCallback(async () => {
@@ -286,27 +287,63 @@ export default function AdminSettingsPage() {
         return
       }
       const def = data.data
-      const nodes = Array.isArray(def?.workflow_definition?.nodes) ? def.workflow_definition.nodes : []
-      const steps = Array.isArray(def?.compiled_steps) ? def.compiled_steps : []
-      setCampaignDefaultData(def ?? null)
-      setCampaignDefaultName(typeof def?.name === 'string' ? def.name : 'Birthday')
-      setCampaignDefaultInfo({
-        configured: Boolean(data.configured),
-        name: typeof def?.name === 'string' ? def.name : null,
-        nodeCount: nodes.length,
-        stepCount: steps.length,
-        updatedAt: typeof def?.updated_at === 'string' ? def.updated_at : null,
-        syncedCampaigns: Number(data.synced_campaigns ?? 0),
-      })
-      if (typeof def?.source_campaign_id === 'string' && def.source_campaign_id.trim()) {
-        setCampaignDefaultSourceId(def.source_campaign_id)
+      const allDefaults = Array.isArray(data.defaults) ? data.defaults : def ? [def] : []
+      setAllPlatformDefaults(allDefaults as PlatformCampaignDefaultListItem[])
+      setSyncedByDefaultId(
+        data.synced_by_id && typeof data.synced_by_id === 'object'
+          ? (data.synced_by_id as Record<string, number>)
+          : {}
+      )
+      const freeDefault =
+        (allDefaults as PlatformCampaignDefaultListItem[]).find((d) => d.tier === 'free') ??
+        (def as PlatformCampaignDefaultListItem | null) ??
+        null
+      setCampaignDefaultName(typeof freeDefault?.name === 'string' ? freeDefault.name : 'Birthday')
+      if (typeof freeDefault?.source_campaign_id === 'string' && freeDefault.source_campaign_id.trim()) {
+        setCampaignDefaultSourceId(freeDefault.source_campaign_id)
       }
+      setSelectedDefaultIds((prev) => {
+        const valid = new Set(allDefaults.map((d: PlatformCampaignDefaultListItem) => d.id))
+        return new Set([...prev].filter((id) => valid.has(id)))
+      })
     } catch {
       setCampaignDefaultError('Failed to load default workflow')
     } finally {
       setCampaignDefaultLoading(false)
     }
   }, [])
+
+  const openDefaultEditor = useCallback(async (row: PlatformCampaignDefaultListItem) => {
+    setCampaignDefaultError(null)
+    setCampaignDefaultSaving(true)
+    try {
+      const res = await fetch(
+        `/api/admin/campaign-workflow-defaults?id=${encodeURIComponent(row.id)}`,
+        { cache: 'no-store' }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setCampaignDefaultError(typeof data.error === 'string' ? data.error : 'Failed to load template')
+        return
+      }
+      const full = data.data as PlatformCampaignDefault | undefined
+      if (!full) {
+        setCampaignDefaultError('Failed to load template')
+        return
+      }
+      setCampaignDefaultData(full)
+      setCampaignDefaultName(full.name)
+      setCampaignWorkflowEditorOpen(true)
+    } catch {
+      setCampaignDefaultError('Failed to load template')
+    } finally {
+      setCampaignDefaultSaving(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    jsonImportTierRef.current = jsonImportTier
+  }, [jsonImportTier])
 
   useEffect(() => {
     if (tab !== 'campaign_workflow_defaults' || campaignDefaultCacheReady) return
@@ -1179,23 +1216,169 @@ export default function AdminSettingsPage() {
       )}
 
       {tab === 'campaign_workflow_defaults' && (
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <section className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Default campaign workflow</h2>
+              <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">Default campaign workflows</h2>
               <p className="mt-1 text-sm text-slate-600">
-                New users receive this workflow as a draft campaign on signup. Updates sync to user
-                campaigns until they edit their copy.
+                Free templates clone on signup. Pro templates clone when a user starts Pro trial or paid Pro.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadCampaignWorkflowDefaults()}
-              disabled={campaignDefaultLoading || campaignDefaultSaving}
-              className="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-            >
-              {campaignDefaultLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={jsonImportTier}
+                onChange={(e) => {
+                  const next = e.target.value === 'free' ? 'free' : 'pro'
+                  jsonImportTierRef.current = next
+                  setJsonImportTier(next)
+                }}
+                disabled={jsonImportBusy || campaignDefaultLoading}
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 disabled:opacity-60"
+                aria-label="Import tier"
+              >
+                <option value="pro">Import as Pro</option>
+                <option value="free">Import as Free</option>
+              </select>
+              <button
+                type="button"
+                disabled={jsonImportBusy || campaignDefaultLoading || campaignDefaultSaving || selectedDefaultIds.size === 0}
+                onClick={() => {
+                  void (async () => {
+                    if (selectedDefaultIds.size === 0) return
+                    if (!window.confirm(`Remove ${selectedDefaultIds.size} template(s)?`)) return
+                    setCampaignDefaultSaving(true)
+                    setCampaignDefaultError(null)
+                    setCampaignDefaultSuccess(null)
+                    try {
+                      let removed = 0
+                      for (const id of selectedDefaultIds) {
+                        const res = await fetch(
+                          `/api/admin/campaign-workflow-defaults?id=${encodeURIComponent(id)}`,
+                          { method: 'DELETE' }
+                        )
+                        if (res.ok) removed++
+                      }
+                      setSelectedDefaultIds(new Set())
+                      setCampaignDefaultSuccess(`Removed ${removed} template(s).`)
+                      await loadCampaignWorkflowDefaults()
+                    } catch {
+                      setCampaignDefaultError('Failed to remove templates')
+                    } finally {
+                      setCampaignDefaultSaving(false)
+                    }
+                  })()
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
+              >
+                Delete selected ({selectedDefaultIds.size})
+              </button>
+              <button
+                type="button"
+                disabled={jsonImportBusy || campaignDefaultLoading || campaignDefaultSaving}
+                onClick={() => void loadCampaignWorkflowDefaults()}
+                title="Refresh list"
+                aria-label="Refresh template list"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {campaignDefaultLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <input
+                ref={jsonImportInputRef}
+                type="file"
+                accept="application/json,.json"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  const files = e.target.files
+                  console.log('[Import] file input change', files?.length ?? 0)
+                  if (!files?.length) {
+                    console.warn('[Import] no files selected')
+                    return
+                  }
+                  e.target.value = ''
+                  void (async () => {
+                    console.group('[Import] handler start')
+                    setJsonImportBusy(true)
+                    setJsonImportProgress({ percent: 0, label: 'Preparing import…' })
+                    setJsonImportDebug(null)
+                    setCampaignDefaultError(null)
+                    setCampaignDefaultSuccess(null)
+                    try {
+                      const tier = jsonImportTierRef.current
+                      console.log('[Import] tier', tier, 'files', files.length)
+                      let totalImported = 0
+                      let totalFailed = 0
+                      let totalSynced = 0
+                      const warnings: string[] = []
+                      const debugLogs: string[] = []
+                      const fileList = Array.from(files)
+
+                      for (let fileIndex = 0; fileIndex < fileList.length; fileIndex += 1) {
+                        const file = fileList[fileIndex]
+                        console.log('[Import] processing file', fileIndex + 1, file.name, file.size)
+                        const result = await importPlatformDefaultExportFile(file, tier, (update) => {
+                          const overallPct =
+                            fileList.length > 1
+                              ? Math.round(
+                                  (fileIndex / fileList.length) * 100 +
+                                    update.percent / fileList.length
+                                )
+                              : update.percent
+                          setJsonImportProgress({
+                            percent: overallPct,
+                            label: update.label,
+                          })
+                        })
+                        totalImported += result.imported
+                        totalFailed += result.failed
+                        totalSynced += result.synced_campaigns
+                        warnings.push(...result.warnings)
+                        debugLogs.push(...result.logs)
+                      }
+
+                      console.log('[Import] done', { totalImported, totalFailed, totalSynced, warnings })
+                      setJsonImportDebug(debugLogs.join('\n'))
+                      setCampaignDefaultSuccess(
+                        `Imported ${totalImported} template${totalImported === 1 ? '' : 's'}` +
+                          (totalFailed > 0 ? ` (${totalFailed} failed)` : '') +
+                          (totalSynced > 0 ? `. Synced ${totalSynced} user campaign(s).` : '.') +
+                          (warnings.length > 0
+                            ? ` ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
+                            : '')
+                      )
+                      await loadCampaignWorkflowDefaults()
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : 'Import failed'
+                      console.error('[Import] handler failed', err)
+                      setJsonImportDebug(
+                        (prev) => `${prev ? `${prev}\n\n` : ''}ERROR: ${msg}`
+                      )
+                      setCampaignDefaultError(msg)
+                    } finally {
+                      console.groupEnd()
+                      setJsonImportBusy(false)
+                      setTimeout(() => setJsonImportProgress(null), 1500)
+                    }
+                  })()
+                }}
+              />
+              <button
+                type="button"
+                disabled={jsonImportBusy || campaignDefaultLoading || campaignDefaultSaving}
+                onClick={() => jsonImportInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {jsonImportBusy ? 'Importing…' : 'Import JSON'}
+              </button>
+            </div>
           </div>
 
           {campaignDefaultError && (
@@ -1208,123 +1391,270 @@ export default function AdminSettingsPage() {
               {campaignDefaultSuccess}
             </div>
           )}
-
-          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-            {campaignDefaultInfo.configured ? (
-              <dl className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Template</dt>
-                  <dd className="font-medium text-slate-900">{campaignDefaultInfo.name ?? 'Birthday'}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Workflow nodes</dt>
-                  <dd>{campaignDefaultInfo.nodeCount}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Send steps</dt>
-                  <dd>{campaignDefaultInfo.stepCount}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Synced user campaigns</dt>
-                  <dd>{campaignDefaultInfo.syncedCampaigns}</dd>
-                </div>
-                {campaignDefaultInfo.updatedAt && (
-                  <div className="sm:col-span-2">
-                    <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Last updated</dt>
-                    <dd>{new Date(campaignDefaultInfo.updatedAt).toLocaleString()}</dd>
-                  </div>
-                )}
-              </dl>
-            ) : (
-              <p>No default workflow configured yet. Set one from your Birthday campaign below.</p>
-            )}
-          </div>
-
-          {campaignDefaultInfo.configured && (
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Template name</label>
-                <input
-                  type="text"
-                  value={campaignDefaultName}
-                  onChange={(e) => setCampaignDefaultName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900"
+          {jsonImportProgress && (
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="mb-2 flex items-center justify-between gap-3 text-sm text-blue-900">
+                <span className="font-medium">{jsonImportProgress.label}</span>
+                <span className="tabular-nums">{jsonImportProgress.percent}%</span>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-blue-100"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={jsonImportProgress.percent}
+                aria-label="Import progress"
+              >
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-[width] duration-300 ease-out"
+                  style={{ width: `${jsonImportProgress.percent}%` }}
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setCampaignWorkflowEditorOpen(true)}
-                disabled={!campaignDefaultData || campaignDefaultLoading}
-                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                Edit workflow
-              </button>
             </div>
           )}
 
-          <details className="mb-6 rounded-xl border border-slate-200 bg-white">
+          {jsonImportDebug && (
+            <details open className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-xs text-slate-700">
+              <summary className="cursor-pointer font-medium text-amber-950">
+                Import debug log — also check DevTools Console (filter: [Import])
+              </summary>
+              <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white p-3 font-mono text-[11px] text-slate-800">
+                {jsonImportDebug}
+              </pre>
+            </details>
+          )}
+
+          {campaignDefaultLoading ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-500">
+              Loading templates…
+            </div>
+          ) : (
+            <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-[720px] w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={
+                          allPlatformDefaults.length > 0 &&
+                          selectedDefaultIds.size === allPlatformDefaults.length
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedDefaultIds(new Set(allPlatformDefaults.map((d) => d.id)))
+                          } else {
+                            setSelectedDefaultIds(new Set())
+                          }
+                        }}
+                        aria-label="Select all templates"
+                      />
+                    </th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Tier</th>
+                    <th className="px-4 py-3">Trigger</th>
+                    <th className="px-4 py-3 text-right">Steps</th>
+                    <th className="px-4 py-3 text-right">Synced</th>
+                    <th className="px-4 py-3">Updated</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allPlatformDefaults.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                        No templates yet. Import a workflow JSON export to get started.
+                      </td>
+                    </tr>
+                  ) : (
+                    allPlatformDefaults.map((row) => (
+                        <tr key={row.id} className="hover:bg-slate-50/80">
+                          <td className="px-3 py-3 align-top">
+                            <input
+                              type="checkbox"
+                              checked={selectedDefaultIds.has(row.id)}
+                              onChange={(e) =>
+                                setSelectedDefaultIds((prev) => {
+                                  const next = new Set(prev)
+                                  if (e.target.checked) next.add(row.id)
+                                  else next.delete(row.id)
+                                  return next
+                                })
+                              }
+                              aria-label={`Select template ${row.name}`}
+                            />
+                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            <button
+                              type="button"
+                              onClick={() => void openDefaultEditor(row)}
+                              className="text-left text-blue-700 hover:underline"
+                            >
+                              {row.name}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${
+                                row.tier === 'pro'
+                                  ? 'bg-violet-100 text-violet-800'
+                                  : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {row.tier}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top text-slate-600">
+                            <span className="capitalize">{row.trigger_type || 'manual'}</span>
+                            {row.timezone ? (
+                              <p className="mt-0.5 text-xs text-slate-400">{row.timezone}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                            {row.step_count ?? row.compiled_steps.length}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                            {syncedByDefaultId[row.id] ?? 0}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {row.updated_at ? new Date(row.updated_at).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex flex-wrap justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void openDefaultEditor(row)}
+                                title="Edit workflow"
+                                aria-label="Edit workflow"
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void (async () => {
+                                    if (!window.confirm(`Remove template "${row.name}"?`)) return
+                                    setCampaignDefaultSaving(true)
+                                    setCampaignDefaultError(null)
+                                    try {
+                                      const res = await fetch(
+                                        `/api/admin/campaign-workflow-defaults?id=${encodeURIComponent(row.id)}`,
+                                        { method: 'DELETE' }
+                                      )
+                                      const data = await res.json().catch(() => ({}))
+                                      if (!res.ok) {
+                                        setCampaignDefaultError(
+                                          typeof data.error === 'string' ? data.error : 'Failed to delete'
+                                        )
+                                        return
+                                      }
+                                      setSelectedDefaultIds((prev) => {
+                                        const next = new Set(prev)
+                                        next.delete(row.id)
+                                        return next
+                                      })
+                                      setCampaignDefaultSuccess(`Removed "${row.name}".`)
+                                      await loadCampaignWorkflowDefaults()
+                                    } finally {
+                                      setCampaignDefaultSaving(false)
+                                    }
+                                  })()
+                                }}
+                                title="Remove template"
+                                aria-label="Remove template"
+                                className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 hover:bg-red-100"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <details className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50">
             <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700">
-              Import from existing campaign
+              Advanced: import from campaign ID
             </summary>
             <form
-              className="space-y-4 border-t border-slate-100 px-4 py-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void (async () => {
-                setCampaignDefaultSaving(true)
-                setCampaignDefaultError(null)
-                setCampaignDefaultSuccess(null)
-                try {
-                  const res = await fetch('/api/admin/campaign-workflow-defaults', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ campaign_id: campaignDefaultSourceId.trim() }),
-                  })
-                  const data = await res.json().catch(() => ({}))
-                  if (!res.ok) {
-                    setCampaignDefaultError(
-                      typeof data.error === 'string' ? data.error : 'Failed to save default workflow'
+              className="space-y-4 border-t border-slate-200 bg-white px-4 py-4"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void (async () => {
+                  setCampaignDefaultSaving(true)
+                  setCampaignDefaultError(null)
+                  setCampaignDefaultSuccess(null)
+                  try {
+                    const res = await fetch('/api/admin/campaign-workflow-defaults', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        campaign_id: campaignDefaultSourceId.trim(),
+                        tier: jsonImportTier,
+                      }),
+                    })
+                    const data = await res.json().catch(() => ({}))
+                    if (!res.ok) {
+                      setCampaignDefaultError(
+                        typeof data.error === 'string' ? data.error : 'Failed to save default workflow'
+                      )
+                      return
+                    }
+                    const synced = Number(data.synced_campaigns ?? 0)
+                    setCampaignDefaultSuccess(
+                      `Template saved from campaign.${synced > 0 ? ` Synced ${synced} user campaign(s).` : ''}`
                     )
-                    return
+                    await loadCampaignWorkflowDefaults()
+                  } catch {
+                    setCampaignDefaultError('Failed to save default workflow')
+                  } finally {
+                    setCampaignDefaultSaving(false)
                   }
-                  const synced = Number(data.synced_campaigns ?? 0)
-                  setCampaignDefaultSuccess(
-                    `Default workflow saved.${synced > 0 ? ` Synced ${synced} user campaign(s).` : ''}`
-                  )
-                  await loadCampaignWorkflowDefaults()
-                } catch {
-                  setCampaignDefaultError('Failed to save default workflow')
-                } finally {
-                  setCampaignDefaultSaving(false)
-                }
-              })()
-            }}
-          >
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Source campaign ID</label>
-              <input
-                type="text"
-                value={campaignDefaultSourceId}
-                onChange={(e) => setCampaignDefaultSourceId(e.target.value)}
-                placeholder="825c980a-ca90-45c7-b375-3b143ade5369"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm text-slate-900"
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Uses the campaign workflow graph, steps, and image backgrounds (stored as shared platform
-                assets). New users get a draft copy on signup.
-              </p>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={campaignDefaultSaving || campaignDefaultLoading || !campaignDefaultSourceId.trim()}
-                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {campaignDefaultSaving ? 'Saving…' : 'Set as platform default'}
-              </button>
-            </div>
-          </form>
+                })()
+              }}
+            >
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Source campaign ID</label>
+                <input
+                  type="text"
+                  value={campaignDefaultSourceId}
+                  onChange={(e) => setCampaignDefaultSourceId(e.target.value)}
+                  placeholder="825c980a-ca90-45c7-b375-3b143ade5369"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 font-mono text-sm text-slate-900"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Uses the selected import tier above. Copies workflow graph, steps, and bundled image backgrounds.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={campaignDefaultSaving || campaignDefaultLoading || !campaignDefaultSourceId.trim()}
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {campaignDefaultSaving ? 'Saving…' : 'Import from campaign'}
+                </button>
+              </div>
+            </form>
           </details>
         </section>
       )}

@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
   // Optimize bundle size
   experimental: {
     optimizePackageImports: ['react', 'react-dom'],
+    middlewareClientMaxBodySize: '15mb',
   },
 
   // Compression

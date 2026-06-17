@@ -1,4 +1,4 @@
-import { hasPlatformWriteAccess } from '@/app/lib/saas/billing'
+import { hasPlatformWriteAccess, isProSubscriptionActive } from '@/app/lib/saas/billing'
 import {
   ADMIN_UNLIMITED_FEATURES,
   ADMIN_WHATSAPP_PROVIDERS,
@@ -12,6 +12,7 @@ import {
 import {
   parseMaxActiveCampaigns,
 } from '@/app/lib/saas/plans'
+import { loadCampaignPlatformDefaultTier } from '@/app/lib/campaigns/platform-defaults'
 import type { SaasSubscriptionStatus } from '@/app/lib/saas/types'
 import type { WhatsAppProvider } from '@/app/lib/whatsapp/types'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
@@ -129,11 +130,47 @@ export async function countActiveCampaigns(
 export async function canActivateCampaign(
   userId: string,
   excludeCampaignId?: string
-): Promise<{ ok: true } | { ok: false; error: string; code: 'campaign_limit' | 'platform_locked' }> {
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; code: 'campaign_limit' | 'platform_locked' | 'pro_required' }
+> {
   if (await isPlatformAdmin(userId)) return { ok: true }
 
   const writeGate = await assertPlatformWriteAccess(userId)
   if (!writeGate.ok) return writeGate
+
+  if (excludeCampaignId) {
+    const admin = createServiceRoleClient()
+    const { data: campaign } = await admin
+      .from('campaigns')
+      .select('platform_default_id')
+      .eq('id', excludeCampaignId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (campaign?.platform_default_id) {
+      const tier = await loadCampaignPlatformDefaultTier(admin, campaign.platform_default_id)
+      if (tier === 'pro') {
+        const row = await loadSubscriptionForUser(userId)
+        if (!row) {
+          return { ok: false, error: 'Subscription not found', code: 'pro_required' }
+        }
+        const proActive = isProSubscriptionActive({
+          planSlug: row.planSlug,
+          status: row.status,
+          trialEndsAt: row.trialEndsAt,
+          currentPeriodEnd: row.currentPeriodEnd,
+        })
+        if (!proActive) {
+          return {
+            ok: false,
+            error: 'Pro workflows are read-only without an active Pro subscription. Upgrade to activate.',
+            code: 'pro_required',
+          }
+        }
+      }
+    }
+  }
 
   const entitlements = await loadUserEntitlements(userId)
   if (!entitlements) {

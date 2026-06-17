@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { CAMPAIGN_WORKFLOW_MEDIA_BUCKET } from '@/app/lib/campaigns/image-step/defaults'
-import { platformDefaultMediaPath } from '@/app/lib/campaigns/platform-defaults'
+import { PLATFORM_DEFAULTS_FREE_ID, platformDefaultMediaPath } from '@/app/lib/campaigns/platform-defaults'
 import { requireAdminApi } from '@/app/lib/auth/require-admin'
 import { createClient } from '@/app/lib/supabase/server'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
@@ -75,7 +75,12 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(ab)
     const dims = readImageDimensions(buffer)
     const ext = extForMime(file.type)
-    const isPlatformDefault = campaignId === 'platform-default'
+    const platformDefaultId = campaignId.startsWith('platform-default:')
+      ? campaignId.slice('platform-default:'.length).trim() || PLATFORM_DEFAULTS_FREE_ID
+      : campaignId === 'platform-default'
+        ? PLATFORM_DEFAULTS_FREE_ID
+        : null
+    const isPlatformDefault = platformDefaultId != null
 
     if (isPlatformDefault) {
       const adminAuth = await requireAdminApi(request)
@@ -83,7 +88,7 @@ export async function POST(request: Request) {
     }
 
     const path = isPlatformDefault
-      ? platformDefaultMediaPath(nodeId, file.type)
+      ? platformDefaultMediaPath(platformDefaultId, nodeId, file.type)
       : `${user.id}/${campaignId}/${nodeId}/background.${ext}`
 
     const storageClient = isPlatformDefault ? createServiceRoleClient() : supabase

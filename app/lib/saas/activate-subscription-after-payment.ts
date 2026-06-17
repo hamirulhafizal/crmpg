@@ -72,7 +72,9 @@ export async function activateSaasSubscriptionAfterPayment(
 
   if (planRow.slug === 'pro') {
     const { applyProPaidWhatsAppMigration } = await import('@/app/lib/saas/whatsapp-access')
+    const { provisionProPlatformDefaults } = await import('@/app/lib/campaigns/platform-defaults')
     await applyProPaidWhatsAppMigration(opts.userId)
+    await provisionProPlatformDefaults(admin, opts.userId)
   }
 
   if (opts.externalPaymentId) {
