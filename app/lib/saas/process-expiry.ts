@@ -119,14 +119,14 @@ export async function processSaasSubscriptionsCron(now = new Date()): Promise<Sa
         if (!metaFlagSent(meta, 'free_trial_expired_notice_sent_at')) {
           const sent = await sendSaasEmail({
             userId: sub.user_id,
-            subject: 'CRMPG - Your free trial has ended',
+            subject: 'PublicGolds CRM - Your free trial has ended',
             text: [
               'Your 3-day free trial has ended.',
               '',
-              'WhatsApp connections have been removed and active campaigns paused.',
+              'WhatsApp connections have been removed and active workflows paused.',
               'You can still sign in and view your customers (read-only).',
               '',
-              'Upgrade to Pro to restore WhatsApp and campaigns:',
+              'Upgrade to Pro to restore WhatsApp and workflows:',
               saasBillingLinkText(),
             ].join('\n'),
           })
@@ -179,12 +179,12 @@ export async function processSaasSubscriptionsCron(now = new Date()): Promise<Sa
         if (!metaFlagSent(meta, 'pro_expired_notice_sent_at')) {
           const sent = await sendSaasEmail({
             userId: sub.user_id,
-            subject: 'CRMPG - Your Pro subscription has ended',
+            subject: 'PublicGolds CRM - Your Pro subscription has ended',
             text: [
               'Your Pro subscription has ended.',
               '',
-              `You now have a ${trialDays}-day Free trial (1 active campaign, WAHA WhatsApp).`,
-              'Extra active campaigns have been paused automatically.',
+              `You now have a ${trialDays}-day Free trial (1 active workflow, WAHA WhatsApp).`,
+              'Extra active workflows have been paused automatically.',
               '',
               'Upgrade to Pro anytime:',
               saasBillingLinkText(),

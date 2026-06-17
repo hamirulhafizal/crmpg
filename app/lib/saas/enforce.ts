@@ -182,8 +182,8 @@ export async function canActivateCampaign(
       ok: false,
       error:
         max === 1
-          ? 'Free plan allows 1 active campaign. Pause another campaign or upgrade to Pro.'
-          : `Your plan allows ${max} active campaigns. Pause another campaign or upgrade to Pro.`,
+          ? 'Free plan allows 1 active workflow. Pause another workflow or upgrade to Pro.'
+          : `Your plan allows ${max} active workflows. Pause another workflow or upgrade to Pro.`,
       code: 'campaign_limit',
     }
   }

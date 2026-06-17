@@ -240,7 +240,7 @@ export default function DashboardBillingPage() {
           </div>
           <div className="text-right text-sm text-slate-600">
             <p>
-              Active campaigns:{' '}
+              Active Workflows:{' '}
               <span className="font-semibold text-slate-900">
                 {data.usage.active_campaigns}
                 {maxCampaigns >= 0 ? ` / ${maxCampaigns}` : ''}
@@ -306,7 +306,7 @@ export default function DashboardBillingPage() {
                 <p className="mt-2 text-sm text-slate-600">{plan!.description}</p>
               ) : null}
               <ul className="mt-4 space-y-2 text-sm text-slate-700">
-                <li>• {campaignLimitLabel(parseInt(plan!.features.max_active_campaigns ?? '1', 10))} active campaigns</li>
+                <li>• {campaignLimitLabel(parseInt(plan!.features.max_active_campaigns ?? '1', 10))} active workflows</li>
                 <li>• WhatsApp: {plan!.features.whatsapp_providers ?? 'waha'}</li>
                 {plan!.bullets.map((b) => (
                   <li key={b}>• {b}</li>

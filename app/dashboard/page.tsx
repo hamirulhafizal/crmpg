@@ -580,7 +580,7 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active campaigns</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active workflow</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
                   {saasActiveCampaigns ?? 0}
                   {saasMaxCampaigns != null && saasMaxCampaigns >= 0 ? ` / ${saasMaxCampaigns}` : ''}

@@ -71,7 +71,7 @@ export const SAAS_FEATURE_DEFAULTS: Record<SaasFeatureKey, string> = {
 }
 
 export const SAAS_FEATURE_LABELS: Record<SaasFeatureKey, string> = {
-  max_active_campaigns: 'Max active campaigns (-1 = unlimited)',
+  max_active_campaigns: 'Max active workflows (-1 = unlimited)',
   whatsapp_providers: 'WhatsApp providers (comma-separated: waha, wasender)',
   platform_access: 'Platform access when subscription valid (true/false)',
 }
