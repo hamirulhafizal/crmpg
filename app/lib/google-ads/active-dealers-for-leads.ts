@@ -50,6 +50,7 @@ type ParticipantRow = {
   pg_code: string | null
   public_username: string | null
   created_at: string
+  rotation_queue_order: number | null
   google_ads_subscriptions:
     | {
         status: string
@@ -155,6 +156,7 @@ export async function loadActiveGoogleAdsDealers(
       pg_code,
       public_username,
       created_at,
+      rotation_queue_order,
       google_ads_subscriptions (
         status,
         current_period_start,
@@ -180,9 +182,14 @@ export async function loadActiveGoogleAdsDealers(
     admin,
     inPeriod.map((r) => r.id)
   )
-  inPeriod.sort(
-    (a, b) => rotationQueueSortKey(a, firstPaidAt) - rotationQueueSortKey(b, firstPaidAt)
-  )
+  inPeriod.sort((a, b) => {
+    const aManual = a.rotation_queue_order
+    const bManual = b.rotation_queue_order
+    if (aManual != null && bManual != null) return aManual - bManual
+    if (aManual != null) return -1
+    if (bManual != null) return 1
+    return rotationQueueSortKey(a, firstPaidAt) - rotationQueueSortKey(b, firstPaidAt)
+  })
 
   const userIds = inPeriod.map((r) => r.user_id)
   const authMap = await authEmailsAndPhones(admin, userIds)

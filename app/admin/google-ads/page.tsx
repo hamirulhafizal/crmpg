@@ -5,6 +5,7 @@ import Link from 'next/link'
 
 import { effectivePackageStatus } from '@/app/lib/google-ads/billing'
 import { GoogleAdsAnalyticsTab } from '@/app/admin/google-ads/_components/GoogleAdsAnalyticsTab'
+import { GoogleAdsAdminRotationPanel } from '@/app/admin/google-ads/_components/GoogleAdsAdminRotationPanel'
 
 type PackageRow = {
   id: string
@@ -880,6 +881,8 @@ export default function AdminGoogleAdsPage() {
           </div>
         )}
       </section>
+
+      <GoogleAdsAdminRotationPanel />
 
       <div className="flex gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
         <button

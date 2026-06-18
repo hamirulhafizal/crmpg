@@ -29,7 +29,15 @@ export async function POST() {
     }
 
     const ids = dealers.map((d) => d.participant_id)
-    const { error } = await admin.from('google_ads_participants').update({ lead_email: false }).in('id', ids)
+    const { error } = await admin
+      .from('google_ads_participants')
+      .update({
+        lead_email: false,
+        rotation_queue_order: null,
+        rotation_queue_updated_at: null,
+        rotation_queue_updated_by: null,
+      })
+      .in('id', ids)
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
