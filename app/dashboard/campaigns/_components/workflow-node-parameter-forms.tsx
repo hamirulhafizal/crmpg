@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { AudienceBuilder } from '@/app/dashboard/campaigns/_components/AudienceBuilder'
+import { AutomationTemplatePicker } from '@/app/dashboard/campaigns/_components/AutomationTemplatePicker'
 import { TriggerRunScheduleFields } from '@/app/dashboard/campaigns/_components/TriggerRunScheduleFields'
 import { TemplateVariableButtons } from '@/app/dashboard/campaigns/_components/TemplateVariableButtons'
 import { triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
@@ -506,6 +507,10 @@ export function WhatsAppMessageFields({
         )}
       </InspectorField>
       <InspectorField label="Message template">
+        <AutomationTemplatePicker
+          messageTemplate={messageTemplate}
+          onSelectTemplate={onMessageTemplate}
+        />
         <textarea
           rows={6}
           className="input font-mono text-xs text-black"

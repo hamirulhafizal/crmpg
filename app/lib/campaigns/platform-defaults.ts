@@ -10,6 +10,9 @@ import {
   type WorkflowMediaExportAsset,
 } from '@/app/lib/workflows/workflow-media-transfer'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
+import { isProSubscriptionActive } from '@/app/lib/saas/billing'
+import { isPlatformAdmin } from '@/app/lib/saas/admin-access'
+import type { SaasSubscriptionStatus } from '@/app/lib/saas/types'
 
 export const PLATFORM_DEFAULTS_FREE_ID = 'default'
 
@@ -94,8 +97,8 @@ function rewriteWorkflowDefinitionMediaPaths(
 }
 
 function compileStepsForStorage(def: WorkflowDefinition): PlatformCampaignDefault['compiled_steps'] {
-  return compileWorkflowDefinition(def).steps.map((s) => ({
-    step_order: s.step_order,
+  return compileWorkflowDefinition(def).steps.map((s, index) => ({
+    step_order: index + 1,
     delay_days: s.delay_days,
     send_time: normalizeSendTimeForDb(s.send_time),
     message_template: String(s.message_template ?? ''),
@@ -265,7 +268,7 @@ async function replaceCampaignSteps(
 
   const rows = steps.map((s, i) => ({
     campaign_id: campaignId,
-    step_order: Number.isFinite(s.step_order) ? s.step_order : i + 1,
+    step_order: i + 1,
     delay_days: Math.max(0, Number(s.delay_days ?? 0)),
     send_time: s.send_time,
     message_template: String(s.message_template ?? ''),
@@ -403,6 +406,49 @@ export async function savePlatformCampaignDefaultFromEditor(
   return { defaults, synced_campaigns }
 }
 
+/** Update template display name and/or tier (syncs linked user campaigns). */
+export async function updatePlatformCampaignDefaultMetadata(
+  supabase: SupabaseClient,
+  defaultId: string,
+  input: { name?: string; tier?: PlatformDefaultTier }
+): Promise<{ defaults: PlatformCampaignDefault; synced_campaigns: number }> {
+  const id = defaultId.trim()
+  if (!id) throw new Error('Template id is required')
+
+  const existing = await loadPlatformCampaignDefault(supabase, id)
+  if (!existing) throw new Error('Template not found')
+
+  const name = typeof input.name === 'string' ? input.name.trim() : existing.name
+  if (!name) throw new Error('Name is required')
+
+  const tier = input.tier === 'pro' || input.tier === 'free' ? input.tier : existing.tier
+  const tierChanged = tier !== existing.tier
+  const sort_order = tierChanged
+    ? tier === 'pro'
+      ? await nextProSortOrder(supabase)
+      : 0
+    : existing.sort_order
+
+  const { data: row, error: loadErr } = await supabase
+    .from('campaign_platform_defaults')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (loadErr) throw loadErr
+  if (!row) throw new Error('Template not found')
+
+  const defaults = await upsertPlatformDefault(supabase, {
+    ...row,
+    name,
+    tier,
+    sort_order,
+    updated_at: new Date().toISOString(),
+  })
+  const synced_campaigns = await syncLinkedPlatformDefaultCampaigns(supabase, defaults)
+  return { defaults, synced_campaigns }
+}
+
 export async function savePlatformCampaignDefaultFromCampaign(
   supabase: SupabaseClient,
   campaignId: string,
@@ -468,10 +514,9 @@ export async function deletePlatformCampaignDefault(
   supabase: SupabaseClient,
   defaultId: string
 ): Promise<void> {
-  if (defaultId === PLATFORM_DEFAULTS_FREE_ID) {
-    throw new Error('The free default workflow cannot be deleted')
-  }
-  const { error } = await supabase.from('campaign_platform_defaults').delete().eq('id', defaultId)
+  const id = defaultId.trim()
+  if (!id) throw new Error('Template id is required')
+  const { error } = await supabase.from('campaign_platform_defaults').delete().eq('id', id)
   if (error) throw error
 }
 
@@ -495,6 +540,165 @@ export async function provisionProPlatformDefaults(
     p_tier: 'pro',
   })
   if (error) throw error
+}
+
+export type PublishPlatformDefaultResult = {
+  defaults: PlatformCampaignDefault
+  tier: PlatformDefaultTier
+  target_users: number
+  provisioned: number
+  synced: number
+  set_to_draft: number
+}
+
+type SubscriptionWithPlan = {
+  user_id: string
+  status: SaasSubscriptionStatus
+  trial_ends_at: string | null
+  current_period_end: string | null
+  plan: { slug: string } | null
+}
+
+async function listTargetUserIdsForDefaultTier(
+  supabase: SupabaseClient,
+  tier: PlatformDefaultTier
+): Promise<string[]> {
+  const { data: subs, error } = await supabase
+    .from('saas_subscriptions')
+    .select('user_id, status, trial_ends_at, current_period_end, plan:saas_plans(slug)')
+
+  if (error) throw error
+
+  const now = new Date()
+  const userIds: string[] = []
+
+  for (const raw of subs ?? []) {
+    const sub = raw as SubscriptionWithPlan
+    const planSlug = String(sub.plan?.slug ?? 'free')
+    const proActive = isProSubscriptionActive({
+      planSlug,
+      status: sub.status,
+      trialEndsAt: sub.trial_ends_at,
+      currentPeriodEnd: sub.current_period_end,
+      now,
+    })
+
+    const matchesTier = tier === 'pro' ? proActive : !proActive
+    if (!matchesTier) continue
+    if (await isPlatformAdmin(sub.user_id)) continue
+    userIds.push(sub.user_id)
+  }
+
+  return userIds
+}
+
+async function provisionPlatformDefaultForUserIfMissing(
+  supabase: SupabaseClient,
+  userId: string,
+  defaults: PlatformCampaignDefault
+): Promise<boolean> {
+  if (
+    !defaults.workflow_definition?.nodes?.length
+  ) {
+    return false
+  }
+
+  const { data: existing, error: existsErr } = await supabase
+    .from('campaigns')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('platform_default_id', defaults.id)
+    .maybeSingle()
+
+  if (existsErr) throw existsErr
+  if (existing) return false
+
+  const { data: campaign, error: insertErr } = await supabase
+    .from('campaigns')
+    .insert({
+      user_id: userId,
+      name: defaults.name,
+      description: defaults.description,
+      status: 'draft',
+      trigger_type: defaults.trigger_type,
+      trigger_offset_days: defaults.trigger_offset_days,
+      timezone: defaults.timezone,
+      audience_filters: defaults.audience_filters,
+      daily_send_limit: defaults.daily_send_limit,
+      cooldown_days: defaults.cooldown_days,
+      workflow_definition: defaults.workflow_definition as never,
+      workflow_layout: defaults.workflow_layout as never,
+      uses_platform_defaults: true,
+      platform_default_id: defaults.id,
+    })
+    .select('id')
+    .single()
+
+  if (insertErr) throw insertErr
+  await replaceCampaignSteps(supabase, campaign.id, defaults.compiled_steps)
+  return true
+}
+
+/** Release a platform template to all users on its tier (provision missing + sync linked). */
+export async function publishPlatformCampaignDefault(
+  supabase: SupabaseClient,
+  defaultId: string
+): Promise<PublishPlatformDefaultResult> {
+  const id = defaultId.trim()
+  if (!id) throw new Error('Template id is required')
+
+  const defaults = await loadPlatformCampaignDefault(supabase, id)
+  if (!defaults) throw new Error('Template not found')
+  if (!defaults.workflow_definition?.nodes?.length) {
+    throw new Error('Template has no workflow to publish')
+  }
+
+  const targetUserIds = await listTargetUserIdsForDefaultTier(supabase, defaults.tier)
+  let provisioned = 0
+
+  for (const userId of targetUserIds) {
+    const created = await provisionPlatformDefaultForUserIfMissing(supabase, userId, defaults)
+    if (created) provisioned += 1
+  }
+
+  const synced = await syncLinkedPlatformDefaultCampaigns(supabase, defaults)
+
+  let set_to_draft = 0
+  if (defaults.tier === 'pro') {
+    const { data: linked, error: linkedErr } = await supabase
+      .from('campaigns')
+      .select('id, status')
+      .eq('uses_platform_defaults', true)
+      .eq('platform_default_id', defaults.id)
+
+    if (linkedErr) throw linkedErr
+
+    const nowIso = new Date().toISOString()
+    for (const row of linked ?? []) {
+      if (row.status === 'draft') continue
+      const { error: draftErr } = await supabase
+        .from('campaigns')
+        .update({ status: 'draft', updated_at: nowIso })
+        .eq('id', row.id)
+
+      if (draftErr) throw draftErr
+      set_to_draft += 1
+    }
+  }
+
+  await supabase
+    .from('campaign_platform_defaults')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', defaults.id)
+
+  return {
+    defaults,
+    tier: defaults.tier,
+    target_users: targetUserIds.length,
+    provisioned,
+    synced,
+    set_to_draft,
+  }
 }
 
 export async function loadCampaignPlatformDefaultTier(

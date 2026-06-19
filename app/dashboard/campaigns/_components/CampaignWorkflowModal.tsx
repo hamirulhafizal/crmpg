@@ -511,7 +511,7 @@ function CampaignWorkflowView(props: Props) {
 
   return (
     <motion.div
-      className={`campaign-workflow-shell fixed inset-0 z-[1000] flex flex-col bg-[#eceef1] ${shellTheme.className ?? ''} top-[-2rem]`}
+      className={`campaign-workflow-shell fixed inset-0 z-[1000] flex flex-col bg-[#eceef1] ${shellTheme.className ?? ''}`}
       data-workflow-theme={shellTheme['data-workflow-theme']}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}

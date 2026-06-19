@@ -5,6 +5,7 @@ import {
   deletePlatformCampaignDefault,
   loadAllPlatformCampaignDefaultsList,
   loadPlatformCampaignDefault,
+  updatePlatformCampaignDefaultMetadata,
   savePlatformCampaignDefaultFromCampaign,
   savePlatformCampaignDefaultFromEditor,
   savePlatformCampaignDefaultFromImport,
@@ -288,14 +289,30 @@ export async function PATCH(request: Request) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const admin = createServiceRoleClient()
+    const defaultId = typeof body.id === 'string' ? body.id.trim() : ''
     const workflow_definition = body.workflow_definition as WorkflowDefinition | undefined
-    if (!workflow_definition?.nodes?.length) {
-      return NextResponse.json({ error: 'workflow_definition is required' }, { status: 400 })
+    const hasWorkflow = Boolean(workflow_definition?.nodes?.length)
+
+    if (!hasWorkflow) {
+      if (!defaultId) {
+        return NextResponse.json({ error: 'id is required' }, { status: 400 })
+      }
+      const name = typeof body.name === 'string' ? body.name : undefined
+      const tier = body.tier === 'pro' ? 'pro' : body.tier === 'free' ? 'free' : undefined
+      if (name === undefined && tier === undefined) {
+        return NextResponse.json({ error: 'name or tier is required' }, { status: 400 })
+      }
+
+      const result = await updatePlatformCampaignDefaultMetadata(admin, defaultId, { name, tier })
+      return NextResponse.json({
+        data: result.defaults,
+        synced_campaigns: result.synced_campaigns,
+      })
     }
 
-    const admin = createServiceRoleClient()
     const result = await savePlatformCampaignDefaultFromEditor(admin, {
-      id: typeof body.id === 'string' ? body.id : undefined,
+      id: defaultId || undefined,
       name: typeof body.name === 'string' ? body.name : undefined,
       workflow_definition,
       workflow_layout:
@@ -310,7 +327,7 @@ export async function PATCH(request: Request) {
     })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to save default workflow'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ error: msg }, { status: 400 })
   }
 }
 

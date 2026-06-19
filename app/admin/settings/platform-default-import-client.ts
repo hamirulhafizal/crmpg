@@ -70,20 +70,18 @@ export async function readCampaignExportFile(file: File): Promise<{
   return { payload, items }
 }
 
-export async function postPlatformDefaultImportItem(
-  item: Record<string, unknown>,
-  tier: 'free' | 'pro',
-  label: string
+async function postPlatformDefaultImportFile(
+  file: File,
+  tier: 'free' | 'pro'
 ): Promise<PlatformDefaultImportResult> {
-  const blob = new Blob([JSON.stringify(item)], { type: 'application/json' })
   const form = new FormData()
-  form.append('file', blob, `${label.replace(/[^\w.-]+/g, '_') || 'campaign'}.json`)
+  form.append('file', file, file.name || 'campaign-export.json')
   form.append('tier', tier)
 
-  console.log('[Import] postPlatformDefaultImportItem:request', {
-    label,
+  console.log('[Import] postPlatformDefaultImportFile:request', {
+    name: file.name,
+    size: file.size,
     tier,
-    bytes: blob.size,
   })
 
   const res = await fetch('/api/admin/campaign-workflow-defaults', {
@@ -93,8 +91,7 @@ export async function postPlatformDefaultImportItem(
   })
 
   const rawText = await res.text()
-  console.log('[Import] postPlatformDefaultImportItem:response', {
-    label,
+  console.log('[Import] postPlatformDefaultImportFile:response', {
     status: res.status,
     ok: res.ok,
     bytes: rawText.length,
@@ -105,13 +102,13 @@ export async function postPlatformDefaultImportItem(
   try {
     data = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {}
   } catch (err) {
-    console.error('[Import] postPlatformDefaultImportItem:response-json-failed', err, rawText.slice(0, 200))
-    throw new Error(`${label}: server returned invalid JSON (HTTP ${res.status})`)
+    console.error('[Import] postPlatformDefaultImportFile:response-json-failed', err, rawText.slice(0, 200))
+    throw new Error(`Server returned invalid JSON (HTTP ${res.status})`)
   }
 
   if (!res.ok) {
     throw new Error(
-      typeof data.error === 'string' ? `${label}: ${data.error}` : `${label}: import failed (HTTP ${res.status})`
+      typeof data.error === 'string' ? data.error : `Import failed (HTTP ${res.status})`
     )
   }
 
@@ -119,8 +116,8 @@ export async function postPlatformDefaultImportItem(
   if (!Number.isFinite(imported) || imported < 1) {
     throw new Error(
       typeof data.error === 'string'
-        ? `${label}: ${data.error}`
-        : `${label}: missing imported count (got ${String(data.imported)}, HTTP ${res.status})`
+        ? data.error
+        : `Import did not save any templates (got ${String(data.imported)})`
     )
   }
 
@@ -157,53 +154,37 @@ export async function importPlatformDefaultExportFile(
 
   pushLog(`[Import] file=${file.name} size=${file.size} tier=${tier}`)
 
-  onProgress({ percent: 5, label: `Reading ${file.name}…` })
+  onProgress({ percent: 8, label: `Reading ${file.name}…` })
   const { items } = await readCampaignExportFile(file)
 
-  const importItems = tier === 'pro' ? items : items.slice(0, 1)
   if (tier === 'free' && items.length > 1) {
-    pushLog(`[Import] free tier: using first campaign only (${items.length - 1} skipped)`)
+    pushLog(`[Import] free tier: server will import first campaign only (${items.length - 1} skipped)`)
   }
 
-  let imported = 0
-  let failed = 0
-  let synced_campaigns = 0
-  const warnings: string[] = []
+  onProgress({ percent: 20, label: `Uploading ${items.length} campaign(s)…` })
 
-  for (let i = 0; i < importItems.length; i += 1) {
-    const item = importItems[i]
-    const name = campaignItemName(item, i)
-    const pct = Math.round(10 + ((i + 1) / importItems.length) * 85)
-    onProgress({
-      percent: pct,
-      label: `Importing ${i + 1}/${importItems.length}: ${name}`,
-    })
-
-    try {
-      pushLog(`[Import] campaign ${i + 1}/${importItems.length}: ${name}`)
-      const result = await postPlatformDefaultImportItem(item, tier, name)
-      imported += result.imported
-      failed += result.failed
-      synced_campaigns += result.synced_campaigns
-      warnings.push(...result.warnings)
-      pushLog(`[Import] ok ${name} imported=${result.imported}`)
-    } catch (err) {
-      failed += 1
-      const msg = err instanceof Error ? err.message : `${name}: import failed`
-      warnings.push(msg)
-      pushLog(`[Import] fail ${name}: ${msg}`)
-      console.error('[Import] campaign failed', err)
+  try {
+    const result = await postPlatformDefaultImportFile(file, tier)
+    pushLog(`[Import] ok imported=${result.imported} failed=${result.failed}`)
+    if (result.warnings.length > 0) {
+      pushLog(`[Import] warnings=${result.warnings.length}`)
     }
+
+    console.log('[Import] summary', result)
+    console.groupEnd()
+
+    onProgress({ percent: 100, label: 'Import complete' })
+
+    return {
+      imported: result.imported,
+      failed: result.failed,
+      synced_campaigns: result.synced_campaigns,
+      warnings: result.warnings,
+      logs,
+    }
+  } catch (err) {
+    console.groupEnd()
+    onProgress({ percent: 100, label: 'Import failed' })
+    throw err
   }
-
-  console.log('[Import] summary', { imported, failed, synced_campaigns, warnings })
-  console.groupEnd()
-
-  onProgress({ percent: 100, label: imported > 0 ? 'Import complete' : 'Import failed' })
-
-  if (imported < 1) {
-    throw new Error(warnings[0] ?? 'No templates were imported')
-  }
-
-  return { imported, failed, synced_campaigns, warnings, logs }
 }

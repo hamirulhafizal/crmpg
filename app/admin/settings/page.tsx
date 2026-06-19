@@ -185,6 +185,11 @@ export default function AdminSettingsPage() {
   const [selectedDefaultIds, setSelectedDefaultIds] = useState<Set<string>>(new Set())
   const jsonImportInputRef = useRef<HTMLInputElement>(null)
   const [campaignWorkflowEditorOpen, setCampaignWorkflowEditorOpen] = useState(false)
+  const [metaDrafts, setMetaDrafts] = useState<
+    Record<string, { name: string; tier: 'free' | 'pro' }>
+  >({})
+  const [savingMetaId, setSavingMetaId] = useState<string | null>(null)
+  const [publishingDefaultId, setPublishingDefaultId] = useState<string | null>(null)
 
   const loadTagCatalog = useCallback(async () => {
     setTagCatalogLoading(true)
@@ -312,6 +317,113 @@ export default function AdminSettingsPage() {
       setCampaignDefaultLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    setMetaDrafts((prev) => {
+      const next: Record<string, { name: string; tier: 'free' | 'pro' }> = {}
+      for (const row of allPlatformDefaults) {
+        next[row.id] = prev[row.id] ?? {
+          name: row.name,
+          tier: row.tier,
+        }
+      }
+      return next
+    })
+  }, [allPlatformDefaults])
+
+  const saveDefaultMetadata = useCallback(
+    async (row: PlatformCampaignDefaultListItem) => {
+      const draft = metaDrafts[row.id]
+      if (!draft) return
+      const name = draft.name.trim()
+      if (!name) {
+        setCampaignDefaultError('Template name is required')
+        return
+      }
+
+      setSavingMetaId(row.id)
+      setCampaignDefaultError(null)
+      setCampaignDefaultSuccess(null)
+      try {
+        const res = await fetch('/api/admin/campaign-workflow-defaults', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: row.id,
+            name,
+            tier: draft.tier,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setCampaignDefaultError(
+            typeof data.error === 'string' ? data.error : 'Failed to update template'
+          )
+          return
+        }
+        const synced = Number(data.synced_campaigns ?? 0)
+        setCampaignDefaultSuccess(
+          `Updated "${name}".${synced > 0 ? ` Synced ${synced} user campaign(s).` : ''}`
+        )
+        await loadCampaignWorkflowDefaults()
+      } catch {
+        setCampaignDefaultError('Failed to update template')
+      } finally {
+        setSavingMetaId(null)
+      }
+    },
+    [loadCampaignWorkflowDefaults, metaDrafts]
+  )
+
+  const publishDefaultWorkflow = useCallback(
+    async (row: PlatformCampaignDefaultListItem) => {
+      const tierLabel = row.tier === 'pro' ? 'Pro' : 'Free'
+      const confirmMessage =
+        row.tier === 'pro'
+          ? `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked Pro campaigns will be updated and set to draft so users can review before activating.`
+          : `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked free campaigns will receive the latest workflow content.`
+
+      if (!window.confirm(confirmMessage)) return
+
+      setPublishingDefaultId(row.id)
+      setCampaignDefaultError(null)
+      setCampaignDefaultSuccess(null)
+      try {
+        const res = await fetch('/api/admin/campaign-workflow-defaults/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: row.id }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setCampaignDefaultError(
+            typeof data.error === 'string' ? data.error : 'Failed to publish template'
+          )
+          return
+        }
+
+        const provisioned = Number(data.provisioned ?? 0)
+        const synced = Number(data.synced ?? 0)
+        const setToDraft = Number(data.set_to_draft ?? 0)
+        const targetUsers = Number(data.target_users ?? 0)
+
+        const parts = [
+          `Published "${row.name}" to ${targetUsers} ${tierLabel.toLowerCase()} user(s).`,
+          provisioned > 0 ? `${provisioned} new campaign(s) created.` : null,
+          synced > 0 ? `${synced} linked campaign(s) updated.` : null,
+          setToDraft > 0 ? `${setToDraft} campaign(s) set to draft.` : null,
+        ].filter(Boolean)
+
+        setCampaignDefaultSuccess(parts.join(' '))
+        await loadCampaignWorkflowDefaults()
+      } catch {
+        setCampaignDefaultError('Failed to publish template')
+      } finally {
+        setPublishingDefaultId(null)
+      }
+    },
+    [loadCampaignWorkflowDefaults]
+  )
 
   const openDefaultEditor = useCallback(async (row: PlatformCampaignDefaultListItem) => {
     setCampaignDefaultError(null)
@@ -1297,13 +1409,14 @@ export default function AdminSettingsPage() {
                 multiple
                 className="sr-only"
                 onChange={(e) => {
-                  const files = e.target.files
-                  console.log('[Import] file input change', files?.length ?? 0)
-                  if (!files?.length) {
+                  const input = e.target
+                  const picked = input.files ? Array.from(input.files) : []
+                  console.log('[Import] file input change', picked.length)
+                  if (picked.length === 0) {
                     console.warn('[Import] no files selected')
                     return
                   }
-                  e.target.value = ''
+
                   void (async () => {
                     console.group('[Import] handler start')
                     setJsonImportBusy(true)
@@ -1313,23 +1426,22 @@ export default function AdminSettingsPage() {
                     setCampaignDefaultSuccess(null)
                     try {
                       const tier = jsonImportTierRef.current
-                      console.log('[Import] tier', tier, 'files', files.length)
+                      console.log('[Import] tier', tier, 'files', picked.length)
                       let totalImported = 0
                       let totalFailed = 0
                       let totalSynced = 0
                       const warnings: string[] = []
                       const debugLogs: string[] = []
-                      const fileList = Array.from(files)
 
-                      for (let fileIndex = 0; fileIndex < fileList.length; fileIndex += 1) {
-                        const file = fileList[fileIndex]
+                      for (let fileIndex = 0; fileIndex < picked.length; fileIndex += 1) {
+                        const file = picked[fileIndex]
                         console.log('[Import] processing file', fileIndex + 1, file.name, file.size)
                         const result = await importPlatformDefaultExportFile(file, tier, (update) => {
                           const overallPct =
-                            fileList.length > 1
+                            picked.length > 1
                               ? Math.round(
-                                  (fileIndex / fileList.length) * 100 +
-                                    update.percent / fileList.length
+                                  (fileIndex / picked.length) * 100 +
+                                    update.percent / picked.length
                                 )
                               : update.percent
                           setJsonImportProgress({
@@ -1346,6 +1458,9 @@ export default function AdminSettingsPage() {
 
                       console.log('[Import] done', { totalImported, totalFailed, totalSynced, warnings })
                       setJsonImportDebug(debugLogs.join('\n'))
+                      if (totalImported < 1) {
+                        throw new Error(warnings[0] ?? 'No templates were imported')
+                      }
                       setCampaignDefaultSuccess(
                         `Imported ${totalImported} template${totalImported === 1 ? '' : 's'}` +
                           (totalFailed > 0 ? ` (${totalFailed} failed)` : '') +
@@ -1363,6 +1478,7 @@ export default function AdminSettingsPage() {
                       )
                       setCampaignDefaultError(msg)
                     } finally {
+                      input.value = ''
                       console.groupEnd()
                       setJsonImportBusy(false)
                       setTimeout(() => setJsonImportProgress(null), 1500)
@@ -1484,25 +1600,41 @@ export default function AdminSettingsPage() {
                               aria-label={`Select template ${row.name}`}
                             />
                           </td>
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            <button
-                              type="button"
-                              onClick={() => void openDefaultEditor(row)}
-                              className="text-left text-blue-700 hover:underline"
-                            >
-                              {row.name}
-                            </button>
+                          <td className="px-4 py-3">
+                            <input
+                              type="text"
+                              value={metaDrafts[row.id]?.name ?? row.name}
+                              onChange={(e) =>
+                                setMetaDrafts((prev) => ({
+                                  ...prev,
+                                  [row.id]: {
+                                    name: e.target.value,
+                                    tier: prev[row.id]?.tier ?? row.tier,
+                                  },
+                                }))
+                              }
+                              className="w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-900"
+                              aria-label={`Template name for ${row.name}`}
+                            />
                           </td>
                           <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase ${
-                                row.tier === 'pro'
-                                  ? 'bg-violet-100 text-violet-800'
-                                  : 'bg-slate-200 text-slate-700'
-                              }`}
+                            <select
+                              value={metaDrafts[row.id]?.tier ?? row.tier}
+                              onChange={(e) =>
+                                setMetaDrafts((prev) => ({
+                                  ...prev,
+                                  [row.id]: {
+                                    name: prev[row.id]?.name ?? row.name,
+                                    tier: e.target.value === 'pro' ? 'pro' : 'free',
+                                  },
+                                }))
+                              }
+                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold uppercase text-slate-800"
+                              aria-label={`Template tier for ${row.name}`}
                             >
-                              {row.tier}
-                            </span>
+                              <option value="free">Free</option>
+                              <option value="pro">Pro</option>
+                            </select>
                           </td>
                           <td className="px-4 py-3 align-top text-slate-600">
                             <span className="capitalize">{row.trigger_type || 'manual'}</span>
@@ -1521,6 +1653,48 @@ export default function AdminSettingsPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-wrap justify-end gap-1.5">
+                              {(() => {
+                                const draft = metaDrafts[row.id]
+                                const metaDirty =
+                                  draft &&
+                                  (draft.name.trim() !== row.name || draft.tier !== row.tier)
+                                return metaDirty ? (
+                                  <button
+                                    type="button"
+                                    disabled={savingMetaId === row.id || campaignDefaultSaving}
+                                    onClick={() => void saveDefaultMetadata(row)}
+                                    title="Save name and tier"
+                                    aria-label="Save name and tier"
+                                    className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                                  >
+                                    {savingMetaId === row.id ? 'Saving…' : 'Save'}
+                                  </button>
+                                ) : null
+                              })()}
+                              <button
+                                type="button"
+                                disabled={
+                                  publishingDefaultId === row.id ||
+                                  campaignDefaultSaving ||
+                                  Boolean(
+                                    metaDrafts[row.id] &&
+                                      (metaDrafts[row.id].name.trim() !== row.name ||
+                                        metaDrafts[row.id].tier !== row.tier)
+                                  )
+                                }
+                                onClick={() => void publishDefaultWorkflow(row)}
+                                title={
+                                  metaDrafts[row.id] &&
+                                  (metaDrafts[row.id].name.trim() !== row.name ||
+                                    metaDrafts[row.id].tier !== row.tier)
+                                    ? 'Save name and tier before publishing'
+                                    : 'Publish to all users on this tier'
+                                }
+                                aria-label="Publish to users"
+                                className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                              >
+                                {publishingDefaultId === row.id ? 'Publishing…' : 'Publish'}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => void openDefaultEditor(row)}
