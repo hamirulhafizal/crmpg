@@ -292,9 +292,10 @@ export async function PATCH(request: Request) {
     const admin = createServiceRoleClient()
     const defaultId = typeof body.id === 'string' ? body.id.trim() : ''
     const workflow_definition = body.workflow_definition as WorkflowDefinition | undefined
-    const hasWorkflow = Boolean(workflow_definition?.nodes?.length)
 
-    if (!hasWorkflow) {
+    if (
+      !workflow_definition?.nodes?.length
+    ) {
       if (!defaultId) {
         return NextResponse.json({ error: 'id is required' }, { status: 400 })
       }

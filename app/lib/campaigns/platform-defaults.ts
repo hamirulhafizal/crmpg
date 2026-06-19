@@ -556,7 +556,13 @@ type SubscriptionWithPlan = {
   status: SaasSubscriptionStatus
   trial_ends_at: string | null
   current_period_end: string | null
-  plan: { slug: string } | null
+  plan: { slug: string } | { slug: string }[] | null
+}
+
+function planSlugFromSubscription(sub: SubscriptionWithPlan): string {
+  const plan = sub.plan
+  if (Array.isArray(plan)) return String(plan[0]?.slug ?? 'free')
+  return String(plan?.slug ?? 'free')
 }
 
 async function listTargetUserIdsForDefaultTier(
@@ -574,7 +580,7 @@ async function listTargetUserIdsForDefaultTier(
 
   for (const raw of subs ?? []) {
     const sub = raw as SubscriptionWithPlan
-    const planSlug = String(sub.plan?.slug ?? 'free')
+    const planSlug = planSlugFromSubscription(sub)
     const proActive = isProSubscriptionActive({
       planSlug,
       status: sub.status,
