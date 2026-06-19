@@ -136,7 +136,7 @@ function whatsAppReminderText(kind: TrialReminderKind, trialEndsAt: string): str
       'Your Pro trial ends in 3 days.',
       `Ends: ${expiryLabel}`,
       '',
-      'Subscribe to keep unlimited campaigns & WasenderAPI 👇',
+      'Subscribe to keep unlimited workflows & WasenderAPI 👇',
       renewUrl,
     ].join('\n')
   }
