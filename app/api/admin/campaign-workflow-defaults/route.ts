@@ -301,11 +301,51 @@ export async function PATCH(request: Request) {
       }
       const name = typeof body.name === 'string' ? body.name : undefined
       const tier = body.tier === 'pro' ? 'pro' : body.tier === 'free' ? 'free' : undefined
-      if (name === undefined && tier === undefined) {
-        return NextResponse.json({ error: 'name or tier is required' }, { status: 400 })
+      const description =
+        typeof body.description === 'string'
+          ? body.description
+          : body.description === null
+            ? null
+            : undefined
+      const trigger_type = typeof body.trigger_type === 'string' ? body.trigger_type : undefined
+      const trigger_offset_days =
+        typeof body.trigger_offset_days === 'number' && Number.isFinite(body.trigger_offset_days)
+          ? body.trigger_offset_days
+          : undefined
+      const timezone = typeof body.timezone === 'string' ? body.timezone : undefined
+      const daily_send_limit =
+        typeof body.daily_send_limit === 'number' && Number.isFinite(body.daily_send_limit)
+          ? body.daily_send_limit
+          : undefined
+      const cooldown_days =
+        typeof body.cooldown_days === 'number' && Number.isFinite(body.cooldown_days)
+          ? body.cooldown_days
+          : undefined
+
+      const hasMetadataUpdate =
+        name !== undefined ||
+        tier !== undefined ||
+        description !== undefined ||
+        trigger_type !== undefined ||
+        trigger_offset_days !== undefined ||
+        timezone !== undefined ||
+        daily_send_limit !== undefined ||
+        cooldown_days !== undefined
+
+      if (!hasMetadataUpdate) {
+        return NextResponse.json({ error: 'At least one metadata field is required' }, { status: 400 })
       }
 
-      const result = await updatePlatformCampaignDefaultMetadata(admin, defaultId, { name, tier })
+      const result = await updatePlatformCampaignDefaultMetadata(admin, defaultId, {
+        name,
+        tier,
+        description,
+        trigger_type,
+        trigger_offset_days,
+        timezone,
+        daily_send_limit,
+        cooldown_days,
+      })
       return NextResponse.json({
         data: result.defaults,
         synced_campaigns: result.synced_campaigns,

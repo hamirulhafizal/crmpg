@@ -406,11 +406,22 @@ export async function savePlatformCampaignDefaultFromEditor(
   return { defaults, synced_campaigns }
 }
 
-/** Update template display name and/or tier (syncs linked user campaigns). */
+/** Update template metadata (syncs linked user campaigns). */
+export type PlatformDefaultMetadataInput = {
+  name?: string
+  tier?: PlatformDefaultTier
+  description?: string | null
+  trigger_type?: string
+  trigger_offset_days?: number
+  timezone?: string
+  daily_send_limit?: number
+  cooldown_days?: number
+}
+
 export async function updatePlatformCampaignDefaultMetadata(
   supabase: SupabaseClient,
   defaultId: string,
-  input: { name?: string; tier?: PlatformDefaultTier }
+  input: PlatformDefaultMetadataInput
 ): Promise<{ defaults: PlatformCampaignDefault; synced_campaigns: number }> {
   const id = defaultId.trim()
   if (!id) throw new Error('Template id is required')
@@ -422,6 +433,32 @@ export async function updatePlatformCampaignDefaultMetadata(
   if (!name) throw new Error('Name is required')
 
   const tier = input.tier === 'pro' || input.tier === 'free' ? input.tier : existing.tier
+  const description =
+    input.description !== undefined
+      ? typeof input.description === 'string'
+        ? input.description.trim() || null
+        : null
+      : existing.description
+  const trigger_type =
+    typeof input.trigger_type === 'string' && input.trigger_type.trim()
+      ? input.trigger_type.trim()
+      : existing.trigger_type
+  const trigger_offset_days =
+    typeof input.trigger_offset_days === 'number' && Number.isFinite(input.trigger_offset_days)
+      ? Math.trunc(input.trigger_offset_days)
+      : existing.trigger_offset_days
+  const timezone =
+    typeof input.timezone === 'string' && input.timezone.trim()
+      ? input.timezone.trim()
+      : existing.timezone
+  const daily_send_limit =
+    typeof input.daily_send_limit === 'number' && Number.isFinite(input.daily_send_limit)
+      ? Math.max(1, Math.trunc(input.daily_send_limit))
+      : existing.daily_send_limit
+  const cooldown_days =
+    typeof input.cooldown_days === 'number' && Number.isFinite(input.cooldown_days)
+      ? Math.max(0, Math.trunc(input.cooldown_days))
+      : existing.cooldown_days
   const tierChanged = tier !== existing.tier
   const sort_order = tierChanged
     ? tier === 'pro'
@@ -441,7 +478,13 @@ export async function updatePlatformCampaignDefaultMetadata(
   const defaults = await upsertPlatformDefault(supabase, {
     ...row,
     name,
+    description,
     tier,
+    trigger_type,
+    trigger_offset_days,
+    timezone,
+    daily_send_limit,
+    cooldown_days,
     sort_order,
     updated_at: new Date().toISOString(),
   })
@@ -670,26 +713,24 @@ export async function publishPlatformCampaignDefault(
   const synced = await syncLinkedPlatformDefaultCampaigns(supabase, defaults)
 
   let set_to_draft = 0
-  if (defaults.tier === 'pro') {
-    const { data: linked, error: linkedErr } = await supabase
+  const { data: linked, error: linkedErr } = await supabase
+    .from('campaigns')
+    .select('id, status')
+    .eq('uses_platform_defaults', true)
+    .eq('platform_default_id', defaults.id)
+
+  if (linkedErr) throw linkedErr
+
+  const nowIso = new Date().toISOString()
+  for (const row of linked ?? []) {
+    if (row.status === 'draft') continue
+    const { error: draftErr } = await supabase
       .from('campaigns')
-      .select('id, status')
-      .eq('uses_platform_defaults', true)
-      .eq('platform_default_id', defaults.id)
+      .update({ status: 'draft', updated_at: nowIso })
+      .eq('id', row.id)
 
-    if (linkedErr) throw linkedErr
-
-    const nowIso = new Date().toISOString()
-    for (const row of linked ?? []) {
-      if (row.status === 'draft') continue
-      const { error: draftErr } = await supabase
-        .from('campaigns')
-        .update({ status: 'draft', updated_at: nowIso })
-        .eq('id', row.id)
-
-      if (draftErr) throw draftErr
-      set_to_draft += 1
-    }
+    if (draftErr) throw draftErr
+    set_to_draft += 1
   }
 
   await supabase

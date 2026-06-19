@@ -25,21 +25,25 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <nav className="flex min-w-0 items-center gap-3" aria-label="Admin breadcrumb">
             <Link
               href="/dashboard"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Dashboard
             </Link>
-            <span className="text-slate-300">/</span>
-            <span className="text-sm font-semibold text-slate-900">Admin</span>
+            <span className="text-slate-300" aria-hidden>
+              /
+            </span>
+            <span className="truncate text-sm font-semibold text-slate-900">Admin</span>
+          </nav>
+          <div className="shrink-0">
+            <UserProfileMenu />
           </div>
-          <UserProfileMenu />
         </div>
       </header>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</div>

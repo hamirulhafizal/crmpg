@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AdminPlatformWorkflowEditor } from '@/app/admin/settings/AdminPlatformWorkflowEditor'
+import {
+  PlatformDefaultWorkflowDialog,
+  WorkflowPublishIcon,
+} from '@/app/admin/settings/PlatformDefaultWorkflowDialog'
 import { importPlatformDefaultExportFile } from '@/app/admin/settings/platform-default-import-client'
 import type {
   PlatformCampaignDefault,
@@ -190,6 +194,8 @@ export default function AdminSettingsPage() {
   >({})
   const [savingMetaId, setSavingMetaId] = useState<string | null>(null)
   const [publishingDefaultId, setPublishingDefaultId] = useState<string | null>(null)
+  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
+  const [workflowDialogTemplateId, setWorkflowDialogTemplateId] = useState<string | null>(null)
 
   const loadTagCatalog = useCallback(async () => {
     setTagCatalogLoading(true)
@@ -331,6 +337,15 @@ export default function AdminSettingsPage() {
     })
   }, [allPlatformDefaults])
 
+  const isMetaDraftDirty = useCallback(
+    (row: PlatformCampaignDefaultListItem) => {
+      const draft = metaDrafts[row.id]
+      if (!draft) return false
+      return draft.name.trim() !== row.name || draft.tier !== row.tier
+    },
+    [metaDrafts]
+  )
+
   const saveDefaultMetadata = useCallback(
     async (row: PlatformCampaignDefaultListItem) => {
       const draft = metaDrafts[row.id]
@@ -378,10 +393,7 @@ export default function AdminSettingsPage() {
   const publishDefaultWorkflow = useCallback(
     async (row: PlatformCampaignDefaultListItem) => {
       const tierLabel = row.tier === 'pro' ? 'Pro' : 'Free'
-      const confirmMessage =
-        row.tier === 'pro'
-          ? `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked Pro campaigns will be updated and set to draft so users can review before activating.`
-          : `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked free campaigns will receive the latest workflow content.`
+      const confirmMessage = `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked campaigns will be updated and set to draft so users can review before activating.`
 
       if (!window.confirm(confirmMessage)) return
 
@@ -425,32 +437,10 @@ export default function AdminSettingsPage() {
     [loadCampaignWorkflowDefaults]
   )
 
-  const openDefaultEditor = useCallback(async (row: PlatformCampaignDefaultListItem) => {
+  const openDefaultEditor = useCallback((row: PlatformCampaignDefaultListItem) => {
     setCampaignDefaultError(null)
-    setCampaignDefaultSaving(true)
-    try {
-      const res = await fetch(
-        `/api/admin/campaign-workflow-defaults?id=${encodeURIComponent(row.id)}`,
-        { cache: 'no-store' }
-      )
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setCampaignDefaultError(typeof data.error === 'string' ? data.error : 'Failed to load template')
-        return
-      }
-      const full = data.data as PlatformCampaignDefault | undefined
-      if (!full) {
-        setCampaignDefaultError('Failed to load template')
-        return
-      }
-      setCampaignDefaultData(full)
-      setCampaignDefaultName(full.name)
-      setCampaignWorkflowEditorOpen(true)
-    } catch {
-      setCampaignDefaultError('Failed to load template')
-    } finally {
-      setCampaignDefaultSaving(false)
-    }
+    setWorkflowDialogTemplateId(row.id)
+    setWorkflowDialogOpen(true)
   }, [])
 
   useEffect(() => {
@@ -1546,7 +1536,7 @@ export default function AdminSettingsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <table className="min-w-[720px] w-full text-left text-sm">
+              <table className="min-w-[960px] w-full text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-3 py-3">
@@ -1567,6 +1557,7 @@ export default function AdminSettingsPage() {
                       />
                     </th>
                     <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Description</th>
                     <th className="px-4 py-3">Tier</th>
                     <th className="px-4 py-3">Trigger</th>
                     <th className="px-4 py-3 text-right">Steps</th>
@@ -1578,7 +1569,7 @@ export default function AdminSettingsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {allPlatformDefaults.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
+                      <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
                         No templates yet. Import a workflow JSON export to get started.
                       </td>
                     </tr>
@@ -1600,7 +1591,7 @@ export default function AdminSettingsPage() {
                               aria-label={`Select template ${row.name}`}
                             />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 align-top">
                             <input
                               type="text"
                               value={metaDrafts[row.id]?.name ?? row.name}
@@ -1617,7 +1608,16 @@ export default function AdminSettingsPage() {
                               aria-label={`Template name for ${row.name}`}
                             />
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 align-top text-slate-600">
+                            {row.description?.trim() ? (
+                              <p className="max-w-[16rem] text-sm leading-snug text-slate-600 line-clamp-3">
+                                {row.description}
+                              </p>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-top">
                             <select
                               value={metaDrafts[row.id]?.tier ?? row.tier}
                               onChange={(e) =>
@@ -1653,53 +1653,42 @@ export default function AdminSettingsPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-wrap justify-end gap-1.5">
-                              {(() => {
-                                const draft = metaDrafts[row.id]
-                                const metaDirty =
-                                  draft &&
-                                  (draft.name.trim() !== row.name || draft.tier !== row.tier)
-                                return metaDirty ? (
-                                  <button
-                                    type="button"
-                                    disabled={savingMetaId === row.id || campaignDefaultSaving}
-                                    onClick={() => void saveDefaultMetadata(row)}
-                                    title="Save name and tier"
-                                    aria-label="Save name and tier"
-                                    className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-                                  >
-                                    {savingMetaId === row.id ? 'Saving…' : 'Save'}
-                                  </button>
-                                ) : null
-                              })()}
+                              {isMetaDraftDirty(row) ? (
+                                <button
+                                  type="button"
+                                  disabled={savingMetaId === row.id || campaignDefaultSaving}
+                                  onClick={() => void saveDefaultMetadata(row)}
+                                  title="Save name and tier"
+                                  aria-label="Save name and tier"
+                                  className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                                >
+                                  {savingMetaId === row.id ? 'Saving…' : 'Save'}
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 disabled={
                                   publishingDefaultId === row.id ||
                                   campaignDefaultSaving ||
-                                  Boolean(
-                                    metaDrafts[row.id] &&
-                                      (metaDrafts[row.id].name.trim() !== row.name ||
-                                        metaDrafts[row.id].tier !== row.tier)
-                                  )
+                                  isMetaDraftDirty(row)
                                 }
                                 onClick={() => void publishDefaultWorkflow(row)}
                                 title={
-                                  metaDrafts[row.id] &&
-                                  (metaDrafts[row.id].name.trim() !== row.name ||
-                                    metaDrafts[row.id].tier !== row.tier)
-                                    ? 'Save name and tier before publishing'
+                                  isMetaDraftDirty(row)
+                                    ? 'Save changes before publishing'
                                     : 'Publish to all users on this tier'
                                 }
                                 aria-label="Publish to users"
-                                className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
                               >
+                                <WorkflowPublishIcon className="h-3.5 w-3.5" />
                                 {publishingDefaultId === row.id ? 'Publishing…' : 'Publish'}
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void openDefaultEditor(row)}
-                                title="Edit workflow"
-                                aria-label="Edit workflow"
+                                onClick={() => openDefaultEditor(row)}
+                                title="Edit workflow details"
+                                aria-label="Edit workflow details"
                                 className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50"
                               >
                                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -1832,6 +1821,24 @@ export default function AdminSettingsPage() {
           </details>
         </section>
       )}
+
+      <PlatformDefaultWorkflowDialog
+        open={workflowDialogOpen}
+        templateId={workflowDialogTemplateId}
+        onClose={() => {
+          setWorkflowDialogOpen(false)
+          setWorkflowDialogTemplateId(null)
+        }}
+        onSaved={() => {
+          setCampaignDefaultSuccess('Template details saved.')
+          void loadCampaignWorkflowDefaults()
+        }}
+        onOpenWorkflowCanvas={(defaults) => {
+          setCampaignDefaultData(defaults)
+          setCampaignDefaultName(defaults.name)
+          setCampaignWorkflowEditorOpen(true)
+        }}
+      />
 
       <AdminPlatformWorkflowEditor
         open={campaignWorkflowEditorOpen}

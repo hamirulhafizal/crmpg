@@ -19,6 +19,7 @@ import {
 type Row = {
   id: string
   name: string
+  description?: string | null
   status: string
   trigger_type: string
   trigger_offset_days?: number
@@ -708,13 +709,18 @@ function CampaignsListInner() {
                             aria-label={`Select campaign ${r.name}`}
                           />
                         </td>
-                        <td className="px-4 py-3 font-medium text-slate-900">
+                        <td className="px-4 py-3">
                           <button
                             type="button"
                             onClick={() => replacePanel({ view: r.id })}
-                            className="text-left text-blue-700 hover:underline"
+                            className="text-left hover:underline"
                           >
-                            {r.name}
+                            <span className="font-medium text-blue-700">{r.name}</span>
+                            {r.description?.trim() ? (
+                              <p className="mt-1 max-w-md text-xs leading-snug text-slate-500 line-clamp-2">
+                                {r.description}
+                              </p>
+                            ) : null}
                           </button>
                         </td>
                         <td className="px-4 py-3">
