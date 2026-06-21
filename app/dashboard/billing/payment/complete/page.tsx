@@ -14,11 +14,15 @@ function PaymentCompleteInner() {
     }
     return ''
   }, [searchParams])
+  const paymentIntentId = useMemo(
+    () => (searchParams.get('payment_intent_id') || searchParams.get('payment_intent') || '').trim(),
+    [searchParams]
+  )
   const [message, setMessage] = useState('Confirming payment…')
   const [status, setStatus] = useState<'loading' | 'paid' | 'pending' | 'error'>('loading')
 
   useEffect(() => {
-    if (!orderNumber) {
+    if (!orderNumber && !paymentIntentId) {
       setStatus('error')
       setMessage('Missing order reference. Return to billing and try again.')
       return
@@ -28,8 +32,12 @@ function PaymentCompleteInner() {
     let attempts = 0
     const maxAttempts = 18
 
+    const syncUrl = orderNumber
+      ? `/api/saas/sync-payment?order_number=${encodeURIComponent(orderNumber)}`
+      : `/api/saas/sync-payment?payment_intent_id=${encodeURIComponent(paymentIntentId)}`
+
     const poll = async () => {
-      const res = await fetch(`/api/saas/sync-payment?order_number=${encodeURIComponent(orderNumber)}`)
+      const res = await fetch(syncUrl)
       const j = (await res.json().catch(() => ({}))) as { status?: string; error?: string }
       if (cancelled) return
 
@@ -64,7 +72,7 @@ function PaymentCompleteInner() {
     return () => {
       cancelled = true
     }
-  }, [orderNumber])
+  }, [orderNumber, paymentIntentId])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-violet-50/30 px-4">

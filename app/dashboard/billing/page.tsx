@@ -101,10 +101,13 @@ export default function DashboardBillingPage() {
   const [trialLoading, setTrialLoading] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { syncPending?: boolean }) => {
     setLoading(true)
     setError(null)
     try {
+      if (opts?.syncPending) {
+        await fetch('/api/saas/sync-payment?sync_pending=1', { cache: 'no-store' }).catch(() => null)
+      }
       const res = await fetch('/api/saas/me')
       const json = (await res.json()) as MeResponse & { error?: string }
       if (!res.ok) throw new Error(json.error || 'Failed to load billing')
@@ -117,7 +120,7 @@ export default function DashboardBillingPage() {
   }, [])
 
   useEffect(() => {
-    void load()
+    void load({ syncPending: true })
   }, [load])
 
   const freePlan = useMemo(() => data?.plans.find((p) => p.slug === 'free'), [data])

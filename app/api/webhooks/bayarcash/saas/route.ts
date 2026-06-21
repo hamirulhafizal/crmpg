@@ -25,7 +25,10 @@ export async function POST(request: Request) {
 
   try {
     const admin = createServiceRoleClient()
-    await syncSaasPaymentByOrderNumber(admin, clean)
+    const result = await syncSaasPaymentByOrderNumber(admin, clean)
+    if (result.status === 'error') {
+      console.error('bayarcash saas webhook sync error', clean, result.message)
+    }
   } catch (e) {
     console.error('bayarcash saas webhook', e)
   }
