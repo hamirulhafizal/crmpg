@@ -4,7 +4,7 @@
   "manifest_version": 3,
   "name": "CRMPG by KEM",
   "description": "Extension for KEM Public Gold Dealers to download their customer data's from business center page.",
-  "version": "10",
+  "version": "11",
   "permissions": [
     "activeTab",
     "scripting",
@@ -28,12 +28,16 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
-    "128": "icon.png"
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
   },
   "action": {
-    "default_icon": "icon.png",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    },
     "default_title": "CRMPG by KEM",
     "default_popup": "background.html"
   }

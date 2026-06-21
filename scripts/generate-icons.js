@@ -7,10 +7,10 @@ const path = require('path')
 // This is a placeholder script - you should replace this with actual image generation
 // or use ImageMagick, Sharp, or any image processing library
 
-console.log('Icon Generation Script')
-console.log('=====================')
+console.log('Extension icons (CRMPG text):')
+console.log('  node scripts/generate-extension-icons.mjs')
 console.log('')
-console.log('To generate icons for your PWA:')
+console.log('PWA icons:')
 console.log('1. Use your existing logo (pg-logo.png)')
 console.log('2. Resize it to 192x192 pixels and save as public/icon-192.png')
 console.log('3. Resize it to 512x512 pixels and save as public/icon-512.png')

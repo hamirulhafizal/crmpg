@@ -14,6 +14,10 @@ export const metadata: Metadata = {
   description: "Public Gold",
   keywords: "Publicgold, Publigoldofficial, PG Mall, PG Jewel, Aurora Italia, Emas, GAP, EPP, public gold, public gold malaysia, public gold indonesia, public gold brunei, public gold ampang, public gold bangi, public gold sunway, emas, emas public gold, dinar, gold bar, gold bars, gap, public gold gap",
   metadataBase: new URL('https://publicgolds.com'),
+  icons: {
+    icon: [{ url: '/icon', type: 'image/png' }],
+    apple: [{ url: '/apple-icon', type: 'image/png' }],
+  },
   openGraph: {
     title: "Public Gold Malaysia - All prices are quoted in Malaysia Ringgit (MYR) and excluding Gold Premium",
     images: ["/syariah1.png"],
@@ -34,8 +38,6 @@ export default function RootLayout({
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
-        <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
-        <link rel="icon" href="/favicon.ico" type="image/x-icon" />
         <meta name="theme-color" content="#2563eb" />
         <link rel="dns-prefetch" href="https://app.nocodb.com" />
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
