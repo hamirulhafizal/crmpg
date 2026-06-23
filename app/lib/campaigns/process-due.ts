@@ -194,7 +194,7 @@ async function pickWhatsAppSession(
   const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
   cronLog(
     debugLines,
-    `whatsapp pick user=${userId} session=${pick.session_name} session_provider=${sessionRow?.provider_type ?? 'null'} has_api_key=${Boolean(sessionRow?.session_api_key?.trim())} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} effective=${provider} reason=${reason} cached_status=${String(pick.last_known_waha_status || '')}`
+    `whatsapp pick user=${userId} session=${pick.session_name} session_provider=${sessionRow?.provider_type ?? 'null'} has_api_key=${Boolean(sessionRow?.session_api_key?.trim())} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} cfg_base=${cfg.baseUrl} effective=${provider} reason=${reason} cached_status=${String(pick.last_known_waha_status || '')}`
   )
 
   if (provider === 'wasender' && !(await canUseWasenderForUser(userId))) {
@@ -878,6 +878,12 @@ type CampaignRunContext = {
   plan: CampaignWorkflowPlan
 }
 
+/** Birthday-today campaigns must sync early — global cron times out while scanning other users' queues. */
+function campaignSyncPriority(ctx: CampaignRunContext): number {
+  if (ctx.plan.compiled.audience_filters.dob_is_today) return 0
+  return 1
+}
+
 async function runDueSendBatch(params: {
   supabase: ReturnType<typeof createServiceRoleClient>
   plansByCampaignId: Map<string, CampaignWorkflowPlan>
@@ -1525,6 +1531,19 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     if (opts?.campaignIdOnly === c.id) {
       scopedPlan = plan
     }
+  }
+
+  campaignsToSync.sort((a, b) => campaignSyncPriority(a) - campaignSyncPriority(b))
+  if (campaignsToSync.length > 0) {
+    cronLog(
+      debugLines,
+      `sync order (${campaignsToSync.length}): ${campaignsToSync
+        .map(
+          (ctx) =>
+            `${ctx.campaign.id.slice(0, 8)}…${ctx.campaign.name} user=${ctx.campaign.user_id.slice(0, 8)}…${ctx.plan.compiled.audience_filters.dob_is_today ? ' [dob_today]' : ''}`
+        )
+        .join(' | ')}`
+    )
   }
 
   // Send due messages BEFORE heavy enrollment scans so global cron does not time out
