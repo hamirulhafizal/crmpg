@@ -55,7 +55,7 @@ export async function GET(request: Request) {
 
   try {
     const { summary, debug: debugLines } = await processDueCampaignMessages({
-      debug,
+      debug: true,
       campaignIdOnly,
     })
 

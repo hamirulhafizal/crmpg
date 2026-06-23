@@ -21,7 +21,7 @@ import {
   loadUserWhatsAppSession,
   loadUserWhatsAppSessionByName,
   loadUserWhatsAppSessions,
-  resolveEffectiveWhatsAppProvider,
+  resolveEffectiveWhatsAppProviderDetailed,
 } from '@/app/lib/whatsapp/resolve'
 import type { WhatsAppSendImageParams, WhatsAppSendTextParams } from '@/app/lib/whatsapp/types'
 
@@ -29,6 +29,10 @@ const WAHA_TYPING_TIMEOUT_MS = Math.min(
   Math.max(Number(process.env.WAHA_TYPING_TIMEOUT_MS || 8000) || 8000, 2000),
   30000
 )
+
+function logWhatsAppSend(step: string, data: Record<string, unknown>) {
+  console.log(`[whatsapp-send] ${step}`, data)
+}
 
 async function loadSessionRowForSend(userId: string, sessionName: string) {
   const byName = await loadUserWhatsAppSessionByName(userId, sessionName)
@@ -202,10 +206,31 @@ export async function sendWhatsAppText(params: WhatsAppSendTextParams): Promise<
   const outbound = randomizeSpaces ? humanizeWhatsAppText(text) : text
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadSessionRowForSend(userId, session)
-  const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
+
+  logWhatsAppSend('sendText:start', {
+    userId,
+    session,
+    phoneLast4: phone.slice(-4),
+    cfgProvider: cfg.provider,
+    cfgServerId: cfg.serverId,
+    cfgBaseUrl: cfg.baseUrl,
+    sessionProviderType: sessionRow?.provider_type ?? null,
+    sessionHasApiKey: Boolean(sessionRow?.session_api_key?.trim()),
+    effectiveProvider: provider,
+    effectiveReason: reason,
+    textLength: outbound.length,
+  })
 
   if (provider === 'wasender') {
     if (!sessionRow?.session_api_key) {
+      logWhatsAppSend('sendText:abort', {
+        userId,
+        session,
+        reason: 'wasender path but session_api_key missing',
+        sessionProviderType: sessionRow?.provider_type ?? null,
+        cfgProvider: cfg.provider,
+      })
       throw new WhatsAppApiError(
         'Wasender session API key missing. Open WhatsApp Integration and reconnect.',
         400,
@@ -213,16 +238,25 @@ export async function sendWhatsAppText(params: WhatsAppSendTextParams): Promise<
         'wasender'
       )
     }
+    logWhatsAppSend('sendText:wasender', { userId, session, phoneLast4: phone.slice(-4) })
     if (enableTyping) await runWasenderTypingIndicator(userId, session, phone, outbound.length)
     await wasenderSendText(cfg, sessionRow.session_api_key, phoneToE164(phone), outbound)
+    logWhatsAppSend('sendText:wasender:ok', { userId, session, phoneLast4: phone.slice(-4) })
     return
   }
 
+  logWhatsAppSend('sendText:waha:resolve-chat', { userId, session, phoneLast4: phone.slice(-4) })
   const chatCandidates = await resolveChatCandidates(userId, session, phone)
+  logWhatsAppSend('sendText:waha:chat-candidates', {
+    userId,
+    session,
+    candidates: chatCandidates,
+  })
   if (enableTyping && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], outbound.length)
   }
   await sendWahaTextToChatCandidates(userId, session, chatCandidates, outbound)
+  logWhatsAppSend('sendText:waha:ok', { userId, session, phoneLast4: phone.slice(-4) })
 }
 
 export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promise<void> {
@@ -236,10 +270,26 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
   const filename = params.filename ?? 'image.png'
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadSessionRowForSend(userId, session)
-  const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
+
+  logWhatsAppSend('sendImage:start', {
+    userId,
+    session,
+    phoneLast4: phone.slice(-4),
+    cfgProvider: cfg.provider,
+    sessionProviderType: sessionRow?.provider_type ?? null,
+    effectiveProvider: provider,
+    effectiveReason: reason,
+    bytes: imageBytes.length,
+  })
 
   if (provider === 'wasender') {
     if (!sessionRow?.session_api_key) {
+      logWhatsAppSend('sendImage:abort', {
+        userId,
+        session,
+        reason: 'wasender path but session_api_key missing',
+      })
       throw new WhatsAppApiError(
         'Wasender session API key missing. Open WhatsApp Integration and reconnect.',
         400,
@@ -247,12 +297,15 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
         'wasender'
       )
     }
+    logWhatsAppSend('sendImage:wasender', { userId, session, phoneLast4: phone.slice(-4) })
     if (enableTyping && caption) await runWasenderTypingIndicator(userId, session, phone, caption.length)
     const publicUrl = await wasenderUploadMedia(cfg, sessionRow.session_api_key, imageBytes, mimetype)
     await wasenderSendImage(cfg, sessionRow.session_api_key, phoneToE164(phone), publicUrl, caption)
+    logWhatsAppSend('sendImage:wasender:ok', { userId, session, phoneLast4: phone.slice(-4) })
     return
   }
 
+  logWhatsAppSend('sendImage:waha', { userId, session, phoneLast4: phone.slice(-4) })
   const chatCandidates = await resolveChatCandidates(userId, session, phone)
   if (enableTyping && caption && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], caption.length)
@@ -275,7 +328,7 @@ export async function refreshUserSessionStatuses(userId: string): Promise<void> 
   const { createServiceRoleClient } = await import('@/app/lib/supabase/service-role')
   const admin = createServiceRoleClient()
 
-  if (cfg.provider === 'wasender' || resolveEffectiveWhatsAppProvider(cfg, rows[0]) === 'wasender') {
+  if (cfg.provider === 'wasender' || resolveEffectiveWhatsAppProviderDetailed(cfg, rows[0]).provider === 'wasender') {
     for (const row of rows) {
       if (!row.session_api_key) continue
       try {

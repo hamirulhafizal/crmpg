@@ -72,16 +72,49 @@ function rowToConfig(row: ServerRow): WhatsAppServerConfig {
   }
 }
 
-/** Prefer explicit session/server provider; do not treat session_api_key alone as Wasender. */
+export type WhatsAppProviderResolution = {
+  provider: WhatsAppProvider
+  reason: string
+}
+
+/** Prefer explicit session provider; WAHA QR sessions have no session_api_key. */
+export function resolveEffectiveWhatsAppProviderDetailed(
+  cfg: WhatsAppServerConfig,
+  sessionRow?: UserWhatsAppSessionRow | null
+): WhatsAppProviderResolution {
+  const sessionProvider = sessionRow?.provider_type
+  const hasSessionApiKey = Boolean(sessionRow?.session_api_key?.trim())
+
+  if (sessionProvider === 'wasender') {
+    return { provider: 'wasender', reason: 'session.provider_type=wasender' }
+  }
+  if (sessionProvider === 'waha') {
+    return { provider: 'waha', reason: 'session.provider_type=waha' }
+  }
+  if (sessionRow?.session_name && !hasSessionApiKey) {
+    return { provider: 'waha', reason: 'session linked without api key (WAHA QR login)' }
+  }
+  if (hasSessionApiKey) {
+    return { provider: 'wasender', reason: 'session has api key' }
+  }
+  if (cfg.provider === 'wasender') {
+    return { provider: 'wasender', reason: 'server config provider=wasender' }
+  }
+  if (inferProviderFromBaseUrl(cfg.baseUrl) === 'wasender') {
+    return { provider: 'wasender', reason: 'server base URL looks like Wasender' }
+  }
+  return { provider: 'waha', reason: 'default waha' }
+}
+
 export function resolveEffectiveWhatsAppProvider(
   cfg: WhatsAppServerConfig,
   sessionRow?: UserWhatsAppSessionRow | null
 ): WhatsAppProvider {
-  if (sessionRow?.provider_type === 'wasender') return 'wasender'
-  if (sessionRow?.provider_type === 'waha') return 'waha'
-  if (cfg.provider === 'wasender') return 'wasender'
-  if (inferProviderFromBaseUrl(cfg.baseUrl) === 'wasender') return 'wasender'
-  return 'waha'
+  return resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow).provider
+}
+
+function logWhatsAppResolve(step: string, data: Record<string, unknown>) {
+  console.log(`[whatsapp-resolve] ${step}`, data)
 }
 
 function fromEnv(): WhatsAppServerConfig {
@@ -141,18 +174,49 @@ export async function getWhatsAppServerConfig(opts: { userId?: string | null } =
 
     if (!serverRow) {
       cfg = await loadDefaultOrEnvConfig()
+      logWhatsAppResolve('config from default/env', {
+        userId,
+        assignedServerId: assignedServerId || null,
+        provider: cfg.provider,
+        serverId: cfg.serverId,
+        baseUrl: cfg.baseUrl,
+      })
     } else {
       const resolved = rowToConfig(serverRow)
       if (!resolved.baseUrl || !resolved.platformApiKey) {
         throw new Error(`Assigned WhatsApp server is misconfigured: ${serverRow.id}`)
       }
       cfg = resolved
+      logWhatsAppResolve('config from assigned server', {
+        userId,
+        assignedServerId,
+        provider: cfg.provider,
+        serverId: cfg.serverId,
+        baseUrl: cfg.baseUrl,
+        platformAdmin,
+      })
     }
 
-    return enforceProviderEntitlement(userId, cfg)
+    const finalCfg = await enforceProviderEntitlement(userId, cfg)
+    if (finalCfg.provider !== cfg.provider) {
+      logWhatsAppResolve('provider entitlement override', {
+        userId,
+        from: cfg.provider,
+        to: finalCfg.provider,
+        serverId: finalCfg.serverId,
+      })
+    }
+    return finalCfg
   }
 
-  return loadDefaultOrEnvConfig()
+  const anonCfg = await loadDefaultOrEnvConfig()
+  logWhatsAppResolve('config anonymous/default', {
+    provider: anonCfg.provider,
+    serverId: anonCfg.serverId,
+    baseUrl: anonCfg.baseUrl,
+    envWasenderConfigured: Boolean(ENV_WASENDER_PAT),
+  })
+  return anonCfg
 }
 
 async function loadDefaultOrEnvConfig(): Promise<WhatsAppServerConfig> {

@@ -57,7 +57,7 @@ import { waitSecondsBeforeNextCustomer, waitSecondsOnPath } from '@/app/lib/work
 import {
   getWhatsAppServerConfig,
   loadUserWhatsAppSessionByName,
-  resolveEffectiveWhatsAppProvider,
+  resolveEffectiveWhatsAppProviderDetailed,
 } from '@/app/lib/whatsapp/resolve'
 import {
   fetchLiveWhatsAppSessionStatus,
@@ -191,10 +191,10 @@ async function pickWhatsAppSession(
 
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
-  const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
   cronLog(
     debugLines,
-    `whatsapp pick user=${userId} session=${pick.session_name} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} effective=${provider}`
+    `whatsapp pick user=${userId} session=${pick.session_name} session_provider=${sessionRow?.provider_type ?? 'null'} has_api_key=${Boolean(sessionRow?.session_api_key?.trim())} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} effective=${provider} reason=${reason} cached_status=${String(pick.last_known_waha_status || '')}`
   )
 
   if (provider === 'wasender' && !(await canUseWasenderForUser(userId))) {
@@ -657,6 +657,7 @@ async function syncEnrollmentsForCampaign(
   let skipAlready = 0
   let skipNoPhone = 0
   let skipFilters = 0
+  let matchedAudience = 0
   let insertFailed = 0
   let insertedHere = 0
   let reenrolledHere = 0
@@ -690,6 +691,7 @@ async function syncEnrollmentsForCampaign(
         skipFilters++
         continue
       }
+      matchedAudience++
 
       if (enrolled.has(c.id)) {
         const prior = enrollmentByCustomer.get(c.id)
@@ -766,7 +768,7 @@ async function syncEnrollmentsForCampaign(
 
   cronLog(
     debugLines,
-    `sync done campaign=${campaign.id} customers_scanned=${scanned} new_inserts_this_run=${insertedHere} re_enrolled=${reenrolledHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
+    `sync done campaign=${campaign.id} name="${campaign.name}" customers_scanned=${scanned} audience_matches=${matchedAudience} new_inserts_this_run=${insertedHere} re_enrolled=${reenrolledHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
   )
   onProgress?.({ type: 'node', nodeId: audienceId, state: 'complete' })
   onProgress?.({ type: 'node', nodeId: enrollId, state: 'complete' })
@@ -1218,6 +1220,20 @@ async function processDueEnrollmentRows(
           await sendCampaignWhatsAppText(campaign.user_id, session, customer.phone, body, sendOpts)
         }
       } catch (waErr) {
+        const waMsg = waErr instanceof Error ? waErr.message : String(waErr)
+        cronLog(
+          debugLines,
+          `whatsapp send error enrollment=${row.id} campaign=${campaign.id} provider=${sessionPick.provider} session=${session} customer=${customer.id} step=${nextStep.step_order} error=${waMsg}`
+        )
+        console.error('[campaign-cron] whatsapp send failed', {
+          enrollmentId: row.id,
+          campaignId: campaign.id,
+          provider: sessionPick.provider,
+          session,
+          customerId: customer.id,
+          step: nextStep.step_order,
+          error: waMsg,
+        })
         if (!isImageStep && sendOpts.gmail_fallback_enabled) {
           const emailOk = await sendCampaignEmailFallback(
             campaign.user_id,
@@ -1425,6 +1441,11 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     cronLog(debugLines, 'skip: another campaign processor run is in progress (active lease)')
     return { summary, ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}) }
   }
+  if (lockAcquired === true) {
+    cronLog(debugLines, `processor lock acquired holder=${lockHolder} lease_seconds=${CAMPAIGN_PROCESSOR_LEASE_SECONDS}`)
+  } else if (skipGlobalLock) {
+    cronLog(debugLines, `processor lock skipped (single-campaign run) campaignIdOnly=${opts?.campaignIdOnly}`)
+  }
 
   try {
     await clearStalePendingCampaignLogs(supabase, debugLines)
@@ -1522,6 +1543,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   for (const ctx of campaignsToSync) {
     const { campaign: c, steps, plan } = ctx
     const insBefore = summary.enrollments_inserted
+    cronLog(debugLines, `── campaign sync begin id=${c.id} name="${c.name}" user=${c.user_id} ──`)
     const progress = onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
     if (progress) {
       progress({ type: 'phase', phase: 'started' })
@@ -1555,6 +1577,10 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       onProgress: progress,
       phaseLabel: 'post-sync',
     })
+    cronLog(
+      debugLines,
+      `── campaign sync+send end id=${c.id} enrollments+${summary.enrollments_inserted - insBefore} sent_so_far=${summary.messages_sent} failed_so_far=${summary.messages_failed} ──`
+    )
   }
 
   cronLog(
@@ -1577,6 +1603,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   } finally {
     if (lockAcquired === true) {
       await releaseCampaignProcessorLock(supabase, lockHolder)
+      cronLog(debugLines, `processor lock released holder=${lockHolder}`)
     }
   }
 }

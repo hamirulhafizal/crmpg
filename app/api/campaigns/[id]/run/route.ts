@@ -69,7 +69,7 @@ export async function POST(request: Request, ctx: Ctx) {
       })
     }
 
-    const { summary, debug: debugLines } = await processDueCampaignMessagesForCampaign(id, { debug })
+    const { summary, debug: debugLines } = await processDueCampaignMessagesForCampaign(id, { debug: true })
 
     return NextResponse.json({
       ok: true,
