@@ -1,10 +1,13 @@
+import type { WhatsAppSendLogContext } from '@/app/lib/whatsapp/types'
 import type { WhatsAppSendOptions } from '@/app/lib/campaigns/whatsapp-send-options'
 import {
   sendWhatsAppImage,
   sendWhatsAppText,
 } from '@/app/lib/whatsapp/send'
 
-export type CampaignWhatsAppSendOpts = Partial<WhatsAppSendOptions>
+export type CampaignWhatsAppSendOpts = Partial<WhatsAppSendOptions> & {
+  logContext?: WhatsAppSendLogContext
+}
 
 export async function sendCampaignWhatsAppText(
   userId: string,
@@ -20,6 +23,7 @@ export async function sendCampaignWhatsAppText(
     text,
     enableTyping: opts?.enable_typing,
     randomizeSpaces: opts?.randomize_spaces,
+    logContext: opts?.logContext,
   })
 }
 
@@ -28,6 +32,7 @@ export type CampaignWhatsAppImageSendOpts = {
   enable_typing?: boolean
   mimetype?: string
   filename?: string
+  logContext?: WhatsAppSendLogContext
 }
 
 export async function sendCampaignWhatsAppImage(
@@ -46,5 +51,6 @@ export async function sendCampaignWhatsAppImage(
     enableTyping: opts?.enable_typing,
     mimetype: opts?.mimetype,
     filename: opts?.filename,
+    logContext: opts?.logContext,
   })
 }

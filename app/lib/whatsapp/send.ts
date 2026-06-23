@@ -23,7 +23,7 @@ import {
   loadUserWhatsAppSessions,
   resolveEffectiveWhatsAppProviderDetailed,
 } from '@/app/lib/whatsapp/resolve'
-import type { WhatsAppSendImageParams, WhatsAppSendTextParams } from '@/app/lib/whatsapp/types'
+import type { WhatsAppSendImageParams, WhatsAppSendLogContext, WhatsAppSendTextParams } from '@/app/lib/whatsapp/types'
 
 const WAHA_TYPING_TIMEOUT_MS = Math.min(
   Math.max(Number(process.env.WAHA_TYPING_TIMEOUT_MS || 8000) || 8000, 2000),
@@ -32,6 +32,13 @@ const WAHA_TYPING_TIMEOUT_MS = Math.min(
 
 function logWhatsAppSend(step: string, data: Record<string, unknown>) {
   console.log(`[whatsapp-send] ${step}`, data)
+}
+
+function sendLogPayload(logContext: WhatsAppSendLogContext | undefined, data: Record<string, unknown>) {
+  return {
+    ...(logContext ?? {}),
+    ...data,
+  }
 }
 
 async function loadSessionRowForSend(userId: string, sessionName: string) {
@@ -200,7 +207,7 @@ async function sendWahaImageToChatCandidates(
 }
 
 export async function sendWhatsAppText(params: WhatsAppSendTextParams): Promise<void> {
-  const { userId, session, phone, text } = params
+  const { userId, session, phone, text, logContext } = params
   const enableTyping = params.enableTyping !== false
   const randomizeSpaces = params.randomizeSpaces !== false
   const outbound = randomizeSpaces ? humanizeWhatsAppText(text) : text
@@ -208,29 +215,32 @@ export async function sendWhatsAppText(params: WhatsAppSendTextParams): Promise<
   const sessionRow = await loadSessionRowForSend(userId, session)
   const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
 
-  logWhatsAppSend('sendText:start', {
-    userId,
-    session,
-    phoneLast4: phone.slice(-4),
-    cfgProvider: cfg.provider,
-    cfgServerId: cfg.serverId,
-    cfgBaseUrl: cfg.baseUrl,
-    sessionProviderType: sessionRow?.provider_type ?? null,
-    sessionHasApiKey: Boolean(sessionRow?.session_api_key?.trim()),
-    effectiveProvider: provider,
-    effectiveReason: reason,
-    textLength: outbound.length,
-  })
+  logWhatsAppSend(
+    'sendText:start',
+    sendLogPayload(logContext, {
+      ownerUserId: userId,
+      session,
+      phoneLast4: phone.slice(-4),
+      cfgProvider: cfg.provider,
+      cfgServerId: cfg.serverId,
+      cfgBaseUrl: cfg.baseUrl,
+      sessionProviderType: sessionRow?.provider_type ?? null,
+      sessionHasApiKey: Boolean(sessionRow?.session_api_key?.trim()),
+      effectiveProvider: provider,
+      effectiveReason: reason,
+      textLength: outbound.length,
+    })
+  )
 
   if (provider === 'wasender') {
     if (!sessionRow?.session_api_key) {
-      logWhatsAppSend('sendText:abort', {
-        userId,
+      logWhatsAppSend('sendText:abort', sendLogPayload(logContext, {
+        ownerUserId: userId,
         session,
         reason: 'wasender path but session_api_key missing',
         sessionProviderType: sessionRow?.provider_type ?? null,
         cfgProvider: cfg.provider,
-      })
+      }))
       throw new WhatsAppApiError(
         'Wasender session API key missing. Open WhatsApp Integration and reconnect.',
         400,
@@ -238,29 +248,25 @@ export async function sendWhatsAppText(params: WhatsAppSendTextParams): Promise<
         'wasender'
       )
     }
-    logWhatsAppSend('sendText:wasender', { userId, session, phoneLast4: phone.slice(-4) })
+    logWhatsAppSend('sendText:wasender', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
     if (enableTyping) await runWasenderTypingIndicator(userId, session, phone, outbound.length)
     await wasenderSendText(cfg, sessionRow.session_api_key, phoneToE164(phone), outbound)
-    logWhatsAppSend('sendText:wasender:ok', { userId, session, phoneLast4: phone.slice(-4) })
+    logWhatsAppSend('sendText:wasender:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
     return
   }
 
-  logWhatsAppSend('sendText:waha:resolve-chat', { userId, session, phoneLast4: phone.slice(-4) })
+  logWhatsAppSend('sendText:waha:resolve-chat', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
   const chatCandidates = await resolveChatCandidates(userId, session, phone)
-  logWhatsAppSend('sendText:waha:chat-candidates', {
-    userId,
-    session,
-    candidates: chatCandidates,
-  })
+  logWhatsAppSend('sendText:waha:chat-candidates', sendLogPayload(logContext, { ownerUserId: userId, session, candidates: chatCandidates }))
   if (enableTyping && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], outbound.length)
   }
   await sendWahaTextToChatCandidates(userId, session, chatCandidates, outbound)
-  logWhatsAppSend('sendText:waha:ok', { userId, session, phoneLast4: phone.slice(-4) })
+  logWhatsAppSend('sendText:waha:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
 }
 
 export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promise<void> {
-  const { userId, session, phone, imageBytes } = params
+  const { userId, session, phone, imageBytes, logContext } = params
   if (!Buffer.isBuffer(imageBytes) || imageBytes.length === 0) {
     throw new Error('Rendered image is empty (0 bytes)')
   }
@@ -272,24 +278,27 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
   const sessionRow = await loadSessionRowForSend(userId, session)
   const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
 
-  logWhatsAppSend('sendImage:start', {
-    userId,
-    session,
-    phoneLast4: phone.slice(-4),
-    cfgProvider: cfg.provider,
-    sessionProviderType: sessionRow?.provider_type ?? null,
-    effectiveProvider: provider,
-    effectiveReason: reason,
-    bytes: imageBytes.length,
-  })
+  logWhatsAppSend(
+    'sendImage:start',
+    sendLogPayload(logContext, {
+      ownerUserId: userId,
+      session,
+      phoneLast4: phone.slice(-4),
+      cfgProvider: cfg.provider,
+      sessionProviderType: sessionRow?.provider_type ?? null,
+      effectiveProvider: provider,
+      effectiveReason: reason,
+      bytes: imageBytes.length,
+    })
+  )
 
   if (provider === 'wasender') {
     if (!sessionRow?.session_api_key) {
-      logWhatsAppSend('sendImage:abort', {
-        userId,
+      logWhatsAppSend('sendImage:abort', sendLogPayload(logContext, {
+        ownerUserId: userId,
         session,
         reason: 'wasender path but session_api_key missing',
-      })
+      }))
       throw new WhatsAppApiError(
         'Wasender session API key missing. Open WhatsApp Integration and reconnect.',
         400,
@@ -297,15 +306,15 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
         'wasender'
       )
     }
-    logWhatsAppSend('sendImage:wasender', { userId, session, phoneLast4: phone.slice(-4) })
+    logWhatsAppSend('sendImage:wasender', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
     if (enableTyping && caption) await runWasenderTypingIndicator(userId, session, phone, caption.length)
     const publicUrl = await wasenderUploadMedia(cfg, sessionRow.session_api_key, imageBytes, mimetype)
     await wasenderSendImage(cfg, sessionRow.session_api_key, phoneToE164(phone), publicUrl, caption)
-    logWhatsAppSend('sendImage:wasender:ok', { userId, session, phoneLast4: phone.slice(-4) })
+    logWhatsAppSend('sendImage:wasender:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
     return
   }
 
-  logWhatsAppSend('sendImage:waha', { userId, session, phoneLast4: phone.slice(-4) })
+  logWhatsAppSend('sendImage:waha', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
   const chatCandidates = await resolveChatCandidates(userId, session, phone)
   if (enableTyping && caption && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], caption.length)
@@ -317,6 +326,7 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
     { mimetype, filename, data: imageBytes.toString('base64') },
     caption
   )
+  logWhatsAppSend('sendImage:waha:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
 }
 
 /** Refresh live status for stored user sessions (both providers). */

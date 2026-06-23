@@ -100,6 +100,45 @@ function cronLog(debugLines: string[] | undefined, message: string) {
   debugLines?.push(line)
 }
 
+function shortId(id: string | null | undefined): string {
+  const s = String(id ?? '').trim()
+  if (!s) return '—'
+  return s.length > 8 ? `${s.slice(0, 8)}…` : s
+}
+
+/** Readable tag for filtering logs by campaign owner (e.g. owner=3193f611…). */
+function ownerLogTag(userId: string): string {
+  return `owner=${shortId(userId)}`
+}
+
+function campaignLogTag(c: Pick<CampaignRow, 'id' | 'name' | 'user_id'>): string {
+  return `${ownerLogTag(c.user_id)} campaign=${shortId(c.id)} "${c.name}"`
+}
+
+function sendLogTag(
+  c: Pick<CampaignRow, 'id' | 'name' | 'user_id'>,
+  customerLabel: string,
+  stepOrder: number
+): string {
+  return `${campaignLogTag(c)} step=${stepOrder} customer="${customerLabel}"`
+}
+
+function whatsAppSendLogContext(
+  c: Pick<CampaignRow, 'id' | 'name' | 'user_id'>,
+  enrollmentId: string,
+  customerLabel: string,
+  stepOrder: number
+) {
+  return {
+    campaignId: c.id,
+    campaignName: c.name,
+    ownerUserId: c.user_id,
+    enrollmentId,
+    customerLabel,
+    stepOrder,
+  }
+}
+
 const CUSTOMER_PAGE = 250
 const SEND_BATCH = 10
 const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
@@ -175,7 +214,8 @@ type WhatsAppSessionPick = {
 async function pickWhatsAppSession(
   supabase: ReturnType<typeof createServiceRoleClient>,
   userId: string,
-  debugLines?: string[]
+  debugLines?: string[],
+  forCampaign?: Pick<CampaignRow, 'id' | 'name' | 'user_id'> | null
 ): Promise<WhatsAppSessionPick | null> {
   const { data: rows } = await supabase
     .from('waha_user_sessions')
@@ -192,9 +232,10 @@ async function pickWhatsAppSession(
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
   const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
+  const scope = forCampaign ? campaignLogTag(forCampaign) : ownerLogTag(userId)
   cronLog(
     debugLines,
-    `whatsapp pick user=${userId} session=${pick.session_name} session_provider=${sessionRow?.provider_type ?? 'null'} has_api_key=${Boolean(sessionRow?.session_api_key?.trim())} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} cfg_base=${cfg.baseUrl} effective=${provider} reason=${reason} cached_status=${String(pick.last_known_waha_status || '')}`
+    `whatsapp pick ${scope} session=${pick.session_name} session_provider=${sessionRow?.provider_type ?? 'null'} has_api_key=${Boolean(sessionRow?.session_api_key?.trim())} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} cfg_base=${cfg.baseUrl} effective=${provider} reason=${reason} cached_status=${String(pick.last_known_waha_status || '')}`
   )
 
   if (provider === 'wasender' && !(await canUseWasenderForUser(userId))) {
@@ -288,13 +329,14 @@ function audienceFiltersSummary(f: CampaignAudienceFilters): string {
 
 async function logCampaignPipelineDiagnostics(
   supabase: ReturnType<typeof createServiceRoleClient>,
-  campaignId: string,
-  userId: string,
+  campaign: Pick<CampaignRow, 'id' | 'name' | 'user_id'>,
   isoDue: string,
   debugLines: string[] | undefined
 ): Promise<void> {
   if (!debugLines) return
 
+  const campaignId = campaign.id
+  const userId = campaign.user_id
   const base = () =>
     supabase.from('campaign_enrollments').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId)
 
@@ -309,12 +351,12 @@ async function logCampaignPipelineDiagnostics(
     ])
 
   if (custRes.error) {
-    cronLog(debugLines, `pipeline customers count error campaign=${campaignId}: ${custRes.error.message}`)
+    cronLog(debugLines, `pipeline ${campaignLogTag(campaign)} customers count error: ${custRes.error.message}`)
   }
 
   cronLog(
     debugLines,
-    `pipeline campaign=${campaignId} customers_for_user=${custRes.count ?? 0} enrollments_all=${allE ?? 0} active=${activeE ?? 0} active_next_null=${nullNext ?? 0} active_next_future_gt_asof=${futureNext ?? 0} active_next_due_lte_asof=${dueNext ?? 0}`
+    `pipeline ${campaignLogTag(campaign)} customers=${custRes.count ?? 0} enrollments=${allE ?? 0} active=${activeE ?? 0} due=${dueNext ?? 0} waiting_future=${futureNext ?? 0} queue_null_next=${nullNext ?? 0}`
   )
 
   const { data: sample } = await supabase
@@ -325,9 +367,9 @@ async function logCampaignPipelineDiagnostics(
     .limit(8)
 
   if (sample?.length) {
-    cronLog(debugLines, `enrollment_recent_sample=${JSON.stringify(sample)}`)
+    cronLog(debugLines, `pipeline sample ${campaignLogTag(campaign)} ${JSON.stringify(sample)}`)
   } else {
-    cronLog(debugLines, 'enrollment_recent_sample=[] (no rows for this campaign)')
+    cronLog(debugLines, `pipeline sample ${campaignLogTag(campaign)} [] (no enrollments yet)`)
   }
 }
 
@@ -768,7 +810,7 @@ async function syncEnrollmentsForCampaign(
 
   cronLog(
     debugLines,
-    `sync done campaign=${campaign.id} name="${campaign.name}" customers_scanned=${scanned} audience_matches=${matchedAudience} new_inserts_this_run=${insertedHere} re_enrolled=${reenrolledHere} skip_already_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_audience_no_match=${skipFilters} insert_errors=${insertFailed}`
+    `sync done ${campaignLogTag(campaign)} scanned=${scanned} audience_matches=${matchedAudience} new=${insertedHere} re_enrolled=${reenrolledHere} skip_enrolled=${skipAlready} skip_no_phone=${skipNoPhone} skip_no_match=${skipFilters} errors=${insertFailed}`
   )
   onProgress?.({ type: 'node', nodeId: audienceId, state: 'complete' })
   onProgress?.({ type: 'node', nodeId: enrollId, state: 'complete' })
@@ -903,11 +945,17 @@ async function runDueSendBatch(params: {
   const isoDue = dueAsOf.toISOString()
   const dayStart = startOfUtcDay(dueAsOf)
 
-  cronLog(debugLines, `due send phase (${phaseLabel}) as_of=${isoDue}`)
+  const scopedCampaign = dueCampaignId
+    ? active.find((c) => c.id === dueCampaignId)
+    : opts?.campaignIdOnly
+      ? active.find((c) => c.id === opts.campaignIdOnly)
+      : undefined
+  const phaseScope = scopedCampaign ? campaignLogTag(scopedCampaign) : 'all_campaigns'
+  cronLog(debugLines, `due send phase (${phaseLabel}) ${phaseScope} as_of=${isoDue}`)
 
   if (debugLines) {
     for (const c of active) {
-      await logCampaignPipelineDiagnostics(supabase, c.id, c.user_id, isoDue, debugLines)
+      await logCampaignPipelineDiagnostics(supabase, c, isoDue, debugLines)
     }
   }
 
@@ -999,11 +1047,15 @@ async function processDueEnrollmentRows(
   let sendIndex = 0
   const sessionPickByUser = new Map<string, WhatsAppSessionPick | null>()
 
-  const getSessionPick = async (userId: string): Promise<WhatsAppSessionPick | null> => {
-    if (!sessionPickByUser.has(userId)) {
-      sessionPickByUser.set(userId, await pickWhatsAppSession(supabase, userId, debugLines))
+  const getSessionPick = async (userId: string, forCampaign: CampaignRow): Promise<WhatsAppSessionPick | null> => {
+    const cacheKey = userId
+    if (!sessionPickByUser.has(cacheKey)) {
+      sessionPickByUser.set(
+        cacheKey,
+        await pickWhatsAppSession(supabase, userId, debugLines, forCampaign)
+      )
     }
-    return sessionPickByUser.get(userId) ?? null
+    return sessionPickByUser.get(cacheKey) ?? null
   }
 
   for (const row of due) {
@@ -1081,10 +1133,13 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    const sessionPick = await getSessionPick(campaign.user_id)
+    const sessionPick = await getSessionPick(campaign.user_id, campaign)
     if (!sessionPick) {
       summary.messages_failed++
-      cronLog(debugLines, `fail enrollment=${row.id} campaign=${campaign.id}: no WhatsApp session user=${campaign.user_id}`)
+      cronLog(
+        debugLines,
+        `fail ${campaignLogTag(campaign)} enrollment=${row.id}: no WhatsApp session configured`
+      )
       await supabase.from('campaign_message_logs').insert({
         campaign_id: campaign.id,
         campaign_step_id: nextStep.id,
@@ -1103,7 +1158,7 @@ async function processDueEnrollmentRows(
       summary.messages_failed++
       cronLog(
         debugLines,
-        `fail enrollment=${row.id} campaign=${campaign.id}: ${sessionPick.reason ?? 'WhatsApp session not ready'}`
+        `fail ${campaignLogTag(campaign)} enrollment=${row.id}: ${sessionPick.reason ?? 'WhatsApp session not ready'} (provider=${sessionPick.provider} session=${sessionPick.sessionName})`
       )
       await supabase.from('campaign_message_logs').insert({
         campaign_id: campaign.id,
@@ -1120,9 +1175,10 @@ async function processDueEnrollmentRows(
     }
 
     const session = sessionPick.sessionName
+    const label = customerWorkflowLabel(customer)
     cronLog(
       debugLines,
-      `send enrollment=${row.id} provider=${sessionPick.provider} session=${session} step=${nextStep.step_order}`
+      `send ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} phone=…${String(customer.phone).slice(-4)}`
     )
 
     const stepNode = whatsAppNodeForStep(plan, nextStep.step_order)
@@ -1133,7 +1189,6 @@ async function processDueEnrollmentRows(
     )
     summary.messages_attempted++
     sendIndex += 1
-    const label = customerWorkflowLabel(customer)
     const stepNodeId = nodeIdForStep(plan, nextStep.step_order)
     onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'active' })
     onProgress?.({
@@ -1201,13 +1256,15 @@ async function processDueEnrollmentRows(
     const sendOpts = whatsAppSendOptionsForStep(plan, nextStep.step_order)
     let deliveryChannel: 'whatsapp' | 'email_fallback' = 'whatsapp'
 
+    const sendCtx = whatsAppSendLogContext(campaign, row.id, label, nextStep.step_order)
+
     try {
       try {
         if (isImageStep && stepNode) {
           const imageParams = (stepNode.parameters ?? {}) as Record<string, unknown>
           cronLog(
             debugLines,
-            `image step enrollment=${row.id} version=${CAMPAIGN_IMAGE_SEND_VERSION} path=${String(imageParams.background_path ?? '').slice(0, 80)} layers=${Array.isArray(imageParams.layers) ? imageParams.layers.length : 0}`
+            `image step ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} version=${CAMPAIGN_IMAGE_SEND_VERSION} layers=${Array.isArray(imageParams.layers) ? imageParams.layers.length : 0}`
           )
           const imageResult = await sendCampaignImageStep({
             userId: campaign.user_id,
@@ -1215,6 +1272,7 @@ async function processDueEnrollmentRows(
             phone: customer.phone,
             parameters: imageParams,
             customer: customer as Record<string, unknown>,
+            logContext: sendCtx,
           })
           if (imageResult.caption) {
             await supabase
@@ -1223,21 +1281,21 @@ async function processDueEnrollmentRows(
               .eq('id', logInsert.id)
           }
         } else {
-          await sendCampaignWhatsAppText(campaign.user_id, session, customer.phone, body, sendOpts)
+          await sendCampaignWhatsAppText(campaign.user_id, session, customer.phone, body, {
+            ...sendOpts,
+            logContext: sendCtx,
+          })
         }
       } catch (waErr) {
         const waMsg = waErr instanceof Error ? waErr.message : String(waErr)
         cronLog(
           debugLines,
-          `whatsapp send error enrollment=${row.id} campaign=${campaign.id} provider=${sessionPick.provider} session=${session} customer=${customer.id} step=${nextStep.step_order} error=${waMsg}`
+          `whatsapp send error ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} error=${waMsg}`
         )
         console.error('[campaign-cron] whatsapp send failed', {
-          enrollmentId: row.id,
-          campaignId: campaign.id,
+          ...sendCtx,
           provider: sessionPick.provider,
           session,
-          customerId: customer.id,
-          step: nextStep.step_order,
           error: waMsg,
         })
         if (!isImageStep && sendOpts.gmail_fallback_enabled) {
@@ -1250,7 +1308,7 @@ async function processDueEnrollmentRows(
             deliveryChannel = 'email_fallback'
             cronLog(
               debugLines,
-              `gmail fallback sent campaign=${campaign.id} customer=${customer.id} step=${nextStep.step_order}`
+              `gmail fallback sent ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id}`
             )
             onProgress?.({
               type: 'log',
@@ -1310,7 +1368,7 @@ async function processDueEnrollmentRows(
 
       cronLog(
         debugLines,
-        `sent campaign=${campaign.id} "${campaign.name}" customer=${customer.id} step=${nextStep.step_order} log=${logInsert.id}`
+        `sent ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} log=${logInsert.id}`
       )
 
       const following = steps.find((s) => s.step_order > nextStep.step_order)
@@ -1379,7 +1437,7 @@ async function processDueEnrollmentRows(
       summary.messages_failed++
       cronLog(
         debugLines,
-        `fail send enrollment=${row.id} campaign=${campaign.id} customer=${customer.id} step=${nextStep.step_order} step_id=${nextStep.id} node_type=${isImageStep ? 'crm.whatsapp.send_image' : 'crm.whatsapp.send'} log=${logInsert.id}: ${msg}${stackFirstLine ? ` [${stackFirstLine}]` : ''}`
+        `fail send ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} log=${logInsert.id}: ${msg}${stackFirstLine ? ` [${stackFirstLine}]` : ''}`
       )
       onProgress?.({
         type: 'send',
@@ -1540,7 +1598,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       `sync order (${campaignsToSync.length}): ${campaignsToSync
         .map(
           (ctx) =>
-            `${ctx.campaign.id.slice(0, 8)}…${ctx.campaign.name} user=${ctx.campaign.user_id.slice(0, 8)}…${ctx.plan.compiled.audience_filters.dob_is_today ? ' [dob_today]' : ''}`
+            `${campaignLogTag(ctx.campaign)}${ctx.plan.compiled.audience_filters.dob_is_today ? ' [dob_today]' : ''}`
         )
         .join(' | ')}`
     )
@@ -1562,7 +1620,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   for (const ctx of campaignsToSync) {
     const { campaign: c, steps, plan } = ctx
     const insBefore = summary.enrollments_inserted
-    cronLog(debugLines, `── campaign sync begin id=${c.id} name="${c.name}" user=${c.user_id} ──`)
+    cronLog(debugLines, `── sync+send begin ${campaignLogTag(c)} ──`)
     const progress = onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
     if (progress) {
       progress({ type: 'phase', phase: 'started' })
@@ -1598,7 +1656,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     })
     cronLog(
       debugLines,
-      `── campaign sync+send end id=${c.id} enrollments+${summary.enrollments_inserted - insBefore} sent_so_far=${summary.messages_sent} failed_so_far=${summary.messages_failed} ──`
+      `── sync+send end ${campaignLogTag(c)} enrollments+${summary.enrollments_inserted - insBefore} sent=${summary.messages_sent} failed=${summary.messages_failed} ──`
     )
   }
 

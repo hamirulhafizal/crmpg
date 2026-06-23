@@ -6,6 +6,7 @@ import { downloadWorkflowMedia } from '@/app/lib/campaigns/image-step/storage'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
 import { sendCampaignWhatsAppImage } from '@/app/lib/campaigns/send-waha'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
+import type { WhatsAppSendLogContext } from '@/app/lib/whatsapp/types'
 
 export const CAMPAIGN_IMAGE_SEND_VERSION = 'v4-no-undefined-textshadow'
 
@@ -15,16 +16,19 @@ export async function sendCampaignImageStep(opts: {
   phone: string
   parameters: Record<string, unknown>
   customer: Record<string, unknown>
+  logContext?: WhatsAppSendLogContext
 }): Promise<{ caption: string; pngBytes: number }> {
+  const ctx = opts.logContext
   const params = parseImageStepParameters(opts.parameters)
   const bgPath = params.background_path?.trim()
   if (!bgPath) {
     throw new Error('No background image on this step (open Step 3 in the editor and upload a background)')
   }
 
-  console.log('[campaign-image]', {
+  console.log('[campaign-image] start', {
+    ...(ctx ?? {}),
+    ownerUserId: opts.userId,
     version: CAMPAIGN_IMAGE_SEND_VERSION,
-    path: bgPath,
     layers: params.layers?.length ?? 0,
     aspect: params.aspect_mode ?? 'square',
   })
@@ -60,9 +64,14 @@ export async function sendCampaignImageStep(opts: {
     enable_typing: params.enable_typing !== false && Boolean(caption.trim()),
     mimetype: 'image/png',
     filename: 'campaign-image.png',
+    logContext: ctx,
   })
 
-  console.log('[campaign-image] whatsapp send ok', { pngBytes: png.length })
+  console.log('[campaign-image] whatsapp send ok', {
+    ...(ctx ?? {}),
+    ownerUserId: opts.userId,
+    pngBytes: png.length,
+  })
 
   return { caption, pngBytes: png.length }
 }

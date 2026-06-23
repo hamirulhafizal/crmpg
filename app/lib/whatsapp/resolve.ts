@@ -114,7 +114,8 @@ export function resolveEffectiveWhatsAppProvider(
 }
 
 function logWhatsAppResolve(step: string, data: Record<string, unknown>) {
-  console.log(`[whatsapp-resolve] ${step}`, data)
+  const owner = typeof data.userId === 'string' ? data.userId.slice(0, 8) + '…' : undefined
+  console.log(`[whatsapp-resolve] ${owner ? `owner=${owner} ` : ''}${step}`, data)
 }
 
 function fromEnv(): WhatsAppServerConfig {

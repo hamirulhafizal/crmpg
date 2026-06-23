@@ -28,6 +28,15 @@ export type WhatsAppSessionView = {
   engine?: { engine?: string }
 }
 
+export type WhatsAppSendLogContext = {
+  campaignId?: string
+  campaignName?: string
+  ownerUserId?: string
+  enrollmentId?: string
+  customerLabel?: string
+  stepOrder?: number
+}
+
 export type WhatsAppSendTextParams = {
   userId: string
   session: string
@@ -35,6 +44,7 @@ export type WhatsAppSendTextParams = {
   text: string
   enableTyping?: boolean
   randomizeSpaces?: boolean
+  logContext?: WhatsAppSendLogContext
 }
 
 export type WhatsAppSendImageParams = {
@@ -46,6 +56,7 @@ export type WhatsAppSendImageParams = {
   enableTyping?: boolean
   mimetype?: string
   filename?: string
+  logContext?: WhatsAppSendLogContext
 }
 
 export type ChatHistoryRow = {
