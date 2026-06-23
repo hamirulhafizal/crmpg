@@ -106,10 +106,16 @@ const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
 
+const CAMPAIGN_PROCESSOR_LEASE_SECONDS = 900
+
 async function tryAcquireCampaignProcessorLock(
-  supabase: ReturnType<typeof createServiceRoleClient>
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  holder: string
 ): Promise<boolean | null> {
-  const { data, error } = await supabase.rpc('try_campaign_processor_lock')
+  const { data, error } = await supabase.rpc('try_campaign_processor_lock', {
+    p_holder: holder,
+    p_lease_seconds: CAMPAIGN_PROCESSOR_LEASE_SECONDS,
+  })
   if (error) {
     console.warn('[campaign-cron] processor lock unavailable:', error.message)
     return null
@@ -117,8 +123,13 @@ async function tryAcquireCampaignProcessorLock(
   return data === true
 }
 
-async function releaseCampaignProcessorLock(supabase: ReturnType<typeof createServiceRoleClient>): Promise<void> {
-  const { error } = await supabase.rpc('release_campaign_processor_lock')
+async function releaseCampaignProcessorLock(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  holder: string
+): Promise<void> {
+  const { error } = await supabase.rpc('release_campaign_processor_lock', {
+    p_holder: holder,
+  })
   if (error) {
     console.warn('[campaign-cron] processor lock release failed:', error.message)
   }
@@ -227,6 +238,30 @@ async function pickWhatsAppSession(
         provider,
         ready: false,
         reason: `WhatsApp session not connected (${liveStatus}). Scan QR in Integration settings.`,
+      }
+    }
+  } else {
+    let liveStatus = cachedStatus
+    try {
+      liveStatus = await fetchLiveWhatsAppSessionStatus(userId, pick.session_name)
+      if (liveStatus !== cachedStatus.toUpperCase()) {
+        cronLog(
+          debugLines,
+          `waha status sync user=${userId} session=${pick.session_name}: ${cachedStatus || '—'} → ${liveStatus}`
+        )
+      }
+      await persistWhatsAppSessionStatus(userId, pick.session_name, liveStatus)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      cronLog(debugLines, `waha live status check failed user=${userId}: ${msg}`)
+    }
+
+    if (!isWorkingWhatsAppSessionStatus(liveStatus)) {
+      return {
+        sessionName: pick.session_name,
+        provider,
+        ready: false,
+        reason: `WhatsApp session not connected (${liveStatus || 'unknown'}). Scan QR in Integration settings.`,
       }
     }
   }
@@ -1270,9 +1305,10 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     messages_failed: 0,
   }
 
-  const lockAcquired = await tryAcquireCampaignProcessorLock(supabase)
+  const lockHolder = `campaign-processor:${opts?.campaignIdOnly ?? 'global'}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+  const lockAcquired = await tryAcquireCampaignProcessorLock(supabase, lockHolder)
   if (lockAcquired === false) {
-    cronLog(debugLines, 'skip: another campaign processor run is in progress')
+    cronLog(debugLines, 'skip: another campaign processor run is in progress (active lease)')
     return { summary, ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}) }
   }
 
@@ -1473,7 +1509,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     }
   } finally {
     if (lockAcquired === true) {
-      await releaseCampaignProcessorLock(supabase)
+      await releaseCampaignProcessorLock(supabase, lockHolder)
     }
   }
 }
