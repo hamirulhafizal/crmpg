@@ -865,6 +865,108 @@ type DueEnrollmentRow = {
   customer: CustomerForAudience | CustomerForAudience[] | null
 }
 
+type CampaignRunContext = {
+  campaign: CampaignRow
+  steps: CampaignStepRow[]
+  plan: CampaignWorkflowPlan
+}
+
+async function runDueSendBatch(params: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  plansByCampaignId: Map<string, CampaignWorkflowPlan>
+  active: CampaignRow[]
+  summary: ProcessSummary
+  opts?: ProcessDueOptions
+  debugLines?: string[]
+  onProgress?: CampaignWorkflowProgressHandler
+  phaseLabel: string
+}): Promise<void> {
+  const { supabase, plansByCampaignId, active, summary, opts, debugLines, onProgress, phaseLabel } = params
+  const dueAsOf = new Date()
+  const isoDue = dueAsOf.toISOString()
+  const dayStart = startOfUtcDay(dueAsOf)
+
+  cronLog(debugLines, `due send phase (${phaseLabel}) as_of=${isoDue}`)
+
+  if (debugLines) {
+    for (const c of active) {
+      await logCampaignPipelineDiagnostics(supabase, c.id, c.user_id, isoDue, debugLines)
+    }
+  }
+
+  for (const c of active) {
+    const plan = plansByCampaignId.get(c.id)
+    if (plan && usesSequentialCustomerQueue(plan, plan.compiled.audience_filters)) {
+      await reconcileSequentialQueue(supabase, c.id, (msg) => cronLog(debugLines, msg))
+    }
+  }
+
+  const { data: dueRows, error: dueErr } = await fetchActiveDueEnrollmentsMerged<DueEnrollmentRow>(supabase, {
+    select: enrollmentDueSelect,
+    isoNow: isoDue,
+    limit: SEND_BATCH,
+    campaignId: opts?.campaignIdOnly,
+  })
+  if (dueErr) {
+    cronLog(debugLines, `due query error (${phaseLabel}): ${dueErr.message}`)
+    throw dueErr
+  }
+
+  cronLog(debugLines, `due query (${phaseLabel}) returned ${(dueRows ?? []).length} row(s)`)
+  const dueRowsTyped = (dueRows ?? []) as DueEnrollmentRow[]
+  const dueWaiting = dueRowsTyped.filter((r) => isQueueWaiting(r.metadata)).length
+  const dueTimed = dueRowsTyped.length - dueWaiting
+  cronLog(
+    debugLines,
+    `due mix (${phaseLabel}) total=${dueRowsTyped.length} timed_or_ready=${dueTimed} queue_waiting=${dueWaiting}`
+  )
+
+  const dueFiltered = filterDueRowsForSequentialQueue(dueRowsTyped, plansByCampaignId)
+  if (dueFiltered.length !== (dueRows ?? []).length) {
+    cronLog(
+      debugLines,
+      `sequential queue (${phaseLabel}): processing ${dueFiltered.length} enrollment(s) (${(dueRows ?? []).length - dueFiltered.length} deferred)`
+    )
+  }
+  if (dueRowsTyped.length > 0) {
+    const kept = new Set(dueFiltered.map((r) => r.id))
+    const campaignStats = new Map<string, { total: number; waiting: number; kept: number }>()
+    for (const row of dueRowsTyped) {
+      const raw = row.campaign
+      const campaign = (Array.isArray(raw) ? raw[0] : raw) as CampaignRow | null
+      const campaignKey = campaign ? `${campaign.id.slice(0, 8)}…${campaign.name}` : 'unknown'
+      const stat = campaignStats.get(campaignKey) ?? { total: 0, waiting: 0, kept: 0 }
+      stat.total += 1
+      if (isQueueWaiting(row.metadata)) stat.waiting += 1
+      if (kept.has(row.id)) stat.kept += 1
+      campaignStats.set(campaignKey, stat)
+    }
+    const statSummary = [...campaignStats.entries()]
+      .map(([k, v]) => `${k} total=${v.total} waiting=${v.waiting} kept=${v.kept}`)
+      .join(' | ')
+    cronLog(debugLines, `due by campaign (${phaseLabel}) ${statSummary}`)
+  }
+
+  if (onProgress && opts?.campaignIdOnly) {
+    onProgress({ type: 'phase', phase: 'due_send' })
+    onProgress({
+      type: 'log',
+      message: `Processing ${dueFiltered.length} due enrollment(s) (${phaseLabel})…`,
+    })
+  }
+
+  await processDueEnrollmentRows(
+    supabase,
+    dueFiltered,
+    plansByCampaignId,
+    dueAsOf,
+    dayStart,
+    summary,
+    debugLines,
+    onProgress && opts?.campaignIdOnly ? onProgress : undefined
+  )
+}
+
 async function processDueEnrollmentRows(
   supabase: ReturnType<typeof createServiceRoleClient>,
   due: DueEnrollmentRow[],
@@ -1349,6 +1451,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   )
 
   const plansByCampaignId = new Map<string, CampaignWorkflowPlan>()
+  const campaignsToSync: CampaignRunContext[] = []
 
   for (const c of active) {
     const entitlements = await loadUserEntitlements(c.user_id)
@@ -1384,11 +1487,28 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     }
 
     summary.campaigns_processed++
+    campaignsToSync.push({ campaign: c, steps, plan })
 
     if (opts?.campaignIdOnly === c.id) {
       scopedPlan = plan
     }
+  }
 
+  // Send due messages BEFORE heavy enrollment scans so global cron does not time out
+  // while paging through thousands of customers across many active campaigns.
+  await runDueSendBatch({
+    supabase,
+    plansByCampaignId,
+    active,
+    summary,
+    opts,
+    debugLines,
+    onProgress,
+    phaseLabel: 'pre-sync',
+  })
+
+  for (const ctx of campaignsToSync) {
+    const { campaign: c, steps, plan } = ctx
     const insBefore = summary.enrollments_inserted
     const progress = onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
     if (progress) {
@@ -1411,84 +1531,16 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     await reconcileEnrollmentsToAudience(supabase, c.id, plan, debugLines, progress)
   }
 
-  // Use a fresh instant after enrollment sync so rows inserted above with next_send_at ≈ "now"
-  // are not excluded by `lte` against an older `now` captured at the start of this run.
-  const dueAsOf = new Date()
-  const isoDue = dueAsOf.toISOString()
-  const dayStart = startOfUtcDay(dueAsOf)
-
-  if (debugLines) {
-    for (const c of active) {
-      await logCampaignPipelineDiagnostics(supabase, c.id, c.user_id, isoDue, debugLines)
-    }
-  }
-
-  for (const c of active) {
-    const plan = plansByCampaignId.get(c.id)
-    if (plan && usesSequentialCustomerQueue(plan, plan.compiled.audience_filters)) {
-      await reconcileSequentialQueue(supabase, c.id, (msg) => cronLog(debugLines, msg))
-    }
-  }
-
-  const { data: dueRows, error: dueErr } = await fetchActiveDueEnrollmentsMerged<DueEnrollmentRow>(supabase, {
-    select: enrollmentDueSelect,
-    isoNow: isoDue,
-    limit: SEND_BATCH,
-    campaignId: opts?.campaignIdOnly,
-  })
-  if (dueErr) {
-    cronLog(debugLines, `due query error: ${dueErr.message}`)
-    throw dueErr
-  }
-
-  cronLog(debugLines, `due query returned ${(dueRows ?? []).length} row(s) (as_of=${isoDue})`)
-  const dueRowsTyped = (dueRows ?? []) as DueEnrollmentRow[]
-  const dueWaiting = dueRowsTyped.filter((r) => isQueueWaiting(r.metadata)).length
-  const dueTimed = dueRowsTyped.length - dueWaiting
-  cronLog(
-    debugLines,
-    `due mix total=${dueRowsTyped.length} timed_or_ready=${dueTimed} queue_waiting=${dueWaiting}`
-  )
-
-  const dueFiltered = filterDueRowsForSequentialQueue(dueRowsTyped, plansByCampaignId)
-  if (dueFiltered.length !== (dueRows ?? []).length) {
-    cronLog(
-      debugLines,
-      `sequential queue: processing ${dueFiltered.length} enrollment(s) this run (${(dueRows ?? []).length - dueFiltered.length} deferred)`
-    )
-  }
-  if (dueRowsTyped.length > 0) {
-    const kept = new Set(dueFiltered.map((r) => r.id))
-    const campaignStats = new Map<string, { total: number; waiting: number; kept: number }>()
-    for (const row of dueRowsTyped) {
-      const raw = row.campaign
-      const campaign = (Array.isArray(raw) ? raw[0] : raw) as CampaignRow | null
-      const campaignKey = campaign ? `${campaign.id.slice(0, 8)}…${campaign.name}` : 'unknown'
-      const stat = campaignStats.get(campaignKey) ?? { total: 0, waiting: 0, kept: 0 }
-      stat.total += 1
-      if (isQueueWaiting(row.metadata)) stat.waiting += 1
-      if (kept.has(row.id)) stat.kept += 1
-      campaignStats.set(campaignKey, stat)
-    }
-    const summary = [...campaignStats.entries()]
-      .map(([k, v]) => `${k} total=${v.total} waiting=${v.waiting} kept=${v.kept}`)
-      .join(' | ')
-    cronLog(debugLines, `due by campaign ${summary}`)
-  }
-  if (onProgress && opts?.campaignIdOnly) {
-    onProgress({ type: 'phase', phase: 'due_send' })
-    onProgress({ type: 'log', message: `Processing ${dueFiltered.length} due enrollment(s)…` })
-  }
-  await processDueEnrollmentRows(
+  await runDueSendBatch({
     supabase,
-    dueFiltered,
     plansByCampaignId,
-    dueAsOf,
-    dayStart,
+    active,
     summary,
+    opts,
     debugLines,
-    onProgress && opts?.campaignIdOnly ? onProgress : undefined
-  )
+    onProgress,
+    phaseLabel: 'post-sync',
+  })
 
   cronLog(
     debugLines,
