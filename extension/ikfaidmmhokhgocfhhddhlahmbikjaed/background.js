@@ -680,10 +680,24 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return ly === cy && lm === cm;
     }
 
+    /** PG Mall shows "-" (or similar) when a prospect has no PG code yet. */
+    function isPlaceholderPgCode(value) {
+        if (value == null) return true;
+        var t = String(value).trim().toLowerCase();
+        if (!t) return true;
+        return ['-', '—', '–', 'n/a', 'na', 'none', 'nil', '.', '--', 'null'].indexOf(t) !== -1;
+    }
+
     function normalizePgCodeForMatch(value) {
         if (value == null) return '';
         var s = String(value).trim();
+        if (isPlaceholderPgCode(s)) return '';
         return s;
+    }
+
+    function normalizePgCodeForStorage(value) {
+        var matchKey = normalizePgCodeForMatch(value);
+        return matchKey || null;
     }
 
     function normalizeEmailForMatch(value) {
@@ -716,6 +730,11 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 patchBody.original_data = payload.original_data;
                 return;
             }
+            if (key === 'pg_code') {
+                // Clear stale "-" placeholders from legacy syncs; store null for temp accounts.
+                patchBody.pg_code = normalizePgCodeForStorage(payload.pg_code);
+                return;
+            }
             if (isPatchValueNonEmpty(payload[key])) {
                 patchBody[key] = payload[key];
             }
@@ -742,7 +761,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var nowIso = new Date().toISOString();
         var name = row.Name || row.name || null;
         var dob = row['D.O.B.'] || row['D.O.B'] || row.DOB || row.dob || null;
-        var pgCode = row.PGCode || row.pg_code || null;
+        var pgCode = normalizePgCodeForStorage(row.PGCode || row.pg_code || null);
         var email = row.Email || row.email || null;
         var phone = row.Telephone || row.phone || null;
         var mainFields = ['name', 'dob', 'email', 'phone', 'location', 'gender', 'ethnicity', 'age', 'prefix', 'first_name', 'sender_name', 'save_name', 'pg_code', 'is_friend', 'Name', 'Email', 'Telephone', 'D.O.B.', 'PGCode', 'Gender', 'Ethnicity', 'Age', 'Prefix', 'FirstName', 'SenderName', 'SaveName', 'Location'];

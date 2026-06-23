@@ -15,7 +15,7 @@ Users can sign in with **email/password** or **Sign in with Google** (same accou
 
 ### Sync to Supabase
 
-**Sync to Supabase** reads the customer table from the current PG Mall business center page, processes each row with OpenAI (same as the webapp’s excel “Process with OpenAI”), then upserts into `public.customers`. Duplicates (same `user_id` + `pg_code`) are overwritten with the latest data. Set **WEBAPP_ORIGIN** in `config.js` so the extension can call your `/api/openai/process-row` endpoint. Keep the popup open until sync finishes.
+**Sync to Supabase** reads the customer table from the current PG Mall business center page, processes each row with OpenAI (same as the webapp’s excel “Process with OpenAI”), then upserts into `public.customers`. Rows with a real PG code match on `user_id` + `pg_code`; temporary accounts (PG Mall shows `-` for no code) are stored with `pg_code` null and matched by email or phone instead. Set **WEBAPP_ORIGIN** in `config.js` so the extension can call your `/api/openai/process-row` endpoint. Keep the popup open until sync finishes.
 
 ### Google sign-in (optional)
 
