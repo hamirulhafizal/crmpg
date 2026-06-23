@@ -106,7 +106,8 @@ const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
 
-const CAMPAIGN_PROCESSOR_LEASE_SECONDS = 360
+// Keep below Vercel maxDuration (~300s) so a killed run does not block the next cron tick.
+const CAMPAIGN_PROCESSOR_LEASE_SECONDS = 280
 
 async function tryAcquireCampaignProcessorLock(
   supabase: ReturnType<typeof createServiceRoleClient>,
@@ -881,11 +882,15 @@ async function runDueSendBatch(params: {
   active: CampaignRow[]
   summary: ProcessSummary
   opts?: ProcessDueOptions
+  /** Scope due-enrollment query to one campaign (global cron per-campaign send). */
+  dueCampaignId?: string
   debugLines?: string[]
   onProgress?: CampaignWorkflowProgressHandler
   phaseLabel: string
 }): Promise<void> {
-  const { supabase, plansByCampaignId, active, summary, opts, debugLines, onProgress, phaseLabel } = params
+  const { supabase, plansByCampaignId, active, summary, opts, dueCampaignId, debugLines, onProgress, phaseLabel } =
+    params
+  const dueQueryCampaignId = dueCampaignId ?? opts?.campaignIdOnly
   const dueAsOf = new Date()
   const isoDue = dueAsOf.toISOString()
   const dayStart = startOfUtcDay(dueAsOf)
@@ -909,7 +914,7 @@ async function runDueSendBatch(params: {
     select: enrollmentDueSelect,
     isoNow: isoDue,
     limit: SEND_BATCH,
-    campaignId: opts?.campaignIdOnly,
+    campaignId: dueQueryCampaignId,
   })
   if (dueErr) {
     cronLog(debugLines, `due query error (${phaseLabel}): ${dueErr.message}`)
@@ -1411,8 +1416,11 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     messages_failed: 0,
   }
 
+  const skipGlobalLock = Boolean(opts?.campaignIdOnly)
   const lockHolder = `campaign-processor:${opts?.campaignIdOnly ?? 'global'}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
-  const lockAcquired = await tryAcquireCampaignProcessorLock(supabase, lockHolder)
+  const lockAcquired = skipGlobalLock
+    ? null
+    : await tryAcquireCampaignProcessorLock(supabase, lockHolder)
   if (lockAcquired === false) {
     cronLog(debugLines, 'skip: another campaign processor run is in progress (active lease)')
     return { summary, ...(debugLines && debugLines.length > 0 ? { debug: debugLines } : {}) }
@@ -1533,18 +1541,21 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       debugLines
     )
     await reconcileEnrollmentsToAudience(supabase, c.id, plan, debugLines, progress)
-  }
 
-  await runDueSendBatch({
-    supabase,
-    plansByCampaignId,
-    active,
-    summary,
-    opts,
-    debugLines,
-    onProgress,
-    phaseLabel: 'post-sync',
-  })
+    // Send immediately after each campaign enrolls so a global cron timeout does not
+    // skip sends for campaigns processed late in the queue.
+    await runDueSendBatch({
+      supabase,
+      plansByCampaignId,
+      active: [c],
+      summary,
+      opts,
+      dueCampaignId: c.id,
+      debugLines,
+      onProgress: progress,
+      phaseLabel: 'post-sync',
+    })
+  }
 
   cronLog(
     debugLines,
