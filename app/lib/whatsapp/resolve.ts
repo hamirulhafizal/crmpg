@@ -72,14 +72,14 @@ function rowToConfig(row: ServerRow): WhatsAppServerConfig {
   }
 }
 
-/** Prefer server config, but honor session row + URL when admin provider_type is stale. */
+/** Prefer explicit session/server provider; do not treat session_api_key alone as Wasender. */
 export function resolveEffectiveWhatsAppProvider(
   cfg: WhatsAppServerConfig,
   sessionRow?: UserWhatsAppSessionRow | null
 ): WhatsAppProvider {
-  if (cfg.provider === 'wasender') return 'wasender'
   if (sessionRow?.provider_type === 'wasender') return 'wasender'
-  if (sessionRow?.session_api_key?.trim()) return 'wasender'
+  if (sessionRow?.provider_type === 'waha') return 'waha'
+  if (cfg.provider === 'wasender') return 'wasender'
   if (inferProviderFromBaseUrl(cfg.baseUrl) === 'wasender') return 'wasender'
   return 'waha'
 }

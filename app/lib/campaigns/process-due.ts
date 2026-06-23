@@ -106,7 +106,7 @@ const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
 
-const CAMPAIGN_PROCESSOR_LEASE_SECONDS = 900
+const CAMPAIGN_PROCESSOR_LEASE_SECONDS = 360
 
 async function tryAcquireCampaignProcessorLock(
   supabase: ReturnType<typeof createServiceRoleClient>,
@@ -191,6 +191,10 @@ async function pickWhatsAppSession(
   const cfg = await getWhatsAppServerConfig({ userId })
   const sessionRow = await loadUserWhatsAppSessionByName(userId, pick.session_name)
   const provider = resolveEffectiveWhatsAppProvider(cfg, sessionRow)
+  cronLog(
+    debugLines,
+    `whatsapp pick user=${userId} session=${pick.session_name} server=${cfg.serverId ?? 'env'} cfg_provider=${cfg.provider} effective=${provider}`
+  )
 
   if (provider === 'wasender' && !(await canUseWasenderForUser(userId))) {
     return {
