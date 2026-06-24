@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/app/lib/supabase/server'
 import { loadUserEntitlements, canUseWasenderForUser } from '@/app/lib/saas/enforce'
-import { isWhatsAppConfigured, getProviderForUser } from '@/app/lib/whatsapp/resolve'
+import { getWhatsAppProviderInfoForUser, isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
 
 export async function GET() {
   try {
@@ -19,7 +19,8 @@ export async function GET() {
 
     const entitlements = await loadUserEntitlements(user.id)
     const wasenderOk = await canUseWasenderForUser(user.id)
-    let provider = await getProviderForUser(user.id)
+    const info = await getWhatsAppProviderInfoForUser(user.id)
+    let provider = info.provider
 
     if (provider === 'wasender' && !wasenderOk) {
       provider = 'waha'
@@ -29,6 +30,10 @@ export async function GET() {
       provider,
       wasender_available: wasenderOk,
       is_pro_active: entitlements?.isProActive ?? false,
+      server_id: info.serverId,
+      server_name: info.serverName,
+      server_base_url: info.baseUrl,
+      assigned_by_admin: info.assignedByAdmin,
     })
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Failed'

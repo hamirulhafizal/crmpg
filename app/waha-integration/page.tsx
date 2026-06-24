@@ -101,6 +101,7 @@ export default function WahaIntegrationPage() {
   const [whatsappProvider, setWhatsappProvider] = useState<'waha' | 'wasender'>('waha')
   const [wasenderAvailable, setWasenderAvailable] = useState(true)
   const [isProActive, setIsProActive] = useState(false)
+  const [assignedServerName, setAssignedServerName] = useState<string | null>(null)
 
   const showQrForSession =
     qrSession && !isSessionConnected(sessions.find((s) => s.name === qrSession)?.status || '')
@@ -125,6 +126,11 @@ export default function WahaIntegrationPage() {
           }
           if (res.ok && typeof data.is_pro_active === 'boolean') {
             setIsProActive(data.is_pro_active)
+          }
+          if (res.ok && typeof data.server_name === 'string' && data.server_name.trim()) {
+            setAssignedServerName(data.server_name.trim())
+          } else {
+            setAssignedServerName(null)
           }
         } catch {
           // keep default
@@ -519,7 +525,11 @@ export default function WahaIntegrationPage() {
 
               <h1 className="text-xl font-semibold text-slate-900">WhatsApp Integration</h1>
               <p className="text-sm text-slate-600">
-                Provider: <span className="font-medium">{whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}</span>
+                Provider:{' '}
+                <span className="font-medium">
+                  {whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}
+                  {assignedServerName ? ` · ${assignedServerName}` : ''}
+                </span>
               </p>
             </div>
             <UserProfileMenu />

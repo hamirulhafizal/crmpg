@@ -19,6 +19,7 @@ function normalizeBaseUrl(value: string): string {
 
 type ServerRow = {
   id: string
+  name: string
   api_base_url: string
   api_key: string
   dashboard_pass: string | null
@@ -30,7 +31,7 @@ async function loadServerById(serverId: string): Promise<ServerRow | null> {
   const admin = createServiceRoleClient()
   const { data, error } = await admin
     .from('waha_servers')
-    .select('id, api_base_url, api_key, dashboard_pass, provider_type, is_default')
+    .select('id, name, api_base_url, api_key, dashboard_pass, provider_type, is_default')
     .eq('id', serverId)
     .maybeSingle()
   if (error || !data) return null
@@ -41,7 +42,7 @@ async function loadDefaultServer(): Promise<ServerRow | null> {
   const admin = createServiceRoleClient()
   const { data, error } = await admin
     .from('waha_servers')
-    .select('id, api_base_url, api_key, dashboard_pass, provider_type, is_default')
+    .select('id, name, api_base_url, api_key, dashboard_pass, provider_type, is_default')
     .eq('is_default', true)
     .maybeSingle()
   if (error || !data) return null
@@ -137,6 +138,14 @@ function fromEnv(): WhatsAppServerConfig {
   }
 }
 
+export type UserWhatsAppProviderInfo = {
+  provider: WhatsAppProvider
+  serverId: string | null
+  serverName: string | null
+  baseUrl: string | null
+  assignedByAdmin: boolean
+}
+
 export async function getWhatsAppServerConfig(opts: { userId?: string | null } = {}): Promise<WhatsAppServerConfig> {
   const userId = opts.userId?.trim()
   let cfg: WhatsAppServerConfig
@@ -159,16 +168,11 @@ export async function getWhatsAppServerConfig(opts: { userId?: string | null } =
       serverRow = await loadServerById(assignedServerId)
     }
 
-    if (!platformAdmin && access) {
+    const explicitAdminAssignment = Boolean(assignedServerId && serverRow)
+
+    if (!platformAdmin && access && !explicitAdminAssignment) {
       if (access.isProPaid) {
-        const adminAssignedWaha =
-          Boolean(assignedServerId) &&
-          (access.adminWahaAssignment ||
-            (serverRow != null && serverRow.provider_type !== 'wasender'))
-        if (
-          !adminAssignedWaha &&
-          (!serverRow || serverRow.provider_type !== 'wasender')
-        ) {
+        if (!serverRow || serverRow.provider_type !== 'wasender') {
           const wasenderId = await loadPreferredWasenderServerId()
           if (wasenderId) serverRow = await loadServerById(wasenderId)
         }
@@ -265,6 +269,32 @@ export async function isWhatsAppConfigured(opts: { userId?: string | null } = {}
 export async function getProviderForUser(userId: string): Promise<WhatsAppProvider> {
   const cfg = await getWhatsAppServerConfig({ userId })
   return cfg.provider
+}
+
+export async function getWhatsAppProviderInfoForUser(userId: string): Promise<UserWhatsAppProviderInfo> {
+  const admin = createServiceRoleClient()
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('waha_server_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  const assignedServerId = (profile?.waha_server_id || '').toString().trim() || null
+  const cfg = await getWhatsAppServerConfig({ userId })
+  let serverName: string | null = null
+
+  if (cfg.serverId) {
+    const row = await loadServerById(cfg.serverId)
+    serverName = row?.name?.trim() || null
+  }
+
+  return {
+    provider: cfg.provider,
+    serverId: cfg.serverId,
+    serverName,
+    baseUrl: cfg.baseUrl || null,
+    assignedByAdmin: Boolean(assignedServerId && cfg.serverId === assignedServerId),
+  }
 }
 
 export async function loadUserWhatsAppSession(userId: string): Promise<UserWhatsAppSessionRow | null> {
