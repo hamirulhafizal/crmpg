@@ -100,6 +100,7 @@ export default function WahaIntegrationPage() {
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
   const [whatsappProvider, setWhatsappProvider] = useState<'waha' | 'wasender'>('waha')
   const [wasenderAvailable, setWasenderAvailable] = useState(true)
+  const [isProActive, setIsProActive] = useState(false)
 
   const showQrForSession =
     qrSession && !isSessionConnected(sessions.find((s) => s.name === qrSession)?.status || '')
@@ -121,6 +122,9 @@ export default function WahaIntegrationPage() {
           }
           if (res.ok && typeof data.wasender_available === 'boolean') {
             setWasenderAvailable(data.wasender_available)
+          }
+          if (res.ok && typeof data.is_pro_active === 'boolean') {
+            setIsProActive(data.is_pro_active)
           }
         } catch {
           // keep default
@@ -524,7 +528,7 @@ export default function WahaIntegrationPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {!wasenderAvailable ? (
+        {!wasenderAvailable && !isProActive ? (
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
             WasenderAPI is included with Pro. Your account uses WAHA on the Free plan.{' '}
             <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">

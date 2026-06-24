@@ -18,10 +18,11 @@ export type UserWhatsAppAccess = {
   isProPaid: boolean
   isProTrial: boolean
   adminWasenderOverride: boolean
+  adminWahaAssignment: boolean
   isPlatformAdmin: boolean
 }
 
-export async function hasAdminWasenderServerOverride(userId: string): Promise<boolean> {
+async function loadAssignedServerProvider(userId: string): Promise<WhatsAppProvider | null> {
   const admin = createServiceRoleClient()
   const { data: profile } = await admin
     .from('profiles')
@@ -30,7 +31,7 @@ export async function hasAdminWasenderServerOverride(userId: string): Promise<bo
     .maybeSingle()
 
   const assignedId = (profile?.waha_server_id || '').toString().trim()
-  if (!assignedId) return false
+  if (!assignedId) return null
 
   const { data: server } = await admin
     .from('waha_servers')
@@ -38,7 +39,16 @@ export async function hasAdminWasenderServerOverride(userId: string): Promise<bo
     .eq('id', assignedId)
     .maybeSingle()
 
-  return server?.provider_type === 'wasender'
+  if (!server) return null
+  return server.provider_type === 'wasender' ? 'wasender' : 'waha'
+}
+
+export async function hasAdminWasenderServerOverride(userId: string): Promise<boolean> {
+  return (await loadAssignedServerProvider(userId)) === 'wasender'
+}
+
+export async function hasAdminWahaServerAssignment(userId: string): Promise<boolean> {
+  return (await loadAssignedServerProvider(userId)) === 'waha'
 }
 
 export async function loadUserWhatsAppAccess(userId: string): Promise<UserWhatsAppAccess | null> {
@@ -52,9 +62,12 @@ export async function loadUserWhatsAppAccess(userId: string): Promise<UserWhatsA
       isProPaid: false,
       isProTrial: false,
       adminWasenderOverride: false,
+      adminWahaAssignment: false,
       isPlatformAdmin: true,
     }
   }
+
+  const assignedProvider = await loadAssignedServerProvider(userId)
 
   const admin = createServiceRoleClient()
   const { data: sub } = await admin.from('saas_subscriptions').select('*').eq('user_id', userId).maybeSingle()
@@ -83,7 +96,8 @@ export async function loadUserWhatsAppAccess(userId: string): Promise<UserWhatsA
     hasWriteAccess,
     isProPaid: isProPaidActive({ planSlug, status, currentPeriodEnd, now }),
     isProTrial: isProTrialActive({ planSlug, status, trialEndsAt, now }),
-    adminWasenderOverride: await hasAdminWasenderServerOverride(userId),
+    adminWasenderOverride: assignedProvider === 'wasender',
+    adminWahaAssignment: assignedProvider === 'waha',
     isPlatformAdmin: false,
   }
 }
@@ -91,6 +105,7 @@ export async function loadUserWhatsAppAccess(userId: string): Promise<UserWhatsA
 export function effectiveWhatsAppProviders(access: UserWhatsAppAccess): WhatsAppProvider[] {
   if (access.isPlatformAdmin) return ['waha', 'wasender']
   if (!access.hasWriteAccess) return []
+  if (access.adminWahaAssignment) return ['waha']
   if (access.isProPaid) return ['wasender']
   if (access.adminWasenderOverride) return ['waha', 'wasender']
   return ['waha']
@@ -98,6 +113,7 @@ export function effectiveWhatsAppProviders(access: UserWhatsAppAccess): WhatsApp
 
 export function whatsAppProviderDisplayLabel(access: UserWhatsAppAccess): string {
   if (access.isPlatformAdmin) return 'WAHA, WasenderAPI'
+  if (access.adminWahaAssignment) return 'WAHA (admin assigned)'
   if (access.isProPaid) return 'WasenderAPI'
   if (access.isProTrial) {
     return access.adminWasenderOverride ? 'WAHA (admin Wasender override)' : 'WAHA (Wasender after payment)'
@@ -141,6 +157,8 @@ export async function loadPreferredWasenderServerId(): Promise<string | null> {
 
 /** After Pro payment: assign Wasender server and wipe sessions for a fresh QR scan. */
 export async function applyProPaidWhatsAppMigration(userId: string): Promise<void> {
+  if (await hasAdminWahaServerAssignment(userId)) return
+
   const wasenderId = await loadPreferredWasenderServerId()
   if (!wasenderId) return
 

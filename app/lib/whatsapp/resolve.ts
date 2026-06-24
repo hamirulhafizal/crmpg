@@ -161,7 +161,14 @@ export async function getWhatsAppServerConfig(opts: { userId?: string | null } =
 
     if (!platformAdmin && access) {
       if (access.isProPaid) {
-        if (!serverRow || serverRow.provider_type !== 'wasender') {
+        const adminAssignedWaha =
+          Boolean(assignedServerId) &&
+          (access.adminWahaAssignment ||
+            (serverRow != null && serverRow.provider_type !== 'wasender'))
+        if (
+          !adminAssignedWaha &&
+          (!serverRow || serverRow.provider_type !== 'wasender')
+        ) {
           const wasenderId = await loadPreferredWasenderServerId()
           if (wasenderId) serverRow = await loadServerById(wasenderId)
         }
