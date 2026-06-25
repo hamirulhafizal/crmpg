@@ -24,9 +24,11 @@ row_number: {{rowNumber}}
 - If D.O.B. is provided and valid: calculate age from today's date.
 - If D.O.B. is missing or invalid: estimate from name/context (e.g. student vs adult); use a reasonable integer.
 
-**Prefix** (exactly one: Pn, Tn, Cik)
-- Male age < 17 → no need to add prefix, more than 18 → Tn
-- Female age < 17 → no need to add prefix, if 18-25 → Cik, age > 25 → Pn.
+**Prefix** (exactly one: Adik, Pn, Tn, Cik — always set; never leave empty)
+- Under 18 (any gender) → Adik
+- Male age 18 or older → Tn
+- Female age 18–25 → Cik
+- Female age 26 or older → Pn
 
 **FirstName**
 - The main given name only. Strip common Malaysian prefixes/particles: Muhd, Mohamad, Muhammad, Nur, Noor, Siti, Nurul, Ahmad, Abdul, etc. Keep one clear first name (e.g. "Aisyah", "Wei Ming", "Hafizal").

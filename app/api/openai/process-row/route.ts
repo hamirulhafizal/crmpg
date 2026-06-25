@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { applyCustomerNamingFields, type ProcessRowNaming } from '@/app/lib/customers/prefix'
 import { DEFAULT_PROMPT_TEMPLATE, buildPrompt } from '@/app/lib/prompts/default-prompt'
 
 // CORS for extension and other cross-origin callers
@@ -78,14 +79,14 @@ export async function POST(request: Request) {
     }
 
     // Parse JSON response
-    let result
+    let result: ProcessRowNaming
     try {
-      result = JSON.parse(content)
+      result = JSON.parse(content) as ProcessRowNaming
     } catch (parseError) {
       // Try to extract JSON from response if it's wrapped in text
       const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
-        result = JSON.parse(jsonMatch[0])
+        result = JSON.parse(jsonMatch[0]) as ProcessRowNaming
       } else {
         throw new Error('Failed to parse OpenAI response as JSON')
       }
@@ -93,7 +94,9 @@ export async function POST(request: Request) {
 
     // Validate required fields
     const requiredFields = ['Gender', 'Ethnicity', 'Age', 'Prefix', 'FirstName', 'SenderName']
-    const missingFields = requiredFields.filter(field => !result[field])
+    const missingFields = requiredFields.filter(
+      (field) => !result[field as keyof ProcessRowNaming]
+    )
 
     if (missingFields.length > 0) {
       console.warn(`Missing fields in OpenAI response: ${missingFields.join(', ')}`)
@@ -101,6 +104,8 @@ export async function POST(request: Request) {
 
     // Ensure row_number is set
     result.row_number = rowNumber || result.row_number || 1
+
+    result = applyCustomerNamingFields(result, pgCode)
 
     return NextResponse.json(
       { success: true, result },
