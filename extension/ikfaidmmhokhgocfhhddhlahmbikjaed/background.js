@@ -5,6 +5,20 @@ const downloadGroupSales = document.getElementById("btn-download-group-sales");
 const downloadPgmall = document.getElementById("btn-download-pgmall");
 const downloadAutodebit = document.getElementById("btn-download-autodebit");
 
+function getExtensionVersionHeader() {
+    try {
+        return { 'X-Extension-Version': chrome.runtime.getManifest().version || '' };
+    } catch (e) {
+        return {};
+    }
+}
+
+async function ensureExtensionCanSync() {
+    if (window.CRMPGExtensionUpdate && window.CRMPGExtensionUpdate.ensureCanSync) {
+        await window.CRMPGExtensionUpdate.ensureCanSync();
+    }
+}
+
 // ================= COMMON XLSX HELPER =================
 function exportXLSX(data, filename, textCols = []) {
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -881,7 +895,10 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 if (!hasExistingClassificationData(existing)) {
                     var pr = await fetch(webappOrigin + '/api/openai/process-row', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: Object.assign(
+                            { 'Content-Type': 'application/json' },
+                            getExtensionVersionHeader()
+                        ),
                         body: JSON.stringify({ rowData: row, rowNumber: i + 1 })
                     });
                     var data = await pr.json();
@@ -996,6 +1013,8 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
     async function runSync(rowsFetcher, loadingText, fetchErrorMsg) {
         try {
+            await ensureExtensionCanSync();
+
             var config = typeof SUPABASE_CONFIG !== 'undefined' ? SUPABASE_CONFIG : {};
             var supabaseUrl = config.SUPABASE_URL;
             var anonKey = config.SUPABASE_ANON_KEY;
@@ -1059,6 +1078,9 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         } catch (e) {
             syncProgress.style.display = 'none';
             setBusy(false);
+            if (e && e.code === 'EXTENSION_OUTDATED') {
+                alert(e.message || 'Extension update required.');
+            }
         }
     }
 
@@ -1066,6 +1088,8 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
     async function runSyncDownlineAllPages() {
         try {
+            await ensureExtensionCanSync();
+
             var config = typeof SUPABASE_CONFIG !== 'undefined' ? SUPABASE_CONFIG : {};
             var supabaseUrl = config.SUPABASE_URL;
             var anonKey = config.SUPABASE_ANON_KEY;
@@ -1278,6 +1302,9 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         } catch (e) {
             syncProgress.style.display = 'none';
             setBusy(false);
+            if (e && e.code === 'EXTENSION_OUTDATED') {
+                alert(e.message || 'Extension update required.');
+            }
         }
     }
 

@@ -2,6 +2,12 @@
 
 This extension uses **the same Supabase auth as the webapp** (`app/login`, `app/auth`): email/password and **Google sign-in**.
 
+## Distribution
+
+Production dealers install from the **unlisted Chrome Web Store listing**. Chrome delivers updates automatically.
+
+See `EXTENSION_PUBLISH.md` for CI publish setup and required secrets.
+
 ## Auth setup
 
 1. Open the extension folder (e.g. `extension/ikfaidmmhokhgocfhhddhlahmbikjaed/`).
@@ -10,12 +16,19 @@ This extension uses **the same Supabase auth as the webapp** (`app/login`, `app/
    - **SUPABASE_URL** = your `NEXT_PUBLIC_SUPABASE_URL` from the webapp `.env`
    - **SUPABASE_ANON_KEY** = your `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the webapp `.env`
    - **WEBAPP_ORIGIN** = your webapp URL (e.g. `https://crmpg.vercel.app` or `http://localhost:3000`) for **Sync to Supabase** (calls `/api/openai/process-row`)
+   - **CHROME_WEB_STORE_URL** = unlisted Chrome Web Store listing URL
 
 Users can sign in with **email/password** or **Sign in with Google** (same accounts as the webapp). Session is stored in the extension and refreshed automatically.
 
 ### Sync to Supabase
 
 **Sync to Supabase** reads the customer table from the current PG Mall business center page, processes each row with OpenAI (same as the webapp’s excel “Process with OpenAI”), then upserts into `public.customers`. Rows with a real PG code match on `user_id` + `pg_code`; temporary accounts (PG Mall shows `-` for no code) are stored with `pg_code` null and matched by email or phone instead. Set **WEBAPP_ORIGIN** in `config.js` so the extension can call your `/api/openai/process-row` endpoint. Keep the popup open until sync finishes.
+
+Outdated extension versions are blocked from sync until updated.
+
+### Version UI
+
+The popup shows the installed version, a **Check for updates** button, and an update banner when the server requires a newer version.
 
 ### Google sign-in (optional)
 
@@ -24,8 +37,14 @@ For "Sign in with Google" to work:
 1. In **Supabase Dashboard** → **Authentication** → **Providers**, enable **Google** and configure it (same as for the webapp).
 2. In **Authentication** → **URL Configuration** → **Redirect URLs**, add the extension's redirect URL. It looks like `https://<extension-id>.chromiumapp.org/` (get it via `chrome.identity.getRedirectURL()` in the extension context, or from the extension ID on `chrome://extensions`).
 
-## Load in Chrome
+## Local development (Load unpacked)
 
 1. Open `chrome://extensions/`.
 2. Enable “Developer mode”.
 3. Click “Load unpacked” and select the extension folder (the one that contains `manifest.json`).
+
+## Release
+
+1. Bump semver in `manifest.json`
+2. Merge to `main`
+3. GitHub Actions publishes to Chrome Web Store

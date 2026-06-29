@@ -9,16 +9,32 @@ import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 /** Replace with your user guide video ID (e.g. from YouTube) or set to empty to hide. */
 const USER_GUIDE_VIDEO_ID = ''
 
+type ExtensionVersionResponse = {
+  latestVersion: string
+  minVersion: string
+  storeUrl: string
+}
+
 export default function ExtensionDownloadPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [downloading, setDownloading] = useState(false)
+  const [versionInfo, setVersionInfo] = useState<ExtensionVersionResponse | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
       router.push('/login')
     }
   }, [user, loading, router])
+
+  useEffect(() => {
+    if (!user) return
+
+    fetch('/api/extension/version')
+      .then((res) => res.json())
+      .then((data: ExtensionVersionResponse) => setVersionInfo(data))
+      .catch(() => setVersionInfo(null))
+  }, [user])
 
   const handleDownload = async () => {
     setDownloading(true)
@@ -38,6 +54,8 @@ export default function ExtensionDownloadPage() {
       setDownloading(false)
     }
   }
+
+  const storeUrl = versionInfo?.storeUrl || ''
 
   if (loading) {
     return (
@@ -78,47 +96,62 @@ export default function ExtensionDownloadPage() {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50 mb-8">
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Chrome Extension (CRMPG by KEM)</h1>
+          <div className="flex items-start justify-between gap-4 mb-2">
+            <h1 className="text-2xl font-semibold text-slate-900">Chrome Extension (CRMPG by KEM)</h1>
+            {versionInfo?.latestVersion && (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
+                Latest v{versionInfo.latestVersion}
+              </span>
+            )}
+          </div>
           <p className="text-slate-600 mb-6">
-            Download the extension to sync customer data from the PG Mall business center page into CRMPG, with OpenAI processing and Supabase auth.
+            Install the extension from the Chrome Web Store to sync customer data from the PG Mall business center page into CRMPG. Updates are delivered automatically by Chrome.
           </p>
 
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="inline-flex items-center justify-center gap-2 min-w-[200px] px-6 py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl shadow-md hover:shadow-lg border border-blue-700/50 transition-all duration-200 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
-          >
-            {downloading ? (
-              <>
-                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Preparing...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download extension (ZIP)
-              </>
-            )}
-          </button>
+          {storeUrl ? (
+            <a
+              href={storeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 min-w-[240px] px-6 py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold rounded-xl shadow-md hover:shadow-lg border border-blue-700/50 transition-all duration-200 active:scale-[0.98]"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Install from Chrome Web Store
+            </a>
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 mb-4">
+              Chrome Web Store URL is not configured yet. Set `CHROME_WEB_STORE_EXTENSION_URL` in Vercel after the first publish.
+            </div>
+          )}
 
           <div className="mt-8 pt-6 border-t border-slate-200">
             <h2 className="text-lg font-semibold text-slate-900 mb-3">Install steps</h2>
             <ol className="list-decimal list-inside space-y-2 text-slate-600 text-sm">
-              <li>Unzip the downloaded file.</li>
-              <li>Open Chrome and go to <code className="bg-slate-100 px-1.5 py-0.5 rounded">chrome://extensions/</code>.</li>
-              <li>Turn on <strong>Developer mode</strong> (top right).</li>
-              <li>Click <strong>Load unpacked</strong> and select the unzipped folder.</li>
+              <li>Open the Chrome Web Store link above.</li>
+              <li>Click <strong>Add to Chrome</strong>.</li>
               <li>Pin the extension to the toolbar for easy access.</li>
               <li>Open the PG Mall business center Group Detail page and click the extension icon.</li>
-              <li>Login with your email and password.</li>
-              <li>Click the "Sync to CRMPG" button to sync the customer data to CRMPG.</li>
+              <li>Login with your CRMPG email and password.</li>
+              <li>Click <strong>Sync to CRMPG</strong> to sync customer data.</li>
+              <li>Use <strong>Check for updates</strong> in the popup if you need to refresh immediately.</li>
             </ol>
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">Developer fallback (ZIP)</h2>
+            <p className="text-slate-600 text-sm mb-4">
+              Only use the ZIP flow for local development. End users should install from the Chrome Web Store so updates are automatic.
+            </p>
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="inline-flex items-center justify-center gap-2 min-w-[200px] px-6 py-3 bg-white hover:bg-slate-50 text-slate-800 font-medium rounded-xl border border-slate-300 transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {downloading ? 'Preparing...' : 'Download extension ZIP (dev only)'}
+            </button>
           </div>
         </div>
 
@@ -136,15 +169,6 @@ export default function ExtensionDownloadPage() {
             </div>
           </div>
         )}
-
-        {/* {!USER_GUIDE_VIDEO_ID && (
-          <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
-            <h2 className="text-xl font-semibold text-slate-900 mb-4">User guide</h2>
-            <div className="aspect-video w-full max-w-3xl rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
-              <p className="text-slate-500 text-sm">Video placeholder. Set <code className="bg-slate-200 px-1.5 py-0.5 rounded">USER_GUIDE_VIDEO_ID</code> in this page to embed a YouTube guide.</p>
-            </div>
-          </div>
-        )} */}
       </main>
     </div>
   )

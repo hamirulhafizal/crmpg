@@ -1,4 +1,5 @@
 import { createClient } from '@/app/lib/supabase/server'
+import { readExtensionManifest } from '@/app/lib/extension/version'
 import { NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
@@ -36,11 +37,13 @@ export async function GET() {
     archive.finalize()
 
     const webStream = Readable.toWeb(passThrough) as ReadableStream
+    const manifest = readExtensionManifest()
 
     return new Response(webStream, {
       headers: {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${ZIP_NAME}"`,
+        'X-Extension-Latest-Version': manifest.version || '0.0.0',
       },
     })
   } catch (err) {

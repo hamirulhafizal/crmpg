@@ -235,6 +235,15 @@
     el.style.display = 'block';
     var pgcode = document.getElementById('pgcode');
     if (pgcode) pgcode.textContent = 'Welcome, ' + (user.email || user.user_metadata?.email || 'User');
+    if (window.CRMPGExtensionUpdate) {
+      window.CRMPGExtensionUpdate.fetchRemoteVersionInfo(false)
+        .then(window.CRMPGExtensionUpdate.applyVersionUI)
+        .catch(function () {
+          if (window.CRMPGExtensionUpdate && window.CRMPGExtensionUpdate.renderVersionFooter) {
+            window.CRMPGExtensionUpdate.renderVersionFooter();
+          }
+        });
+    }
   }
 
   function setError(elId, message) {

@@ -55,15 +55,27 @@
 
             <button id="btn-sync-supabase" class="btn-sync" hidden>Sync to CRMPG</button>
             <button id="btn-sync-supabase-2" class="btn-sync">Sync to CRMPG</button>
-            <!-- <button type="button" id="btn-test-confetti" class="btn-test-confetti">Test confetti</button> -->
+
+            <div id="extensionUpdateBanner" class="extension-update-banner" style="display: none;">
+                <p id="extensionUpdateBannerText" class="extension-update-banner-text"></p>
+                <button type="button" id="btn-open-extension-store" class="btn-update-store">Open Chrome Web Store</button>
+            </div>
+
+            <button type="button" id="btn-check-extension-update" class="btn-check-update">Check for updates</button>
+            <p id="extensionUpdateMessage" class="extension-update-message" style="display: none;"></p>
 
             <button id="logout" style="margin-top: 20px">Logout</button>
+
+            <div class="extension-version-footer">
+                <span id="extensionVersionLabel">v1.0.0</span>
+            </div>
         </div>
 
     </div>
 </div>
 <script src="js-confetti.browser.js"></script>
 <script src="config.js"></script>
+<script src="update.js"></script>
 <script src="jquery.min.js"></script>
 <script src="xlsx.full.min.js"></script>
 <script src="login.js"></script>

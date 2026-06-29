@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { applyCustomerNamingFields, type ProcessRowNaming } from '@/app/lib/customers/prefix'
+import { assertExtensionVersionAllowed } from '@/app/lib/extension/version'
 import { DEFAULT_PROMPT_TEMPLATE, buildPrompt } from '@/app/lib/prompts/default-prompt'
 
 // CORS for extension and other cross-origin callers
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Extension-Version',
 }
 
 export async function OPTIONS() {
@@ -21,6 +22,16 @@ const openai = new OpenAI({
 
 export async function POST(request: Request) {
   try {
+    const versionCheck = assertExtensionVersionAllowed(
+      request.headers.get('x-extension-version')
+    )
+    if (!versionCheck.ok) {
+      return NextResponse.json(versionCheck.body, {
+        status: versionCheck.status,
+        headers: CORS_HEADERS,
+      })
+    }
+
     const { rowData, rowNumber, customPrompt } = await request.json()
 
     if (!rowData) {

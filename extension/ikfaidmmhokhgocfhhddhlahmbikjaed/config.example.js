@@ -8,4 +8,6 @@ const SUPABASE_CONFIG = {
   SUPABASE_URL: 'https://your-project.supabase.co',
   SUPABASE_ANON_KEY: 'your_anon_key_here',
   WEBAPP_ORIGIN: 'https://your-app.vercel.app',
+  /** Unlisted Chrome Web Store listing URL */
+  CHROME_WEB_STORE_URL: 'https://chromewebstore.google.com/detail/your-extension-id',
 };
