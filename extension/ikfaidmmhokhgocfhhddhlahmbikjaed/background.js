@@ -48,17 +48,19 @@ async function runInActiveTab(fn) {
 }
 
 /** Run a function in the active tab and return its result (for sync). */
-function runInActiveTabWithResult(fn) {
+function runInActiveTabWithResult(fn, files) {
     return new Promise((resolve, reject) => {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
             if (!tabs || !tabs[0]) {
                 reject(new Error('No active tab'));
                 return;
             }
-            chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id},
-                function: fn
-            }, (results) => {
+            var spec = {
+                target: { tabId: tabs[0].id },
+                func: fn
+            };
+            if (files && files.length) spec.files = files;
+            chrome.scripting.executeScript(spec, (results) => {
                 if (chrome.runtime.lastError) {
                     reject(new Error(chrome.runtime.lastError.message));
                     return;
@@ -74,18 +76,20 @@ function runInActiveTabWithResult(fn) {
 }
 
 /** Run a function in the active tab with arguments (MV3: func + args). */
-function runInActiveTabWithResultArgs(fn, args) {
+function runInActiveTabWithResultArgs(fn, args, files) {
     return new Promise((resolve, reject) => {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
             if (!tabs || !tabs[0]) {
                 reject(new Error('No active tab'));
                 return;
             }
-            chrome.scripting.executeScript({
-                target: {tabId: tabs[0].id},
+            var spec = {
+                target: { tabId: tabs[0].id },
                 func: fn,
                 args: args || []
-            }, (results) => {
+            };
+            if (files && files.length) spec.files = files;
+            chrome.scripting.executeScript(spec, (results) => {
                 if (chrome.runtime.lastError) {
                     reject(new Error(chrome.runtime.lastError.message));
                     return;
@@ -100,80 +104,14 @@ function runInActiveTabWithResultArgs(fn, args) {
     });
 }
 
+const GROUP_DETAIL_PARSER_FILES = ['group-detail-parser.js'];
+
 /** Injected into pgmall.my to return customer rows as array of objects for sync. */
 function getCustomerRowsForSync() {
-    function toTitleCase(s) {
-        if (!s || typeof s !== 'string') return s;
-        return s.trim().split(/\s+/).map(function (w) {
-            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        }).join(' ');
-    }
-    function parseDirectDebitInfo(rawText) {
-        var text = String(rawText || '').replace(/\s{2,}/g, ' ').trim();
-        if (!text || /^no$/i.test(text)) {
-            return {
-                status: 'No',
-                amount: null,
-                date: null
-            };
-        }
-        var amountMatch = text.match(/rm\s*([\d,]+(?:\.\d+)?)/i);
-        var dateMatch = text.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/);
-        return {
-            status: 'Yes',
-            amount: amountMatch ? amountMatch[1].replace(/,/g, '') : null,
-            date: dateMatch ? dateMatch[1] : null
-        };
-    }
-    const company = document.querySelector('#company_select') && document.querySelector('#company_select').value;
-    const tables = document.querySelectorAll('.business-center-data-table');
-    const table = tables[1];
+    var tables = document.querySelectorAll('.business-center-data-table');
+    var table = tables[1];
     if (!table) return [];
-    const tbody = table.querySelector('tbody');
-    if (!tbody) return [];
-    const trs = tbody.querySelectorAll('tr');
-    const rows = [];
-    const isCompany1 = company === '1';
-    for (let i = 0; i < trs.length; i++) {
-        const td = trs[i].querySelectorAll('td');
-        if (td.length < 5) continue;
-        const get = (idx) => (td[idx] && td[idx].textContent && td[idx].textContent.replace(/\s{2,}/g, ' ').trim()) || '';
-        if (isCompany1) {
-            var directDebit = parseDirectDebitInfo(get(14));
-            rows.push({
-                PGCode: get(1),
-                Email: get(2),
-                'Profile Verified': get(3),
-                Name: toTitleCase(get(4)),
-                'Parent Name': toTitleCase(get(5)),
-                'D.O.B.': get(6),
-                Rank: get(7),
-                Branch: get(8),
-                Telephone: get(9),
-                'Total Frontline': get(10),
-                'Empire Size': get(11),
-                'Date Register': get(12),
-                'Last Purchase Date': get(13),
-                'Direct Debit Subscription': directDebit.status,
-                'Direct Debit Amount': directDebit.amount,
-                'Direct Debit Date': directDebit.date
-            });
-        } else {
-            rows.push({
-                PGCode: get(1),
-                Email: get(2),
-                Name: toTitleCase(get(3)),
-                'D.O.B.': get(4),
-                Rank: get(5),
-                Telephone: get(6),
-                'Total Frontline': get(7),
-                'Empire Size': get(8),
-                'Date Register': get(9),
-                'Last Purchase Date': get(10)
-            });
-        }
-    }
-    return rows;
+    return parseGroupDetailTableRows(table);
 }
 
 /**
@@ -181,29 +119,6 @@ function getCustomerRowsForSync() {
  * First arg: page number (1-based). Returns { rows, totalPages } — totalPages set only when page === 1.
  */
 async function fetchDownlineSinglePage(pageNum) {
-    function toTitleCase(s) {
-        if (!s || typeof s !== 'string') return s;
-        return s.trim().split(/\s+/).map(function (w) {
-            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        }).join(' ');
-    }
-    function parseDirectDebitInfo(rawText) {
-        var text = String(rawText || '').replace(/\s{2,}/g, ' ').trim();
-        if (!text || /^no$/i.test(text)) {
-            return {
-                status: 'No',
-                amount: null,
-                date: null
-            };
-        }
-        var amountMatch = text.match(/rm\s*([\d,]+(?:\.\d+)?)/i);
-        var dateMatch = text.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/);
-        return {
-            status: 'Yes',
-            amount: amountMatch ? amountMatch[1].replace(/,/g, '') : null,
-            date: dateMatch ? dateMatch[1] : null
-        };
-    }
     function parseTotalPagesFromDoc(doc) {
         var el = doc.querySelector('.pagination-result-block');
         if (el) {
@@ -286,61 +201,7 @@ async function fetchDownlineSinglePage(pageNum) {
     }
     var table = doc.querySelector('#group_detail_info_table table.business-center-data-table');
     if (!table) return { rows: [], totalPages: totalPages };
-    var tbody = table.querySelector('tbody');
-    if (!tbody) return { rows: [], totalPages: totalPages };
-    var hasProfileVerifiedColumn = false;
-    var ths = table.querySelectorAll('thead th');
-    for (var hi = 0; hi < ths.length; hi++) {
-        var headerText = (ths[hi].textContent || '').replace(/\s{2,}/g, ' ').trim().toLowerCase();
-        if (headerText === 'profile verified status' || headerText === 'profile verified') {
-            hasProfileVerifiedColumn = true;
-            break;
-        }
-    }
-    var trs = tbody.querySelectorAll('tr');
-    var rows = [];
-    for (var i = 0; i < trs.length; i++) {
-        var td = trs[i].querySelectorAll('td');
-        if (td.length < 5) continue;
-        var get = function (idx) {
-            return (td[idx] && td[idx].textContent && td[idx].textContent.replace(/\s{2,}/g, ' ').trim()) || '';
-        };
-        if (hasProfileVerifiedColumn) {
-            var directDebit = parseDirectDebitInfo(get(14));
-            rows.push({
-                PGCode: get(1),
-                Email: get(2),
-                'Profile Verified': get(3),
-                Name: toTitleCase(get(4)),
-                'Parent Name': toTitleCase(get(5)),
-                'D.O.B.': get(6),
-                Rank: get(7),
-                Branch: get(8),
-                Telephone: get(9),
-                'Total Frontline': get(10),
-                'Empire Size': get(11),
-                'Date Register': get(12),
-                'Last Purchase Date': get(13),
-                'Direct Debit Subscription': directDebit.status,
-                'Direct Debit Amount': directDebit.amount,
-                'Direct Debit Date': directDebit.date
-            });
-        } else {
-            rows.push({
-                PGCode: get(1),
-                Email: get(2),
-                Name: toTitleCase(get(3)),
-                'D.O.B.': get(4),
-                Rank: get(5),
-                Telephone: get(6),
-                'Total Frontline': get(7),
-                'Empire Size': get(8),
-                'Date Register': get(9),
-                'Last Purchase Date': get(10)
-            });
-        }
-    }
-    return { rows: rows, totalPages: totalPages };
+    return { rows: parseGroupDetailTableRows(table), totalPages: totalPages };
 }
 
 // ================= POPUP COMM =================
@@ -728,6 +589,15 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return digits;
     }
 
+    function sanitizePhoneForStorage(value) {
+        if (value == null) return null;
+        var v = String(value).replace(/\s{2,}/g, ' ').trim();
+        if (!v || v === '-') return null;
+        var digits = v.replace(/\D/g, '');
+        if (digits.length < 7) return null;
+        return v;
+    }
+
     function isPatchValueNonEmpty(value) {
         if (value === null || value === undefined) return false;
         if (typeof value === 'string') return value.trim() !== '';
@@ -747,6 +617,10 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             if (key === 'pg_code') {
                 // Clear stale "-" placeholders from legacy syncs; store null for temp accounts.
                 patchBody.pg_code = normalizePgCodeForStorage(payload.pg_code);
+                return;
+            }
+            if (key === 'phone') {
+                patchBody.phone = payload.phone != null ? payload.phone : null;
                 return;
             }
             if (isPatchValueNonEmpty(payload[key])) {
@@ -777,7 +651,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var dob = row['D.O.B.'] || row['D.O.B'] || row.DOB || row.dob || null;
         var pgCode = normalizePgCodeForStorage(row.PGCode || row.pg_code || null);
         var email = row.Email || row.email || null;
-        var phone = row.Telephone || row.phone || null;
+        var phone = sanitizePhoneForStorage(row.Telephone || row.phone || null);
         var mainFields = ['name', 'dob', 'email', 'phone', 'location', 'gender', 'ethnicity', 'age', 'prefix', 'first_name', 'sender_name', 'save_name', 'pg_code', 'is_friend', 'Name', 'Email', 'Telephone', 'D.O.B.', 'PGCode', 'Gender', 'Ethnicity', 'Age', 'Prefix', 'FirstName', 'SenderName', 'SaveName', 'Location'];
         var originalData = {};
         Object.keys(row).forEach(function (k) {
@@ -1043,7 +917,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
             var rows;
             try {
-                rows = await runInActiveTabWithResult(rowsFetcher);
+                rows = await runInActiveTabWithResult(rowsFetcher, GROUP_DETAIL_PARSER_FILES);
             } catch (e) {
                 syncProgress.style.display = 'none';
                 setBusy(false);
@@ -1186,7 +1060,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
             var first;
             try {
-                first = await runInActiveTabWithResultArgs(fetchDownlineSinglePage, [1]);
+                first = await runInActiveTabWithResultArgs(fetchDownlineSinglePage, [1], GROUP_DETAIL_PARSER_FILES);
             } catch (e) {
                 syncProgress.style.display = 'none';
                 setBusy(false);
@@ -1217,7 +1091,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 );
                 var chunk;
                 try {
-                    chunk = await runInActiveTabWithResultArgs(fetchDownlineSinglePage, [p]);
+                    chunk = await runInActiveTabWithResultArgs(fetchDownlineSinglePage, [p], GROUP_DETAIL_PARSER_FILES);
                 } catch (e) {
                     syncProgress.style.display = 'none';
                     setBusy(false);
