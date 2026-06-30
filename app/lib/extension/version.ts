@@ -1,6 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 
+import extensionManifest from '@/extension/ikfaidmmhokhgocfhhddhlahmbikjaed/manifest.json'
+
 const EXTENSION_DIR = 'extension/ikfaidmmhokhgocfhhddhlahmbikjaed'
 const MANIFEST_PATH = path.join(process.cwd(), EXTENSION_DIR, 'manifest.json')
 
@@ -36,6 +38,11 @@ export function compareSemver(a: string, b: string): number {
 }
 
 export function readExtensionManifest(): ExtensionManifest {
+  // Bundled at build time so Vercel always serves the version from this deploy.
+  if (extensionManifest?.version) {
+    return extensionManifest as ExtensionManifest
+  }
+
   const raw = fs.readFileSync(MANIFEST_PATH, 'utf8')
   return JSON.parse(raw) as ExtensionManifest
 }

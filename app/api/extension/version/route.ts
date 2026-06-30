@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getExtensionVersionInfo } from '@/app/lib/extension/version'
 
+export const dynamic = 'force-dynamic'
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -26,6 +28,11 @@ export async function GET(request: Request) {
       updateRequired: info.updateRequired,
       currentVersion: clientVersion || null,
     },
-    { headers: CORS_HEADERS }
+    {
+      headers: {
+        ...CORS_HEADERS,
+        'Cache-Control': 'no-store, max-age=0',
+      },
+    }
   )
 }

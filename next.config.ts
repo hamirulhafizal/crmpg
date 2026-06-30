@@ -8,6 +8,12 @@ const nextConfig: NextConfig = {
     "playwright",
   ],
 
+  // Include extension sources in serverless bundles (version API + zip download).
+  outputFileTracingIncludes: {
+    '/api/extension/download': ['./extension/**/*'],
+    '/api/extension/version': ['./extension/ikfaidmmhokhgocfhhddhlahmbikjaed/manifest.json'],
+  },
+
   // Enable Incremental Static Regeneration (ISR)
   // Remove output: 'export' to enable ISR
 
