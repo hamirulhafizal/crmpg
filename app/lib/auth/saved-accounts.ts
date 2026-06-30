@@ -8,6 +8,7 @@ export type SavedAccount = {
   email: string
   fullName: string | null
   avatarUrl: string | null
+  pgcode: string | null
   /** Stored on this device only — enables one-click account switch. */
   password: string | null
   refreshToken: string | null
@@ -40,6 +41,7 @@ export function loadSavedAccounts(): SavedAccount[] {
         email: row.email,
         fullName: row.fullName ?? null,
         avatarUrl: row.avatarUrl ?? null,
+        pgcode: row.pgcode ?? null,
         password: row.password ?? null,
         refreshToken: row.refreshToken ?? null,
         accessToken: row.accessToken ?? null,
@@ -85,6 +87,7 @@ export function upsertSavedAccount(
     email: account.email,
     fullName: account.fullName ?? null,
     avatarUrl: account.avatarUrl ?? null,
+    pgcode: account.pgcode ?? prev?.pgcode ?? null,
     password: account.password ?? prev?.password ?? null,
     refreshToken: account.refreshToken ?? prev?.refreshToken ?? null,
     accessToken: account.accessToken ?? prev?.accessToken ?? null,
@@ -140,7 +143,7 @@ export async function recordAccountFromSession(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url')
+    .select('full_name, avatar_url, pgcode')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -152,6 +155,7 @@ export async function recordAccountFromSession(
       (typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null) ||
       null,
     avatarUrl: typeof profile?.avatar_url === 'string' ? profile.avatar_url : null,
+    pgcode: typeof profile?.pgcode === 'string' && profile.pgcode.trim() ? profile.pgcode.trim() : null,
     password: options?.password ?? prev?.password ?? null,
     refreshToken: activeSession?.refresh_token ?? prev?.refreshToken ?? null,
     accessToken: activeSession?.access_token ?? prev?.accessToken ?? null,
@@ -168,6 +172,25 @@ export function accountInitials(fullName: string | null | undefined, email: stri
     return name.slice(0, 2).toUpperCase()
   }
   return email.slice(0, 2).toUpperCase()
+}
+
+export function savedAccountDisplayLabel(account: Pick<SavedAccount, 'pgcode' | 'fullName' | 'email'>): string {
+  const pg = account.pgcode?.trim()
+  if (pg) {
+    const upper = pg.toUpperCase()
+    return upper.startsWith('PG') ? upper : `PG ${upper}`
+  }
+  return (account.fullName?.trim() || account.email).toUpperCase()
+}
+
+/** Picker tile label — PG code in uppercase, email fallback when PG code not saved yet. */
+export function savedAccountPickerLabel(account: Pick<SavedAccount, 'pgcode' | 'email'>): string {
+  const pg = account.pgcode?.trim()
+  if (pg) {
+    const upper = pg.toUpperCase()
+    return upper.startsWith('PG') ? upper : `PG ${upper}`
+  }
+  return account.email.trim().toUpperCase()
 }
 
 export function accountCanAutoSwitch(account: SavedAccount): boolean {

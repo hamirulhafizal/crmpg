@@ -2,120 +2,19 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
+import { AccountAvatar } from '@/app/components/accounts/AccountAvatar'
+import { RemoveSavedAccountDialog } from '@/app/components/accounts/RemoveSavedAccountDialog'
 import {
-  accountInitials,
   accountCanAutoSwitch,
   loadSavedAccounts,
   MAX_SAVED_ACCOUNTS,
   recordAccountFromSession,
   removeSavedAccount,
+  savedAccountDisplayLabel,
   type SavedAccount,
 } from '@/app/lib/auth/saved-accounts'
-
-function AvatarCircle({
-  avatarUrl,
-  label,
-  size = 'md',
-}: {
-  avatarUrl: string | null
-  label: string
-  size?: 'sm' | 'md'
-}) {
-  const dim = size === 'sm' ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-sm'
-  if (avatarUrl?.trim()) {
-    return (
-      <img
-        src={avatarUrl}
-        alt=""
-        className={`${dim} shrink-0 rounded-full object-cover ring-2 ring-white`}
-      />
-    )
-  }
-  return (
-    <span
-      className={`${dim} inline-flex shrink-0 items-center justify-center rounded-full bg-violet-600 font-semibold text-white ring-2 ring-white`}
-      aria-hidden
-    >
-      {label}
-    </span>
-  )
-}
-
-function RemoveAccountDialog({
-  account,
-  onCancel,
-  onConfirm,
-}: {
-  account: SavedAccount
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  const label = account.fullName?.trim() || account.email
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel()
-    }
-    document.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
-    }
-  }, [onCancel])
-
-  if (!mounted) return null
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="remove-account-title"
-        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
-      >
-        <h3 id="remove-account-title" className="text-lg font-semibold text-slate-900">
-          Remove account?
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">
-          Remove <span className="font-medium text-slate-900">{label}</span> from saved accounts on
-          this device. You can add it again later by signing in.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
-          >
-            Remove
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
 
 type UserProfileMenuProps = {
   /** Raise z-index so the menu works above fullscreen overlays (e.g. profile setup). */
@@ -182,7 +81,6 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
 
   const email = user.email ?? ''
   const displayName = fullName?.trim() || email
-  const initials = accountInitials(fullName, email)
   const otherAccounts = Array.from(
     new Map(
       savedAccounts.filter((a) => a.userId !== user.id).map((a) => [a.userId, a])
@@ -200,7 +98,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
           aria-haspopup="menu"
           aria-label="Account menu"
         >
-          <AvatarCircle avatarUrl={avatarUrl} label={initials} />
+          <AccountAvatar avatarUrl={avatarUrl} fullName={fullName} email={email} size="sm" className="rounded-full" />
         </button>
 
         {open ? (
@@ -210,7 +108,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
           >
             <div className="border-b border-slate-100 px-4 py-4">
               <div className="flex items-center gap-3">
-                <AvatarCircle avatarUrl={avatarUrl} label={initials} size="sm" />
+                <AccountAvatar avatarUrl={avatarUrl} fullName={fullName} email={email} size="sm" className="rounded-full" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
                   <p className="truncate text-xs text-slate-500">{email}</p>
@@ -257,18 +155,18 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
                       className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-sm text-slate-700"
                       onClick={() => setOpen(false)}
                     >
-                      <AvatarCircle
+                      <AccountAvatar
                         avatarUrl={account.avatarUrl}
-                        label={accountInitials(account.fullName, account.email)}
+                        fullName={account.fullName}
+                        email={account.email}
                         size="sm"
+                        className="rounded-full"
                       />
-                      <span className="min-w-0 truncate">
-                        {account.fullName?.trim() || account.email}
-                      </span>
+                      <span className="min-w-0 truncate">{savedAccountDisplayLabel(account)}</span>
                     </a>
                     <button
                       type="button"
-                      aria-label={`Remove ${account.fullName?.trim() || account.email}`}
+                      aria-label={`Remove ${savedAccountDisplayLabel(account)}`}
                       className="mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 opacity-70 transition hover:bg-slate-200/80 hover:text-slate-700 group-hover:opacity-100"
                       onClick={(e) => {
                         e.preventDefault()
@@ -318,7 +216,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
       </div>
 
       {accountToRemove ? (
-        <RemoveAccountDialog
+        <RemoveSavedAccountDialog
           account={accountToRemove}
           onCancel={() => setAccountToRemove(null)}
           onConfirm={handleConfirmRemove}
