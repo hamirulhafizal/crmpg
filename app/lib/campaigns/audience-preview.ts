@@ -131,7 +131,7 @@ export function describeCampaignAudienceFilters(
     if (bits.length) lines.push(`Segment fields: ${bits.join('; ')}`)
   }
   if (lines.length === 0) {
-    lines.push('No audience filters — any customer with a saved phone number in your CRM.')
+    lines.push('No audience filters — any customer with a valid Malaysian phone number in your CRM.')
   }
   return lines
 }

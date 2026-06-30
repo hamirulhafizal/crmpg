@@ -37,6 +37,7 @@ import {
   whatsAppSendOptionsForStep,
 } from '@/app/lib/campaigns/whatsapp-send-options'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
+import { INVALID_CAMPAIGN_PHONE_MESSAGE, isValidCampaignPhone } from '@/app/lib/phone-msisdn'
 import type {
   CampaignAudienceFilters,
   CampaignRow,
@@ -725,7 +726,7 @@ async function syncEnrollmentsForCampaign(
 
     for (const raw of rows) {
       const c = raw as unknown as CustomerForAudience
-      if (!c.phone || !String(c.phone).trim()) {
+      if (!isValidCampaignPhone(c.phone)) {
         skipNoPhone++
         continue
       }
@@ -1176,6 +1177,60 @@ async function processDueEnrollmentRows(
 
     const session = sessionPick.sessionName
     const label = customerWorkflowLabel(customer)
+
+    if (!isValidCampaignPhone(customer.phone)) {
+      summary.messages_failed++
+      const invalidMsg = INVALID_CAMPAIGN_PHONE_MESSAGE
+      cronLog(
+        debugLines,
+        `skip invalid phone ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} phone=${JSON.stringify(customer.phone)}`
+      )
+      await supabase.from('campaign_message_logs').insert({
+        campaign_id: campaign.id,
+        campaign_step_id: nextStep.id,
+        enrollment_id: row.id,
+        customer_id: customer.id,
+        user_id: campaign.user_id,
+        phone: customer.phone,
+        rendered_message: null,
+        send_status: 'failed',
+        error_message: invalidMsg,
+      })
+      await supabase
+        .from('campaign_enrollments')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          next_send_at: null,
+          metadata: {
+            ...(row.metadata ?? {}),
+            skip_invalid_phone: {
+              at: new Date().toISOString(),
+              phone: customer.phone,
+              step_order: nextStep.step_order,
+            },
+          },
+        })
+        .eq('id', row.id)
+      onProgress?.({
+        type: 'log',
+        message: `Skipped ${label} — invalid phone number (no WhatsApp or email fallback)`,
+        level: 'info',
+      })
+      if (usesSequentialCustomerQueue(plan, audienceFilters)) {
+        await promoteNextCustomerInQueue(
+          supabase,
+          campaign.id,
+          plan,
+          row.last_step_sent,
+          new Date(),
+          debugLines,
+          audienceFilters
+        )
+      }
+      continue
+    }
+
     cronLog(
       debugLines,
       `send ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} phone=…${String(customer.phone).slice(-4)}`
@@ -1298,7 +1353,7 @@ async function processDueEnrollmentRows(
           session,
           error: waMsg,
         })
-        if (!isImageStep && sendOpts.gmail_fallback_enabled) {
+        if (!isImageStep && sendOpts.gmail_fallback_enabled && isValidCampaignPhone(customer.phone)) {
           const emailOk = await sendCampaignEmailFallback(
             campaign.user_id,
             customer as GmailFallbackCustomer,

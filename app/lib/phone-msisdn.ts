@@ -1,3 +1,21 @@
+export const INVALID_CAMPAIGN_PHONE_MESSAGE = 'Invalid phone number — cannot send WhatsApp'
+
+export function extractPhoneDigits(phone: string | null | undefined): string {
+  return String(phone ?? '').replace(/[^0-9]/g, '')
+}
+
+/** True when CRM phone can be used for WhatsApp (rejects empty, "-", country names like "Malaysia", etc.). */
+export function isValidCampaignPhone(phone: string | null | undefined): boolean {
+  const trimmed = String(phone ?? '').trim()
+  if (!trimmed || trimmed === '-') return false
+  const rawDigits = extractPhoneDigits(trimmed)
+  if (rawDigits.length < 7) return false
+  const msisdn = normalizePhoneToMsisdn(trimmed)
+  if (!msisdn.startsWith('60')) return false
+  const subscriber = msisdn.slice(2)
+  return subscriber.length >= 8 && subscriber.length <= 11
+}
+
 /** Normalize phone digits to Malaysia MSISDN (leading 60). */
 export function normalizePhoneToMsisdn(phone: string): string {
   let digits = phone.replace(/[^0-9]/g, '')

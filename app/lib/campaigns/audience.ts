@@ -7,6 +7,7 @@ import {
 } from '@/app/lib/customer-account-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { isValidCampaignPhone } from '@/app/lib/phone-msisdn'
 
 type TagEmbed = { slug?: string } | { slug?: string }[] | null
 
@@ -81,7 +82,7 @@ export function customerTagIds(c: CustomerForAudience): Set<string> {
 }
 
 export function customerMatchesFilters(c: CustomerForAudience, filters: CampaignAudienceFilters): boolean {
-  if (!c.phone || !String(c.phone).trim()) return false
+  if (!isValidCampaignPhone(c.phone)) return false
 
   const wantSlugs = (filters.tag_slugs ?? []).map((t) => String(t).toLowerCase().trim()).filter(Boolean)
   const wantIds = (filters.tag_ids ?? []).map((id) => String(id).trim()).filter(Boolean)
