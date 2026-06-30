@@ -47,71 +47,67 @@ async function runInActiveTab(fn) {
     });
 }
 
-/** Run a function in the active tab and return its result (for sync). */
-function runInActiveTabWithResult(fn, files) {
+function injectIntoActiveTab(spec, files) {
     return new Promise((resolve, reject) => {
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (!tabs || !tabs[0]) {
                 reject(new Error('No active tab'));
                 return;
             }
-            var spec = {
-                target: { tabId: tabs[0].id },
-                func: fn
-            };
-            if (files && files.length) spec.files = files;
-            chrome.scripting.executeScript(spec, (results) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (results && results[0] && results[0].result !== undefined) {
-                    resolve(results[0].result);
-                } else {
-                    reject(new Error('No data from page'));
-                }
-            });
+
+            var tabId = tabs[0].id;
+
+            function runSpec() {
+                chrome.scripting.executeScript(
+                    Object.assign({ target: { tabId: tabId } }, spec),
+                    (results) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        if (results && results[0] && results[0].result !== undefined) {
+                            resolve(results[0].result);
+                            return;
+                        }
+                        reject(new Error('No data from page'));
+                    }
+                );
+            }
+
+            if (files && files.length) {
+                chrome.scripting.executeScript(
+                    { target: { tabId: tabId }, files: files },
+                    () => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        runSpec();
+                    }
+                );
+                return;
+            }
+
+            runSpec();
         });
     });
 }
 
+/** Run a function in the active tab and return its result (for sync). */
+function runInActiveTabWithResult(fn, files) {
+    return injectIntoActiveTab({ func: fn }, files);
+}
+
 /** Run a function in the active tab with arguments (MV3: func + args). */
 function runInActiveTabWithResultArgs(fn, args, files) {
-    return new Promise((resolve, reject) => {
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (!tabs || !tabs[0]) {
-                reject(new Error('No active tab'));
-                return;
-            }
-            var spec = {
-                target: { tabId: tabs[0].id },
-                func: fn,
-                args: args || []
-            };
-            if (files && files.length) spec.files = files;
-            chrome.scripting.executeScript(spec, (results) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (results && results[0] && results[0].result !== undefined) {
-                    resolve(results[0].result);
-                } else {
-                    reject(new Error('No data from page'));
-                }
-            });
-        });
-    });
+    return injectIntoActiveTab({ func: fn, args: args || [] }, files);
 }
 
 const GROUP_DETAIL_PARSER_FILES = ['group-detail-parser.js'];
 
 /** Injected into pgmall.my to return customer rows as array of objects for sync. */
 function getCustomerRowsForSync() {
-    var tables = document.querySelectorAll('.business-center-data-table');
-    var table = tables[1];
-    if (!table) return [];
-    return parseGroupDetailTableRows(table);
+    return readVisibleGroupDetailRows();
 }
 
 /**
@@ -149,7 +145,7 @@ async function fetchDownlineSinglePage(pageNum) {
     var input = document.querySelector('input[name="current-customer-id"]');
     var customerId = input && input.value && String(input.value).trim();
     if (!customerId) {
-        customerId = (currentUrl && (currentUrl.searchParams.get('customer_id') || currentUrl.searchParams.get('filter_customer_id'))) || '';
+        customerId = resolveCurrentCustomerId(document);
     }
 
     var companySelect = document.querySelector('#company_select');
@@ -960,6 +956,36 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
     var FETCH_PROGRESS_MAX = 38;
 
+    async function syncVisibleRowsFromCurrentPage(userId, accessToken, supabaseUrl, anonKey, webappOrigin, progressLabel) {
+        var visibleRows = await runInActiveTabWithResult(getCustomerRowsForSync, GROUP_DETAIL_PARSER_FILES);
+        if (!visibleRows || !visibleRows.length) {
+            return null;
+        }
+
+        setProgress(40, progressLabel || ('Syncing ' + visibleRows.length + ' rows from current page...'));
+        var runId = await createSyncRun(
+            supabaseUrl,
+            anonKey,
+            accessToken,
+            userId,
+            'single_page_sync',
+            visibleRows.length,
+            { source: 'btn-sync-supabase-2', mode: 'visible_page_fallback' }
+        );
+        var result = await syncRowsToSupabase(visibleRows, supabaseUrl, anonKey, webappOrigin, userId, accessToken, {
+            rowStart: 40,
+            rowEnd: 97
+        });
+        await updateSyncRun(supabaseUrl, anonKey, accessToken, runId, {
+            status: result.failed > 0 ? 'failed' : 'completed',
+            inserted_count: result.inserted,
+            updated_count: result.updated,
+            failed_count: result.failed,
+            finished_at: new Date().toISOString()
+        });
+        return result;
+    }
+
     async function runSyncDownlineAllPages() {
         try {
             await ensureExtensionCanSync();
@@ -1059,12 +1085,41 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             });
 
             var first;
+            var fetchError = null;
             try {
                 first = await runInActiveTabWithResultArgs(fetchDownlineSinglePage, [1], GROUP_DETAIL_PARSER_FILES);
             } catch (e) {
+                fetchError = e;
+                first = null;
+            }
+
+            if (!first || !first.rows || !first.rows.length) {
+                try {
+                    var fallbackResult = await syncVisibleRowsFromCurrentPage(
+                        userId,
+                        accessToken,
+                        supabaseUrl,
+                        anonKey,
+                        webappOrigin,
+                        'Multi-page fetch unavailable. Syncing visible rows on this page...'
+                    );
+                    if (fallbackResult) {
+                        await clearSync2State(userId);
+                        return;
+                    }
+                } catch (fallbackErr) {
+                    fetchError = fallbackErr;
+                }
+
                 syncProgress.style.display = 'none';
                 setBusy(false);
-                alert('Could not fetch downline data. Open bc.pgmall.my (logged in) on a downline view with current-customer-id and try again.');
+                await clearSync2State(userId);
+                var detail = fetchError && fetchError.message ? (' ' + fetchError.message) : '';
+                alert(
+                    'Could not fetch all downline pages.' + detail +
+                    ' Stay on Group Details with the customer table visible, then try again. ' +
+                    'If the table is visible but sync still fails, reload the page and retry.'
+                );
                 return;
             }
 

@@ -115,3 +115,68 @@ function parseGroupDetailTableRows(table) {
 
   return rows;
 }
+
+function extractCustomerIdFromHref(href) {
+  if (!href) return '';
+  try {
+    var u = new URL(href, window.location.origin);
+    var id = u.searchParams.get('customer_id') || u.searchParams.get('filter_customer_id');
+    return id && String(id).trim() ? String(id).trim() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function resolveCurrentCustomerId(root) {
+  root = root || document;
+
+  var input = root.querySelector('input[name="current-customer-id"]');
+  if (input && input.value && String(input.value).trim()) {
+    return String(input.value).trim();
+  }
+
+  try {
+    var currentUrl = new URL(window.location.href);
+    var fromUrl =
+      currentUrl.searchParams.get('customer_id') ||
+      currentUrl.searchParams.get('filter_customer_id');
+    if (fromUrl && String(fromUrl).trim()) return String(fromUrl).trim();
+  } catch (e) { /* ignore */ }
+
+  var links = root.querySelectorAll('a[href*="customer_id="], a[href*="filter_customer_id="]');
+  for (var i = 0; i < links.length; i++) {
+    var fromLink = extractCustomerIdFromHref(links[i].getAttribute('href') || '');
+    if (fromLink) return fromLink;
+  }
+
+  var headers = root.querySelectorAll('th[onclick*="viewDownline("]');
+  for (var j = 0; j < headers.length; j++) {
+    var onclick = headers[j].getAttribute('onclick') || '';
+    var match = /viewDownline\s*\(\s*['"]([^'"]+)['"]/.exec(onclick);
+    if (match && match[1] && String(match[1]).trim()) return String(match[1]).trim();
+  }
+
+  return '';
+}
+
+function getVisibleGroupDetailTable(root) {
+  root = root || document;
+  var inContainer = root.querySelector('#group_detail_info_table table.business-center-data-table');
+  if (inContainer) return inContainer;
+
+  var tables = root.querySelectorAll('.business-center-data-table');
+  if (tables.length > 1) return tables[1];
+  if (tables.length === 1) return tables[0];
+  return null;
+}
+
+function readVisibleGroupDetailRows() {
+  return parseGroupDetailTableRows(getVisibleGroupDetailTable(document));
+}
+
+function getDownlineSyncContext() {
+  return {
+    customerId: resolveCurrentCustomerId(document),
+    visibleRowCount: readVisibleGroupDetailRows().length
+  };
+}
