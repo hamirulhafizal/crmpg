@@ -5,6 +5,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { showLocalTestNotification } from '@/app/lib/push/local-notification'
 
 export default function DeclarativeWebPushTestPage() {
   const { user, loading: authLoading } = useAuth()
@@ -356,61 +357,27 @@ export default function DeclarativeWebPushTestPage() {
     setMessage(null)
 
     try {
-      // Check if Notification API is supported
-      if (!('Notification' in window)) {
-        throw new Error('Notifications are not supported in this browser.')
-      }
-
-      // Check permission
-      if (Notification.permission === 'denied') {
-        throw new Error('Notification permission is denied. Please enable notifications in your browser settings.')
-      }
-
-      if (Notification.permission === 'default') {
-        // Request permission first
-        const permission = await Notification.requestPermission()
-        setNotificationPermission(permission)
-
-        if (permission !== 'granted') {
-          throw new Error('Notification permission was denied.')
-        }
-      }
-
-      // Show local notification using Notification API
-      const notification = new Notification(localNotificationTitle, {
+      const result = await showLocalTestNotification({
+        title: localNotificationTitle,
         body: localNotificationBody,
-        icon: '/icons/image.png',
-        badge: '/icons/image.png',
-        tag: localNotificationTag,
-        requireInteraction: false,
-        silent: false,
-        data: {
-          url: '/dashboard',
-          timestamp: Date.now(),
-        },
+        tag: localNotificationTag || `local-test-${Date.now()}`,
       })
 
-      // Handle notification click
-      notification.onclick = () => {
-        window.focus()
-        notification.close()
-        // Optionally navigate to a specific URL
-        router.push('/dashboard')
-      }
+      const parts = [
+        result.inAppPreviewShown ? 'In-app preview shown at top of screen.' : 'Notification triggered.',
+        result.method === 'serviceWorker'
+          ? 'System notification sent via service worker.'
+          : result.method === 'notification-constructor'
+            ? 'System notification sent via Notification API.'
+            : 'System notification unavailable on this device.',
+      ]
+      if (result.hint) parts.push(result.hint)
 
-      setMessage({
-        type: 'success',
-        text: 'Local notification sent! Check your notifications.',
-      })
-
-      // Auto-close notification after 5 seconds (optional)
-      setTimeout(() => {
-        notification.close()
-      }, 5000)
-    } catch (error: any) {
+      setMessage({ type: 'success', text: parts.join(' ') })
+    } catch (error: unknown) {
       setMessage({
         type: 'error',
-        text: error.message || 'Failed to send local notification.',
+        text: error instanceof Error ? error.message : 'Failed to send local notification.',
       })
     } finally {
       setIsSendingLocal(false)
@@ -664,11 +631,12 @@ export default function DeclarativeWebPushTestPage() {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <p className="text-sm text-blue-800 mb-2">
-                    <strong>💡 Difference:</strong>
+                    <strong>💡 How local test works:</strong>
                   </p>
                   <ul className="text-xs text-blue-700 space-y-1">
-                    <li>• <strong>Local Notification</strong> = Immediate, works only when page is open</li>
-                    <li>• <strong>Push Notification</strong> = Works even when app is closed, requires subscription</li>
+                    <li>• An <strong>in-app preview banner</strong> appears instantly at the top</li>
+                    <li>• On <strong>iOS PWA</strong>, the system banner usually only shows when the app is backgrounded</li>
+                    <li>• <strong>Push notifications</strong> work when the app is closed (requires subscription)</li>
                   </ul>
                 </div>
 

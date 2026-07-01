@@ -1,10 +1,12 @@
 // Service Worker for PWA
 // Bump when caching strategy changes so old HTML/documents are dropped.
-const CACHE_NAME = 'public-gold-crm-v3';
+const CACHE_NAME = 'public-gold-crm-v8';
 const urlsToCache = [
   '/',
   '/manifest.json',
   '/favicon.ico',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 // Note: We don't cache /dashboard, /login, /register, etc. because:
 // 1. They require authentication checks (middleware redirects)
@@ -121,6 +123,28 @@ self.addEventListener('fetch', (event) => {
         }
       })
   );
-  
 });
+
+// Local test notifications (registration.showNotification from the page) need click handling.
+// Declarative push taps are handled by the OS — skip those here.
+self.addEventListener('notificationclick', (event) => {
+  const data = event.notification?.data
+  if (!data?.localTest) return
+
+  event.notification.close()
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          return client.focus()
+        }
+      }
+      if (data?.url) {
+        return self.clients.openWindow(data.url)
+      }
+      return undefined
+    })
+  )
+})
 

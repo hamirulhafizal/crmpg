@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
 
 type ServiceTileProps = {
@@ -537,6 +538,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
             <div className="flex items-center gap-3">
+              <PWADashboardInstallButton />
               <Link
                 href="/excel-processor"
                 className="hidden px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
@@ -561,6 +563,8 @@ export default function DashboardPage() {
           </h2>
           <p className="text-slate-600">You&apos;re successfully signed in to your account.</p>
         </div>
+
+        <PWADashboardSetup />
 
         {!checkingSaas && saasPlanLabel ? (
           <div className="rounded-2xl border border-violet-200/80 bg-white p-6 shadow-xl">
@@ -709,6 +713,25 @@ export default function DashboardPage() {
                       strokeLinejoin="round"
                       strokeWidth={2}
                       d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                }
+              />
+
+              <ServiceTile
+                href="/admin/push"
+                title="Push notifications"
+                description="Test broadcast to PWA devices"
+                borderClassName="border-blue-200"
+                gradientClassName="from-blue-50/80 to-white"
+                iconClassName="bg-blue-600"
+                icon={
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                     />
                   </svg>
                 }

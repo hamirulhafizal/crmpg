@@ -1,137 +1,148 @@
-import { NextResponse } from 'next/server'
-import webpush from 'web-push'
-import { saveSubscription } from '@/app/lib/push-subscriptions'
+import { after, NextResponse } from 'next/server'
+import { buildDeclarativePushPayload } from '@/app/lib/push/payload'
+import { parseWebPushSubscription, saveSubscription, type WebPushSubscription } from '@/app/lib/push/subscriptions'
+import { ensureWebPushConfigured, getSiteBaseUrl, webpush } from '@/app/lib/push/vapid'
 
-// Initialize web-push with VAPID keys from environment variables
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:hamirul.dev@gmail.com'
+export const maxDuration = 300
 
-if (vapidPublicKey && vapidPrivateKey) {
-  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+const LOG = '[PG Push API]'
+
+async function sendPushNotification(subscription: WebPushSubscription, payload: string) {
+  console.log(`${LOG} sendNotification → endpoint: ${subscription.endpoint.slice(0, 60)}…`)
+  console.log(`${LOG} payload preview:`, payload.slice(0, 200))
+  await webpush.sendNotification(subscription, payload)
 }
 
 export async function POST(request: Request) {
+  const debugSteps: string[] = []
+
   try {
+    debugSteps.push('1. Received POST /api/push/send-test')
     const body = await request.json()
     const { subscription, title, message, delay = 0 } = body
 
     if (!subscription || !subscription.endpoint) {
+      console.error(`${LOG} Missing subscription endpoint`)
       return NextResponse.json(
-        { error: 'Push subscription is required' },
+        { error: 'Push subscription is required', debug: debugSteps },
         { status: 400 }
       )
     }
 
-    if (!vapidPublicKey || !vapidPrivateKey) {
+    const webPushSubscription = parseWebPushSubscription(subscription as PushSubscriptionJSON)
+
+    debugSteps.push(`2. Subscription endpoint: ${webPushSubscription.endpoint.slice(0, 60)}…`)
+
+    const vapid = ensureWebPushConfigured()
+    if (!vapid.ok) {
+      console.error(`${LOG} VAPID not configured:`, vapid.error)
+      debugSteps.push(`3. FAIL — ${vapid.error}`)
       return NextResponse.json(
-        {
-          error: 'VAPID keys not configured. Please set VAPID_PRIVATE_KEY and NEXT_PUBLIC_VAPID_PUBLIC_KEY in your environment variables.',
-          code: 'VAPID_NOT_CONFIGURED',
-        },
+        { error: vapid.error, code: 'VAPID_NOT_CONFIGURED', debug: debugSteps },
         { status: 500 }
       )
     }
+    debugSteps.push('3. VAPID keys configured on server')
 
-    // Save subscription if it doesn't exist
     const userAgent = request.headers.get('user-agent') || ''
-    saveSubscription(subscription, userAgent, {})
+    debugSteps.push('4. Saving/updating subscription in database…')
+    await saveSubscription(subscription as PushSubscriptionJSON, userAgent, {})
+    debugSteps.push('5. Subscription saved')
 
-    // Determine the base URL for navigation
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
-    const navigateUrl = `${baseUrl}/dashboard`
+    const navigateUrl = `${getSiteBaseUrl()}/dashboard`
+    const payload = buildDeclarativePushPayload({
+      title: title || 'Test Notification',
+      body: message || 'This is a test notification',
+      navigateUrl,
+      tag: 'test-notification',
+    })
+    debugSteps.push(`6. Payload built (declarative, navigate=${navigateUrl})`)
 
-    // Use Declarative Web Push format (RFC 8030) for Safari 18.4+ / iOS 18.4+
-    // Reference: https://github.com/WebKit/explainers/tree/main/DeclarativeWebPush
-    // Format: { "web_push": "8030", "notification": { "title": "...", "navigate_url": "...", "body": "...", etc. } }
-    //
-    // For browsers that support declarative web push, the OS handles the notification automatically
-    // For other browsers, the service worker will handle it (fallback)
-    const declarativePayload = {
-      web_push: '8030',
-      notification: {
-        title: title || 'Test Notification',
-        navigate_url: navigateUrl,
-        body: message || 'This is a test notification',
-        tag: 'test-notification',
-        sound: 'default',
-        icon: `${baseUrl}/icons/image.png`,
-        badge: `${baseUrl}/icons/image.png`,
-      },
-    }
-
-    // Stringify the payload - web-push library will send this as the message body
-    const payload = JSON.stringify(declarativePayload)
-
-    // Handle delay on SERVER SIDE so it works even when PWA is closed
-    // This is critical: client-side delays won't work if the app is closed
-    const maxDelay = 300 * 1000 // 5 minutes in milliseconds
+    const maxDelay = 300 * 1000
     const delayMs = typeof delay === 'number' ? delay : 0
 
     if (delayMs > maxDelay) {
       return NextResponse.json(
-        { error: `Delay cannot exceed ${maxDelay / 1000} seconds (5 minutes)` },
+        { error: `Delay cannot exceed ${maxDelay / 1000} seconds (5 minutes)`, debug: debugSteps },
         { status: 400 }
       )
     }
 
     const delaySeconds = delayMs > 0 ? Math.floor(delayMs / 1000) : 0
+    console.log(`${LOG} Request: delay=${delaySeconds}s, title="${title}", endpoint=${webPushSubscription.endpoint.slice(0, 48)}…`)
 
-    // Log for debugging
-    console.log(`[Push API] Received request: delay=${delaySeconds}s, title="${title}", message="${message}"`)
-
-    // Wait for delay if specified (server-side delay ensures it works even if app is closed)
     if (delayMs > 0) {
-      console.log(`[Push API] Waiting ${delaySeconds} second(s) before sending...`)
-      await new Promise((resolve) => setTimeout(resolve, delayMs))
-      console.log(`[Push API] Delay complete, sending notification now...`)
+      debugSteps.push(`7. Scheduling delayed send in ${delaySeconds}s (server after())`)
+      after(async () => {
+        try {
+          console.log(`${LOG} Waiting ${delaySeconds}s before sending (background)…`)
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+          console.log(`${LOG} Delay elapsed — sending push now`)
+          await sendPushNotification(webPushSubscription, payload)
+          console.log(`${LOG} Delayed push sent successfully`)
+        } catch (error) {
+          console.error(`${LOG} Delayed push failed:`, error)
+        }
+      })
+
+      return NextResponse.json({
+        success: true,
+        scheduled: true,
+        message: `Push scheduled in ${delaySeconds} second(s). Close the app and wait for the notification.`,
+        delay: delayMs,
+        delaySeconds,
+        format: 'declarative',
+        debug: debugSteps,
+      })
     }
 
-    // Send the push notification
-    console.log(`[Push API] Sending push notification to subscription endpoint...`)
-    await webpush.sendNotification(subscription, payload)
-    console.log(`[Push API] Push notification sent successfully`)
+    debugSteps.push('7. Sending push immediately…')
+    console.log(`${LOG} Sending push notification immediately…`)
+    await sendPushNotification(webPushSubscription, payload)
+    debugSteps.push('8. Push sent successfully')
+    console.log(`${LOG} Push notification sent successfully`)
 
     return NextResponse.json({
       success: true,
-      message:
-        delayMs > 0
-          ? `Push notification sent after ${delaySeconds} second(s) delay`
-          : 'Push notification sent',
+      scheduled: false,
+      message: 'Push notification sent',
       sentAt: new Date().toISOString(),
-      delay: delayMs,
+      delay: 0,
       format: 'declarative',
+      debug: debugSteps,
     })
-  } catch (error: any) {
-    console.error('[Push API] Error sending push notification:', error)
-    console.error('[Push API] Error details:', {
-      name: error.name,
-      message: error.message,
-      statusCode: error.statusCode,
-      endpoint: error.endpoint,
-      body: error.body,
+  } catch (error: unknown) {
+    const err = error as { name?: string; message?: string; statusCode?: number; endpoint?: string; body?: string }
+    console.error(`${LOG} Error sending push notification:`, error)
+    console.error(`${LOG} Error details:`, {
+      name: err.name,
+      message: err.message,
+      statusCode: err.statusCode,
+      endpoint: err.endpoint,
+      body: err.body,
     })
+    debugSteps.push(`FAIL — ${err.message || 'Unknown error'} (status ${err.statusCode ?? 'n/a'})`)
 
-    // Handle specific web-push errors
-    if (error.statusCode === 410) {
+    if (err.statusCode === 410) {
       return NextResponse.json(
         {
           error: 'Push subscription has expired. Please resubscribe.',
           code: 'EXPIRED_SUBSCRIPTION',
+          debug: debugSteps,
         },
         { status: 410 }
       )
     }
 
-    // Handle VAPID key mismatch (403 error)
-    if (error.statusCode === 403 || error.statusCode === 401) {
+    if (err.statusCode === 403 || err.statusCode === 401) {
       return NextResponse.json(
         {
           error:
             'VAPID key mismatch. The subscription was created with different VAPID keys. Please unsubscribe and resubscribe with the current keys.',
           code: 'VAPID_MISMATCH',
           details:
-            'This usually happens when VAPID keys were changed after creating the subscription. You need to unsubscribe and create a new subscription with the current keys.',
+            'This usually happens when VAPID keys were changed after creating the subscription.',
+          debug: debugSteps,
         },
         { status: 403 }
       )
@@ -139,13 +150,13 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: error.message || 'Failed to send push notification',
+        error: err.message || 'Failed to send push notification',
         code: 'UNKNOWN_ERROR',
-        statusCode: error.statusCode,
-        details: error.body || 'Check server logs for more details',
+        statusCode: err.statusCode,
+        details: err.body || 'Check server logs for more details',
+        debug: debugSteps,
       },
       { status: 500 }
     )
   }
 }
-

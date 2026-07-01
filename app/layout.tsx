@@ -4,14 +4,21 @@ import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { AuthProvider } from "./contexts/auth-context";
 import { CustomerEditModalProvider } from "./contexts/customer-edit-modal-context";
-import DisableServiceWorkers from "./components/DisableServiceWorkers";
+import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 import ViewTransitions from "./components/ViewTransitions";
 import ClientScripts from "./components/ClientScripts";
 import { MotionProvider } from "./components/motion-provider";
+import { PWAInstallPromptBootstrap } from "./components/pwa/PWAInstallPromptBootstrap";
 
 export const metadata: Metadata = {
-  title: "Public Gold",
-  description: "Public Gold",
+  title: "Public Gold CRM",
+  description: "Public Gold CRM — room rental sublet management",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "PG CRM",
+  },
   keywords: "Publicgold, Publigoldofficial, PG Mall, PG Jewel, Aurora Italia, Emas, GAP, EPP, public gold, public gold malaysia, public gold indonesia, public gold brunei, public gold ampang, public gold bangi, public gold sunway, emas, emas public gold, dinar, gold bar, gold bars, gap, public gold gap",
   metadataBase: new URL('https://publicgolds.com'),
   icons: {
@@ -39,6 +46,11 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
         <meta name="theme-color" content="#2563eb" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="PG CRM" />
+        <link rel="manifest" href="/manifest.json" />
         <link rel="dns-prefetch" href="https://app.nocodb.com" />
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
       </head>
@@ -46,6 +58,7 @@ export default function RootLayout({
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning
       >
+        <PWAInstallPromptBootstrap />
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe
@@ -59,7 +72,7 @@ export default function RootLayout({
         <AuthProvider>
           <CustomerEditModalProvider>
             <MotionProvider>
-              <DisableServiceWorkers />
+              <ServiceWorkerRegistration />
               <ViewTransitions />
               <ClientScripts />
               {children}

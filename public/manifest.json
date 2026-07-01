@@ -1,39 +1,68 @@
 {
   "name": "Public Gold CRM",
   "short_name": "PG CRM",
-  "description": "Public Gold CRM - Room rental sublet management system",
-  "id": "public-gold-crm",
+  "description": "Public Gold CRM helps dealers manage customers, WhatsApp campaigns, workflows, and sales journeys. Install this app for quick home-screen access and background notifications.",
+  "id": "/",
   "start_url": "/dashboard",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "orientation": "portrait-primary",
   "scope": "/",
   "icons": [
     {
-      "src": "/icons/image.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/image.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/image.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/image.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/dashboard-mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dashboard — quick access to all services"
+    },
+    {
+      "src": "/screenshots/dashboard-wide.png",
+      "sizes": "1024x707",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dashboard — plan usage and service tools"
+    },
+    {
+      "src": "/screenshots/workflow-wide.png",
+      "sizes": "1024x640",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Workflow editor — automate WhatsApp campaigns"
+    },
+    {
+      "src": "/screenshots/customers-wide.png",
+      "sizes": "1024x716",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Customer management — sales journey pipeline"
     }
   ],
   "shortcuts": [
@@ -42,18 +71,16 @@
       "short_name": "Dashboard",
       "description": "Go to dashboard",
       "url": "/dashboard",
-      "icons": [{ "src": "/icons/image.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Profile",
       "short_name": "Profile",
       "description": "Edit profile",
       "url": "/profile",
-      "icons": [{ "src": "/icons/image.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ],
   "categories": ["business", "productivity"],
-  "screenshots": [],
   "prefer_related_applications": false
 }
-
