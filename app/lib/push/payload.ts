@@ -2,11 +2,8 @@ import { getSiteBaseUrl } from '@/app/lib/push/site-url'
 
 /**
  * Declarative Web Push (RFC 8030) payload.
+ * Format aligned with working Rms implementation + WebKit spec.
  * @see https://webkit.org/blog/16535/meet-declarative-web-push/
- * @see https://progressier.com/pwa-capabilities/declarative-web-push
- *
- * The OS displays notifications from this JSON — no service worker push handler required
- * on iOS 18.4+ installed PWAs.
  */
 
 export type PushNotificationInput = {
@@ -19,21 +16,21 @@ export type PushNotificationInput = {
   lang?: string
 }
 
+/** Matches Rms + WebKit — string "8030" for broad client compatibility. */
 export type DeclarativePushPayload = {
-  web_push: 8030
+  web_push: '8030'
   notification: {
     title: string
     body: string
-    navigate: string
-    lang: string
-    dir: 'ltr' | 'rtl' | 'auto'
-    silent: boolean
+    navigate_url: string
+    /** WebKit spec field — included alongside navigate_url */
+    navigate?: string
+    tag?: string
+    sound?: string
     icon?: string
     badge?: string
     image?: string
-    tag?: string
-    /** Legacy alias kept for older WebKit builds */
-    navigate_url?: string
+    lang?: string
   }
 }
 
@@ -47,14 +44,13 @@ export function buildDeclarativePushPayloadObject(
   const notification: DeclarativePushPayload['notification'] = {
     title: input.title,
     body: input.body,
-    navigate,
     navigate_url: navigate,
-    lang: input.lang || 'en',
-    dir: 'ltr',
-    silent: false,
+    navigate,
+    tag: input.tag || 'pg-crm-notification',
+    sound: 'default',
     icon,
     badge: icon,
-    tag: input.tag || 'pg-crm-notification',
+    lang: input.lang || 'en',
   }
 
   if (input.imageUrl?.trim()) {
@@ -62,7 +58,7 @@ export function buildDeclarativePushPayloadObject(
   }
 
   return {
-    web_push: 8030,
+    web_push: '8030',
     notification,
   }
 }

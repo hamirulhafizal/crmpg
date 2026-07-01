@@ -320,7 +320,7 @@ export function AdminPushDeviceTest({ title, message, onSubscriptionsChanged }: 
       setCountdown(pushDelaySeconds)
       setDeviceMessage({
         type: 'success',
-        text: `Push scheduled in ${pushDelaySeconds}s — close or kill this app now, then wait for the notification.`,
+        text: `Server waiting ${pushDelaySeconds}s — close or kill the app now. Push sends when the timer ends.`,
       })
     }
 
@@ -355,32 +355,17 @@ export function AdminPushDeviceTest({ title, message, onSubscriptionsChanged }: 
 
       if (!res.ok) throw new Error(data.error || 'Push test failed.')
 
-      if (data.scheduled && pushDelaySeconds > 0) {
-        setDeviceMessage({
-          type: 'success',
-          text: data.message || `Push scheduled in ${pushDelaySeconds}s — close or kill the app now.`,
-        })
-        window.setTimeout(() => {
-          setCountdown(null)
-          setPushTesting(false)
-        }, pushDelaySeconds * 1000)
-        return
-      }
-
       setCountdown(null)
       setDeviceMessage({
         type: 'success',
-        text: data.message || 'Push sent to this device immediately.',
+        text: data.message || 'Push sent to this device.',
       })
     } catch (e) {
       pushDebugError('AdminPushDeviceTest: push test failed', e)
       setCountdown(null)
-      setPushTesting(false)
       setDeviceMessage({ type: 'error', text: e instanceof Error ? e.message : 'Push test failed.' })
     } finally {
-      if (pushDelaySeconds === 0) {
-        setPushTesting(false)
-      }
+      setPushTesting(false)
     }
   }
 

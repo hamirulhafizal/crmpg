@@ -1,6 +1,6 @@
 // Service Worker for PWA
 // Bump when caching strategy changes so old HTML/documents are dropped.
-const CACHE_NAME = 'public-gold-crm-v8';
+const CACHE_NAME = 'public-gold-crm-v9';
 const urlsToCache = [
   '/',
   '/manifest.json',
@@ -80,6 +80,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/dashboard') ||
     url.pathname.startsWith('/profile') ||
     url.pathname.startsWith('/pwa-test') ||
+    url.pathname.startsWith('/test-pwa') ||
     url.pathname.startsWith('/excel-processor') ||
     // API routes (should always go to network)
     url.pathname.startsWith('/api/')
@@ -125,26 +126,94 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Local test notifications (registration.showNotification from the page) need click handling.
-// Declarative push taps are handled by the OS — skip those here.
-self.addEventListener('notificationclick', (event) => {
-  const data = event.notification?.data
-  if (!data?.localTest) return
+// Push fallback — Rms-compatible. iOS 18.4+ handles declarative push in OS;
+// this ensures Chrome/Android and edge cases still show a notification.
+self.addEventListener('push', (event) => {
+  let notificationData = {
+    title: 'PG CRM',
+    body: 'New notification',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: 'pg-crm-notification',
+    data: { url: '/dashboard' },
+  };
 
-  event.notification.close()
+  if (event.data) {
+    try {
+      const data = event.data.json();
+      if (data.web_push === '8030' || data.web_push === 8030) {
+        if (data.notification) {
+          const notif = data.notification;
+          notificationData = {
+            title: notif.title || notificationData.title,
+            body: notif.body || notificationData.body,
+            icon: notif.icon || notificationData.icon,
+            badge: notif.badge || notificationData.badge,
+            tag: notif.tag || notificationData.tag,
+            data: {
+              url: notif.navigate_url || notif.navigate || notificationData.data.url,
+            },
+          };
+        }
+      } else if (data.title || data.body) {
+        notificationData = {
+          title: data.title || notificationData.title,
+          body: data.body || notificationData.body,
+          icon: data.icon || notificationData.icon,
+          badge: data.badge || notificationData.badge,
+          tag: data.tag || notificationData.tag,
+          data: data.data || notificationData.data,
+        };
+      } else {
+        notificationData.body = event.data.text() || notificationData.body;
+      }
+    } catch (e) {
+      const text = event.data.text();
+      if (text) notificationData.body = text;
+    }
+  }
+
+  event.waitUntil(
+    self.registration
+      .showNotification(notificationData.title, {
+        body: notificationData.body,
+        icon: notificationData.icon,
+        badge: notificationData.badge,
+        tag: notificationData.tag,
+        data: notificationData.data,
+        requireInteraction: false,
+        silent: false,
+      })
+      .catch((error) => {
+        console.error('[PG SW] showNotification failed:', error);
+      })
+  );
+});
+
+// Local test + push fallback click handling.
+self.addEventListener('notificationclick', (event) => {
+  const data = event.notification?.data || {};
+  event.notification.close();
+
+  const urlToOpen = data.url || '/dashboard';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ('focus' in client) {
-          return client.focus()
+        if (client.url.includes(urlToOpen) && 'focus' in client) {
+          return client.focus();
         }
       }
-      if (data?.url) {
-        return self.clients.openWindow(data.url)
+      for (const client of clients) {
+        if ('focus' in client) {
+          return client.focus();
+        }
       }
-      return undefined
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+      return undefined;
     })
-  )
-})
+  );
+});
 

@@ -1,4 +1,4 @@
-import { after, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { buildDeclarativePushPayload } from '@/app/lib/push/payload'
 import { parseWebPushSubscription, saveSubscription, type WebPushSubscription } from '@/app/lib/push/subscriptions'
 import { ensureWebPushConfigured, getSiteBaseUrl, webpush } from '@/app/lib/push/vapid'
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   try {
     debugSteps.push('1. Received POST /api/push/send-test')
     const body = await request.json()
-    const { subscription, title, message, delay = 0 } = body
+    const { subscription, title, message, delay = 0, navigateUrl } = body
 
     if (!subscription || !subscription.endpoint) {
       console.error(`${LOG} Missing subscription endpoint`)
@@ -49,14 +49,18 @@ export async function POST(request: Request) {
     await saveSubscription(subscription as PushSubscriptionJSON, userAgent, {})
     debugSteps.push('5. Subscription saved')
 
-    const navigateUrl = `${getSiteBaseUrl()}/dashboard`
+    const navigateTarget = navigateUrl?.trim() || '/dashboard'
+    const navigateFull = navigateTarget.startsWith('http')
+      ? navigateTarget
+      : `${getSiteBaseUrl()}${navigateTarget.startsWith('/') ? '' : '/'}${navigateTarget}`
+
     const payload = buildDeclarativePushPayload({
       title: title || 'Test Notification',
       body: message || 'This is a test notification',
-      navigateUrl,
+      navigateUrl: navigateFull,
       tag: 'test-notification',
     })
-    debugSteps.push(`6. Payload built (declarative, navigate=${navigateUrl})`)
+    debugSteps.push(`6. Payload built (declarative, navigate=${navigateFull})`)
 
     const maxDelay = 300 * 1000
     const delayMs = typeof delay === 'number' ? delay : 0
@@ -72,42 +76,27 @@ export async function POST(request: Request) {
     console.log(`${LOG} Request: delay=${delaySeconds}s, title="${title}", endpoint=${webPushSubscription.endpoint.slice(0, 48)}…`)
 
     if (delayMs > 0) {
-      debugSteps.push(`7. Scheduling delayed send in ${delaySeconds}s (server after())`)
-      after(async () => {
-        try {
-          console.log(`${LOG} Waiting ${delaySeconds}s before sending (background)…`)
-          await new Promise((resolve) => setTimeout(resolve, delayMs))
-          console.log(`${LOG} Delay elapsed — sending push now`)
-          await sendPushNotification(webPushSubscription, payload)
-          console.log(`${LOG} Delayed push sent successfully`)
-        } catch (error) {
-          console.error(`${LOG} Delayed push failed:`, error)
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        scheduled: true,
-        message: `Push scheduled in ${delaySeconds} second(s). Close the app and wait for the notification.`,
-        delay: delayMs,
-        delaySeconds,
-        format: 'declarative',
-        debug: debugSteps,
-      })
+      debugSteps.push(`7. Waiting ${delaySeconds}s before send (server-side, Rms-style)…`)
+      console.log(`${LOG} Waiting ${delaySeconds}s before sending…`)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      console.log(`${LOG} Delay complete — sending push now`)
     }
 
-    debugSteps.push('7. Sending push immediately…')
-    console.log(`${LOG} Sending push notification immediately…`)
+    debugSteps.push(delayMs > 0 ? '8. Sending delayed push…' : '7. Sending push immediately…')
     await sendPushNotification(webPushSubscription, payload)
-    debugSteps.push('8. Push sent successfully')
+    debugSteps.push('Push sent successfully')
     console.log(`${LOG} Push notification sent successfully`)
 
     return NextResponse.json({
       success: true,
       scheduled: false,
-      message: 'Push notification sent',
+      message:
+        delayMs > 0
+          ? `Push notification sent after ${delaySeconds} second(s) delay`
+          : 'Push notification sent',
       sentAt: new Date().toISOString(),
-      delay: 0,
+      delay: delayMs,
+      delaySeconds,
       format: 'declarative',
       debug: debugSteps,
     })

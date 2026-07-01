@@ -50,6 +50,7 @@ export async function updateSession(request: NextRequest) {
     (pathname.startsWith('/dashboard') ||
       pathname.startsWith('/profile') ||
       pathname.startsWith('/pwa-test') ||
+      pathname.startsWith('/test-pwa') ||
       pathname.startsWith('/excel-processor') ||
       pathname.startsWith('/customers') ||
       pathname.startsWith('/waha-integration') ||

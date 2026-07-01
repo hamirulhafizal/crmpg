@@ -787,6 +787,25 @@ export default function DashboardPage() {
             />
 
             <ServiceTile
+              href="/test-pwa"
+              title="PWA test"
+              description="Push & install diagnostics"
+              borderClassName="border-sky-200"
+              gradientClassName="from-sky-50 to-white"
+              iconClassName="bg-sky-600"
+              icon={
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              }
+            />
+
+            <ServiceTile
               href="/customers"
               title="Customers"
               description="Customer management"

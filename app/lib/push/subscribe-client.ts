@@ -12,30 +12,45 @@ export type PushSubscribeResult = {
   method: 'window.pushManager' | 'serviceWorker.pushManager'
 }
 
-/** Prefer window.pushManager (Declarative Web Push — no service worker required). */
+async function ensureServiceWorkerReady(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null
+
+  try {
+    let registration = await navigator.serviceWorker.getRegistration('/')
+    if (!registration) {
+      pushDebug('subscribe: registering /sw.js…')
+      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    }
+    await navigator.serviceWorker.ready
+    return registration
+  } catch (error) {
+    pushDebugError('subscribe: service worker registration failed', error)
+    return null
+  }
+}
+
+/**
+ * Match working Rms flow: subscribe via serviceWorker.pushManager first.
+ * iOS declarative push still requires SW registration to access PushManager.
+ */
 export async function getPushManager(): Promise<{
   pushManager: PushManager
   method: PushSubscribeResult['method']
 } | null> {
   if (typeof window === 'undefined') return null
 
-  if ('pushManager' in window && window.pushManager) {
-    pushDebug('getPushManager: using window.pushManager (declarative)')
-    return { pushManager: window.pushManager, method: 'window.pushManager' }
+  if ('serviceWorker' in navigator) {
+    const registration = await ensureServiceWorkerReady()
+    if (registration?.pushManager) {
+      pushDebug('getPushManager: using serviceWorker.pushManager (Rms-compatible)')
+      return { pushManager: registration.pushManager, method: 'serviceWorker.pushManager' }
+    }
+    pushDebugWarn('getPushManager: service worker ready but no pushManager')
   }
 
-  if ('serviceWorker' in navigator) {
-    try {
-      pushDebug('getPushManager: waiting for serviceWorker.ready…')
-      const registration = await navigator.serviceWorker.ready
-      if (registration.pushManager) {
-        pushDebug('getPushManager: using serviceWorker.pushManager')
-        return { pushManager: registration.pushManager, method: 'serviceWorker.pushManager' }
-      }
-      pushDebugWarn('getPushManager: service worker ready but no pushManager')
-    } catch (error) {
-      pushDebugWarn('getPushManager: service worker not ready', error)
-    }
+  if ('pushManager' in window && window.pushManager) {
+    pushDebug('getPushManager: using window.pushManager (declarative fallback)')
+    return { pushManager: window.pushManager, method: 'window.pushManager' }
   }
 
   pushDebugError('getPushManager: no PushManager available')
@@ -56,6 +71,10 @@ export function supportsWindowPushManager(): boolean {
 
 export async function subscribeToDeclarativePush(): Promise<PushSubscribeResult> {
   pushDebug('subscribe: starting')
+
+  if (isIOSDevice() && !isPWAInstalled()) {
+    throw new Error('On iOS, add the app to Home Screen first, then subscribe.')
+  }
 
   const manager = await getPushManager()
   if (!manager) {
