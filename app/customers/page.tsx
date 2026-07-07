@@ -33,6 +33,7 @@ import {
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
+import { PgBusinessCenterSyncModal, fetchPgSyncActiveJobId } from '@/app/customers/_components/PgBusinessCenterSyncModal'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
 import {
   customerPortalLoginUrl,
@@ -516,6 +517,8 @@ function CustomersPage() {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [isImporting, setIsImporting] = useState(false)
   const [portalLoginUrlCopied, setPortalLoginUrlCopied] = useState(false)
+  const [pgSyncOpen, setPgSyncOpen] = useState(false)
+  const [pgSyncActive, setPgSyncActive] = useState(false)
   const isMountedRef = useRef(true)
   const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => void>(
     () => {}
@@ -569,6 +572,20 @@ function CustomersPage() {
       if (isMountedRef.current) setStatsLoading(false)
     }
   }, [user])
+
+  useEffect(() => {
+    if (!user || loading) return
+    let cancelled = false
+    ;(async () => {
+      const activeId = await fetchPgSyncActiveJobId()
+      if (cancelled || !activeId) return
+      setPgSyncActive(true)
+      setPgSyncOpen(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, loading])
 
   useEffect(() => {
     if (!user) return
@@ -1760,6 +1777,22 @@ function CustomersPage() {
             )}
 
             <button
+              type="button"
+              onClick={() => setPgSyncOpen(true)}
+              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              Sync from PG Business Center
+            </button>
+
+            <button
               onClick={handleExport}
               className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-xl hover:bg-green-700 transition-colors flex items-center gap-2"
             >
@@ -1847,6 +1880,33 @@ function CustomersPage() {
             <p className="text-red-800 text-sm">{error}</p>
           </div>
         )}
+
+        <PgBusinessCenterSyncModal
+          open={pgSyncOpen}
+          onClose={() => setPgSyncOpen(false)}
+          onActiveChange={setPgSyncActive}
+          onCompleted={() => {
+            setPgSyncActive(false)
+            void fetchCustomers()
+            void fetchAccountStats()
+          }}
+        />
+
+        {pgSyncActive && !pgSyncOpen ? (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => setPgSyncOpen(true)}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-left text-sm text-indigo-900 hover:bg-indigo-100 transition-colors"
+            >
+              <span className="inline-flex items-center gap-2 font-medium">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-600" />
+                PG Business Center sync in progress
+              </span>
+              <span className="text-indigo-700 font-semibold">View progress</span>
+            </button>
+          </div>
+        ) : null}
 
         <CustomerEditModalShell
           open={Boolean(isCreating || isEditing)}
