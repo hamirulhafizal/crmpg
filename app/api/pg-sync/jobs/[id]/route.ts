@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
+import { markPgSyncJobCancelled, syncPgSyncJobFromView } from '@/app/lib/pg-sync/jobs-db'
 import { pgSyncFetch } from '@/app/lib/pg-sync/server-client'
 import type { PgSyncJobView } from '@/app/lib/pg-sync/types'
 
@@ -24,6 +25,7 @@ export async function GET(_request: Request, ctx: Ctx) {
     if (!jobBelongsToUser(job, auth.session.pgCode)) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
     }
+    await syncPgSyncJobFromView(auth.session.userId, job)
     return NextResponse.json({ ok: true, job })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to fetch job'
@@ -51,6 +53,9 @@ export async function DELETE(request: Request, ctx: Ctx) {
       `/v1/jobs/${encodeURIComponent(id)}${qs}`,
       { method: 'DELETE' }
     )
+
+    await markPgSyncJobCancelled(auth.session.userId, id)
+
     return NextResponse.json({ ok: true, ...result })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to cancel job'

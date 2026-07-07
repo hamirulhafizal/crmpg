@@ -7,6 +7,8 @@ import {
   readStoredPgSyncJob,
   writeStoredPgSyncJob,
 } from '@/app/lib/pg-sync/active-job'
+import { notifyForJobStatusTransition } from '@/app/lib/pg-sync/notifications'
+import type { PgSyncQueueInfo } from '@/app/lib/pg-sync/queue-info'
 import type { PgSyncJobView, PgSyncJobStatus, PgSyncServiceStatus } from '@/app/lib/pg-sync/types'
 
 type Props = {
@@ -15,6 +17,9 @@ type Props = {
   onCompleted?: () => void
   /** Fired when a non-terminal job is running (including after refresh resume). */
   onActiveChange?: (active: boolean) => void
+  queueInfo?: PgSyncQueueInfo | null
+  notifyPermission?: NotificationPermission | 'unsupported'
+  onEnableNotifications?: () => Promise<NotificationPermission | 'unsupported'>
 }
 
 type Phase = 'form' | 'queued' | 'running' | 'tac' | 'captcha' | 'done' | 'failed'
@@ -25,7 +30,19 @@ type StatusResponse = {
   status?: PgSyncServiceStatus
   active_job_id?: string | null
   active_job?: PgSyncJobView | null
+  queue_info?: PgSyncQueueInfo
   error?: string
+}
+
+function queuePanelClass(readiness: PgSyncQueueInfo['readiness']): string {
+  if (readiness === 'ready') return 'border-green-200 bg-green-50 text-green-900'
+  if (readiness === 'my_tac' || readiness === 'my_captcha') {
+    return 'border-indigo-200 bg-indigo-50 text-indigo-900'
+  }
+  if (readiness === 'my_running' || readiness === 'my_syncing') {
+    return 'border-indigo-200 bg-indigo-50 text-indigo-900'
+  }
+  return 'border-amber-200 bg-amber-50 text-amber-900'
 }
 
 function phaseFromStatus(status: PgSyncJobStatus): Phase {
@@ -130,28 +147,74 @@ function PasswordField(props: {
           autoComplete="current-password"
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-11 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 pr-12 text-sm leading-normal focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           placeholder={props.placeholder}
         />
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-          aria-label={visible ? 'Hide password' : 'Show password'}
-          aria-pressed={visible}
-        >
-          <EyeIcon open={visible} />
-        </button>
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            className="pointer-events-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            aria-label={visible ? 'Hide password' : 'Show password'}
+            aria-pressed={visible}
+          >
+            <EyeIcon open={visible} />
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActiveChange }: Props) {
+function useBodyScrollLock(locked: boolean): void {
+  useEffect(() => {
+    if (!locked) return
+
+    const scrollY = window.scrollY
+    const body = document.body
+    const html = document.documentElement
+    const prevBodyOverflow = body.style.overflow
+    const prevHtmlOverflow = html.style.overflow
+    const prevBodyPosition = body.style.position
+    const prevBodyTop = body.style.top
+    const prevBodyWidth = body.style.width
+    const prevBodyPaddingRight = body.style.paddingRight
+
+    const scrollbarWidth = window.innerWidth - html.clientWidth
+    body.style.overflow = 'hidden'
+    html.style.overflow = 'hidden'
+    body.style.position = 'fixed'
+    body.style.top = `-${scrollY}px`
+    body.style.width = '100%'
+    if (scrollbarWidth > 0) {
+      body.style.paddingRight = `${scrollbarWidth}px`
+    }
+
+    return () => {
+      body.style.overflow = prevBodyOverflow
+      html.style.overflow = prevHtmlOverflow
+      body.style.position = prevBodyPosition
+      body.style.top = prevBodyTop
+      body.style.width = prevBodyWidth
+      body.style.paddingRight = prevBodyPaddingRight
+      window.scrollTo(0, scrollY)
+    }
+  }, [locked])
+}
+
+export function PgBusinessCenterSyncModal({
+  open,
+  onClose,
+  onCompleted,
+  onActiveChange,
+  queueInfo: queueInfoProp,
+  notifyPermission = 'unsupported',
+  onEnableNotifications,
+}: Props) {
   const [pgCode, setPgCode] = useState('')
   const [pgPassword, setPgPassword] = useState('')
   const [crmpgPassword, setCrmpgPassword] = useState('')
-  const [serviceStatus, setServiceStatus] = useState<PgSyncServiceStatus | null>(null)
+  const [localQueueInfo, setLocalQueueInfo] = useState<PgSyncQueueInfo | null>(null)
   const [job, setJob] = useState<PgSyncJobView | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('form')
@@ -162,8 +225,11 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
   const [error, setError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const completedRef = useRef(false)
+  const lastJobStatusRef = useRef<PgSyncJobStatus | null>(null)
   const onActiveChangeRef = useRef(onActiveChange)
   onActiveChangeRef.current = onActiveChange
+
+  const queueInfo = localQueueInfo ?? queueInfoProp ?? null
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -179,12 +245,22 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
       throw new Error(json.error || 'Unable to check sync service status')
     }
     setPgCode(json.pg_code ?? '')
-    setServiceStatus(json.status ?? null)
+    if (json.queue_info) setLocalQueueInfo(json.queue_info)
     return json
   }, [])
 
   const applyJob = useCallback(
     (next: PgSyncJobView, code: string) => {
+      const prev = lastJobStatusRef.current
+      if (prev !== next.status) {
+        notifyForJobStatusTransition({
+          jobId: next.id,
+          prevStatus: prev,
+          nextStatus: next.status,
+        })
+        lastJobStatusRef.current = next.status
+      }
+
       setJob(next)
       setJobId(next.id)
       setPhase(phaseFromStatus(next.status))
@@ -285,6 +361,7 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
     setLoading(true)
     setError(null)
     completedRef.current = false
+    lastJobStatusRef.current = null
 
     refreshStatus()
       .then(async (json) => {
@@ -307,6 +384,8 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
     setError(null)
     setLoading(true)
     try {
+      await onEnableNotifications?.()
+
       const res = await fetch('/api/pg-sync/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -385,13 +464,11 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
   const progress = job?.sync_progress
   const pct = Math.min(100, Math.max(0, Number(progress?.pct ?? 0)))
   const queuePosition = job?.queue_position ?? null
-  const busyOther =
-    serviceStatus?.busy &&
-    serviceStatus.current_pg_code?.toUpperCase() !== pgCode.toUpperCase()
 
   const canStart = Boolean(pgCode && pgPassword && crmpgPassword && !jobId)
   const showProgress = phase !== 'form' && (job || loading)
   const isMobileSheet = useMobileSheetViewport()
+  useBodyScrollLock(open)
 
   const sheetTransition = isMobileSheet
     ? { type: 'tween' as const, duration: 0.34, ease: [0.32, 0.72, 0, 1] as const }
@@ -401,7 +478,7 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[1100] flex items-end justify-center sm:items-center sm:p-4"
+          className="fixed inset-0 z-[1100] flex items-end justify-center overflow-hidden overscroll-none sm:items-center sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -451,18 +528,15 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
                 </div>
               ) : null}
 
-              {busyOther && phase === 'form' ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <p className="font-medium">Another dealer is syncing now</p>
-                  <p className="mt-1 text-amber-800/90">
-                    You can start your sync — you will join the queue. We will notify you when it is
-                    your turn.
-                  </p>
-                  {serviceStatus?.current_pg_code ? (
-                    <p className="mt-2 text-xs text-amber-700">
-                      Currently running: {serviceStatus.current_pg_code}
-                      {serviceStatus.queue_length > 0
-                        ? ` · ${serviceStatus.queue_length} in queue`
+              {queueInfo && phase === 'form' && !job ? (
+                <div className={`rounded-xl border px-4 py-3 text-sm ${queuePanelClass(queueInfo.readiness)}`}>
+                  <p className="font-medium">{queueInfo.badge_label}</p>
+                  <p className="mt-1 opacity-90">{queueInfo.form_hint}</p>
+                  {queueInfo.current_pg_code && queueInfo.worker_busy ? (
+                    <p className="mt-2 text-xs opacity-75">
+                      Currently running: {queueInfo.current_pg_code}
+                      {queueInfo.global_queue_count > 0
+                        ? ` · ${queueInfo.global_queue_count} in queue`
                         : ''}
                     </p>
                   ) : null}
@@ -471,6 +545,12 @@ export function PgBusinessCenterSyncModal({ open, onClose, onCompleted, onActive
 
               {phase === 'form' && !job ? (
                 <>
+                  {notifyPermission === 'default' ? (
+                    <p className="text-xs text-slate-500">
+                      When you start sync, allow browser notifications so we can alert you for queue
+                      updates and SMS TAC.
+                    </p>
+                  ) : null}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">PG code</label>
                     <input

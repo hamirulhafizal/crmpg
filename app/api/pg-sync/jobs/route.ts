@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
 import { pgSyncWebhookUrl } from '@/app/lib/pg-sync/config'
+import { insertPgSyncJob } from '@/app/lib/pg-sync/jobs-db'
 import { pgSyncFetch } from '@/app/lib/pg-sync/server-client'
 import type { PgSyncCreateJobResponse } from '@/app/lib/pg-sync/types'
 
@@ -44,6 +46,15 @@ export async function POST(request: Request) {
         crmpg_password: crmpgPassword,
         webhook_url: pgSyncWebhookUrl(),
       }),
+    })
+
+    const supabase = await createClient()
+    await insertPgSyncJob(supabase, {
+      userId: auth.session.userId,
+      pgCode: auth.session.pgCode,
+      workerJobId: created.job_id,
+      status: created.status,
+      queuePosition: created.queue_position,
     })
 
     return NextResponse.json(

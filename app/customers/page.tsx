@@ -33,7 +33,8 @@ import {
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
-import { PgBusinessCenterSyncModal, fetchPgSyncActiveJobId } from '@/app/customers/_components/PgBusinessCenterSyncModal'
+import { PgBusinessCenterSyncModal } from '@/app/customers/_components/PgBusinessCenterSyncModal'
+import { usePgSyncQueueMonitor } from '@/app/customers/_components/usePgSyncQueueMonitor'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
 import {
   customerPortalLoginUrl,
@@ -519,6 +520,16 @@ function CustomersPage() {
   const [portalLoginUrlCopied, setPortalLoginUrlCopied] = useState(false)
   const [pgSyncOpen, setPgSyncOpen] = useState(false)
   const [pgSyncActive, setPgSyncActive] = useState(false)
+
+  const pgSyncMonitor = usePgSyncQueueMonitor({
+    enabled: Boolean(user) && !loading,
+    onOpenModal: () => setPgSyncOpen(true),
+    onActiveChange: setPgSyncActive,
+    onCompleted: () => {
+      void fetchCustomers()
+      void fetchAccountStats()
+    },
+  })
   const isMountedRef = useRef(true)
   const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => void>(
     () => {}
@@ -572,20 +583,6 @@ function CustomersPage() {
       if (isMountedRef.current) setStatsLoading(false)
     }
   }, [user])
-
-  useEffect(() => {
-    if (!user || loading) return
-    let cancelled = false
-    ;(async () => {
-      const activeId = await fetchPgSyncActiveJobId()
-      if (cancelled || !activeId) return
-      setPgSyncActive(true)
-      setPgSyncOpen(true)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [user, loading])
 
   useEffect(() => {
     if (!user) return
@@ -1781,7 +1778,7 @@ function CustomersPage() {
               onClick={() => setPgSyncOpen(true)}
               className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors flex items-center gap-2"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -1789,7 +1786,22 @@ function CustomersPage() {
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 />
               </svg>
-              Sync from PG Business Center
+              <span className="truncate">Sync from PG Business Center</span>
+              {pgSyncMonitor.queueInfo ? (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    pgSyncMonitor.queueInfo.readiness === 'ready'
+                      ? 'bg-white/20 text-white'
+                      : ['my_tac', 'my_captcha'].includes(pgSyncMonitor.queueInfo.readiness)
+                        ? 'bg-amber-300 text-amber-950'
+                        : ['my_running', 'my_syncing'].includes(pgSyncMonitor.queueInfo.readiness)
+                          ? 'bg-white/25 text-white'
+                          : 'bg-amber-300/90 text-amber-950'
+                  }`}
+                >
+                  {pgSyncMonitor.queueInfo.badge_label}
+                </span>
+              ) : null}
             </button>
 
             <button
@@ -1885,6 +1897,9 @@ function CustomersPage() {
           open={pgSyncOpen}
           onClose={() => setPgSyncOpen(false)}
           onActiveChange={setPgSyncActive}
+          queueInfo={pgSyncMonitor.queueInfo}
+          notifyPermission={pgSyncMonitor.notifyPermission}
+          onEnableNotifications={pgSyncMonitor.enableNotifications}
           onCompleted={() => {
             setPgSyncActive(false)
             void fetchCustomers()
@@ -1901,9 +1916,13 @@ function CustomersPage() {
             >
               <span className="inline-flex items-center gap-2 font-medium">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-600" />
-                PG Business Center sync in progress
+                {pgSyncMonitor.queueInfo?.badge_label === 'Enter TAC'
+                  ? 'PG sync — enter TAC to continue'
+                  : pgSyncMonitor.queueInfo?.badge_label === 'CAPTCHA'
+                    ? 'PG sync — complete CAPTCHA'
+                    : 'PG Business Center sync in progress'}
               </span>
-              <span className="text-indigo-700 font-semibold">View progress</span>
+              <span className="text-indigo-700 font-semibold shrink-0">View progress</span>
             </button>
           </div>
         ) : null}

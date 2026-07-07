@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { pgSyncWebhookSecret } from '@/app/lib/pg-sync/config'
+import { applyPgSyncWebhook, type PgSyncWebhookPayload } from '@/app/lib/pg-sync/jobs-db'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * Receives real-time events from the PG Sync worker (see CRMPG Sync API Swagger).
- * UI primarily polls GET /api/pg-sync/jobs/{id}; this endpoint is for worker delivery + logging.
+ * Updates durable job rows in Supabase; UI still polls GET /api/pg-sync/jobs/{id}.
  */
 export async function POST(request: Request) {
   const secret = pgSyncWebhookSecret()
@@ -18,19 +19,18 @@ export async function POST(request: Request) {
     }
   }
 
-  let payload: unknown
+  let payload: PgSyncWebhookPayload
   try {
-    payload = await request.json()
+    payload = (await request.json()) as PgSyncWebhookPayload
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const event =
-    payload && typeof payload === 'object' && 'event' in payload
-      ? String((payload as { event: unknown }).event)
-      : 'unknown'
+  const event = payload.event?.trim() ?? 'unknown'
 
   console.log('[pg-sync/webhook]', event, JSON.stringify(payload).slice(0, 2000))
 
-  return NextResponse.json({ ok: true, received: event })
+  const updated = await applyPgSyncWebhook(payload)
+
+  return NextResponse.json({ ok: true, received: event, persisted: updated })
 }
