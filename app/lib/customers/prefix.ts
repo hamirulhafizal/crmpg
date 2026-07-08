@@ -1,11 +1,22 @@
 export type CustomerPrefix = 'Adik' | 'Tn' | 'Pn' | 'Cik'
 
+function normalizeAge(age: unknown): number | null {
+  if (typeof age === 'number' && Number.isFinite(age)) return Math.floor(age)
+  if (typeof age === 'string') {
+    const trimmed = age.trim()
+    if (!trimmed) return null
+    const n = Number(trimmed)
+    if (Number.isFinite(n)) return Math.floor(n)
+  }
+  return null
+}
+
 /** Honorific from age + gender (Malaysian CRM convention). */
 export function resolveCustomerPrefix(
   gender: string | null | undefined,
-  age: number | null | undefined
+  age: number | string | null | undefined
 ): CustomerPrefix | null {
-  const a = typeof age === 'number' && Number.isFinite(age) ? Math.floor(age) : null
+  const a = normalizeAge(age)
 
   if (a != null && a < 18) {
     return 'Adik'
@@ -38,7 +49,7 @@ export type ProcessRowNaming = {
   row_number?: number
   Gender?: string
   Ethnicity?: string
-  Age?: number
+  Age?: number | string
   Prefix?: string
   FirstName?: string
   SenderName?: string
