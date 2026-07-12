@@ -43,22 +43,26 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/api/customer-portal') ||
     pathname.startsWith('/api/public/lucky-draw')
 
-  // Protected routes (dashboard is PWA start_url, so redirect to login if not authenticated)
-  if (
-    !user &&
-    !isCustomerPortal &&
-    (pathname.startsWith('/dashboard') ||
-      pathname.startsWith('/profile') ||
-      pathname.startsWith('/pwa-test') ||
-      pathname.startsWith('/test-pwa') ||
-      pathname.startsWith('/excel-processor') ||
-      pathname.startsWith('/customers') ||
-      pathname.startsWith('/waha-integration') ||
-      pathname.startsWith('/google-ads') ||
-      pathname.startsWith('/admin'))
-  ) {
+  const isProtectedAppRoute =
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/pwa-test') ||
+    pathname.startsWith('/test-pwa') ||
+    pathname.startsWith('/excel-processor') ||
+    pathname.startsWith('/customers') ||
+    pathname.startsWith('/waha-integration') ||
+    pathname.startsWith('/google-ads') ||
+    pathname.startsWith('/automated-messages') ||
+    pathname.startsWith('/extension-download') ||
+    pathname.startsWith('/admin')
+
+  // Protected routes — preserve destination for post-login redirect (?next=/customers)
+  if (!user && !isCustomerPortal && isProtectedAppRoute) {
+    const returnTo = `${pathname}${request.nextUrl.search}`
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.search = ''
+    url.searchParams.set('next', returnTo)
     return NextResponse.redirect(url)
   }
 
@@ -74,9 +78,10 @@ export async function updateSession(request: NextRequest) {
   ) {
     const url = request.nextUrl.clone()
     const next = request.nextUrl.searchParams.get('next')
-    const safeNext = next && next.startsWith('/') ? next : '/dashboard'
-    url.pathname = safeNext
-    url.search = ''
+    const safeNext = next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
+    const qIndex = safeNext.indexOf('?')
+    url.pathname = qIndex >= 0 ? safeNext.slice(0, qIndex) : safeNext
+    url.search = qIndex >= 0 ? safeNext.slice(qIndex) : ''
     return NextResponse.redirect(url)
   }
 

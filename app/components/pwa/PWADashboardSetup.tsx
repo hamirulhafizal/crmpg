@@ -158,7 +158,7 @@ export function PWADashboardInstallButton() {
       onClick={() => void installApp()}
       disabled={!installPromptReady}
       loading={isInstalling}
-      className="inline-flex bg-blue-600 text-white hover:bg-blue-700"
+      className="hidden sm:inline-flex bg-blue-600 text-white hover:bg-blue-700"
     />
   )
 }

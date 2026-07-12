@@ -1,12 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { adminFetch } from '@/app/lib/admin-api-client'
 import {
   buildDeclarativePushPayloadObject,
   type DeclarativePushPayload,
 } from '@/app/lib/push/payload'
 import { AdminPushDeviceTest } from '@/app/admin/push/AdminPushDeviceTest'
+import { AdminMediaImagePicker } from '@/app/components/admin/AdminMediaImagePicker'
+import {
+  PushNavigateUrlHint,
+  PushNavigateUrlInput,
+} from '@/app/components/admin/PushNavigateUrlInput'
 
 type BroadcastResult = {
   sent: number
@@ -87,14 +92,12 @@ function ClearAllSubscriptionsButton({
 }
 
 export default function AdminPushPage() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [title, setTitle] = useState('PG CRM test')
   const [message, setMessage] = useState('')
   const [navigateUrl, setNavigateUrl] = useState('/dashboard')
   const [imageUrl, setImageUrl] = useState('')
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null)
   const [loadingCount, setLoadingCount] = useState(true)
-  const [uploading, setUploading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BroadcastResult | null>(null)
@@ -124,30 +127,6 @@ export default function AdminPushPage() {
   useEffect(() => {
     void loadCount()
   }, [loadCount])
-
-  const uploadImage = async (file: File) => {
-    setUploading(true)
-    setError(null)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('folder', 'push-notifications')
-      form.append('title', file.name.replace(/\.[^.]+$/, '') || 'Push image')
-
-      const res = await adminFetch('/api/admin/media', { method: 'POST', body: form })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || 'Upload failed')
-
-      const url = data.asset?.publicUrl as string | undefined
-      if (!url) throw new Error('Upload succeeded but no public URL returned')
-      setImageUrl(url)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed')
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -266,56 +245,18 @@ export default function AdminPushPage() {
           <label htmlFor="push-url" className="mb-2 block text-sm font-medium text-slate-700">
             Open URL when tapped
           </label>
-          <input
+          <PushNavigateUrlInput
             id="push-url"
             value={navigateUrl}
-            onChange={(e) => setNavigateUrl(e.target.value)}
-            placeholder="/dashboard or https://…"
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            onChange={setNavigateUrl}
+            listId="admin-push-navigate-routes"
           />
+          <div className="mt-2">
+            <PushNavigateUrlHint />
+          </div>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Image (optional)</label>
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) void uploadImage(file)
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              {uploading ? 'Uploading…' : 'Upload to media library'}
-            </button>
-            {imageUrl ? (
-              <button
-                type="button"
-                onClick={() => setImageUrl('')}
-                className="text-sm font-medium text-slate-500 hover:text-slate-700"
-              >
-                Remove image
-              </button>
-            ) : null}
-          </div>
-          {imageUrl ? (
-            <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageUrl} alt="Notification preview" className="max-h-40 rounded-lg object-contain" />
-              <p className="mt-2 truncate text-xs text-slate-500">{imageUrl}</p>
-            </div>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">Uploaded to R2 folder: push-notifications</p>
-          )}
-        </div>
+        <AdminMediaImagePicker value={imageUrl} onChange={setImageUrl} />
 
         <button
           type="submit"

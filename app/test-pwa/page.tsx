@@ -11,6 +11,11 @@ import {
   Smartphone,
   XCircle,
 } from 'lucide-react'
+import { AdminMediaImagePicker } from '@/app/components/admin/AdminMediaImagePicker'
+import {
+  PushNavigateUrlHint,
+  PushNavigateUrlInput,
+} from '@/app/components/admin/PushNavigateUrlInput'
 import { useAuth } from '@/app/contexts/auth-context'
 import { adminFetch } from '@/app/lib/admin-api-client'
 import { getDisplayMode, isIOSDevice, isPWAInstalled } from '@/app/lib/push/client-utils'
@@ -35,7 +40,7 @@ function Badge({
         ? 'bg-slate-200 text-slate-700'
         : 'bg-slate-900 text-white'
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
+    <span className={`inline-flex max-w-full rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}`}>
       {children}
     </span>
   )
@@ -43,26 +48,30 @@ function Badge({
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
+    <div className={`min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
       {children}
     </div>
   )
 }
 
 function CardHeader({ children }: { children: React.ReactNode }) {
-  return <div className="border-b border-slate-100 px-6 py-4">{children}</div>
+  return <div className="border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4">{children}</div>
 }
 
 function CardTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">{children}</h2>
+  return (
+    <h2 className="flex min-w-0 items-center gap-2 text-base font-semibold text-slate-900 sm:text-lg">
+      {children}
+    </h2>
+  )
 }
 
 function CardDescription({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-sm text-slate-600">{children}</p>
+  return <p className="mt-1 break-words text-sm text-slate-600">{children}</p>
 }
 
 function CardContent({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-4 px-6 py-5">{children}</div>
+  return <div className="min-w-0 space-y-4 px-4 py-4 sm:px-6 sm:py-5">{children}</div>
 }
 
 function Label({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
@@ -77,8 +86,45 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 ${props.className ?? ''}`}
+      className={`w-full min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 ${props.className ?? ''}`}
     />
+  )
+}
+
+function PushLinkAndImageFields({
+  navigateId,
+  navigateUrl,
+  imageUrl,
+  onNavigateUrlChange,
+  onImageUrlChange,
+  navigatePlaceholder = '/dashboard or https://…',
+}: {
+  navigateId: string
+  navigateUrl: string
+  imageUrl: string
+  onNavigateUrlChange: (value: string) => void
+  onImageUrlChange: (value: string) => void
+  navigatePlaceholder?: string
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={navigateId}>Open link when tapped</Label>
+        <PushNavigateUrlInput
+          id={navigateId}
+          value={navigateUrl}
+          onChange={onNavigateUrlChange}
+          placeholder={navigatePlaceholder}
+          listId={`${navigateId}-routes`}
+        />
+        <PushNavigateUrlHint />
+      </div>
+      <AdminMediaImagePicker
+        value={imageUrl}
+        onChange={onImageUrlChange}
+        label="Notification image (optional)"
+      />
+    </>
   )
 }
 
@@ -133,10 +179,14 @@ export default function TestPWAPage() {
     'This is a test notification from PG CRM PWA'
   )
   const [notificationDelay, setNotificationDelay] = useState('0')
+  const [notificationNavigateUrl, setNotificationNavigateUrl] = useState('/test-pwa')
+  const [notificationImageUrl, setNotificationImageUrl] = useState('')
   const [broadcastTitle, setBroadcastTitle] = useState('Broadcast Notification')
   const [broadcastMessage, setBroadcastMessage] = useState(
     'This is a broadcast message to all devices with the PWA installed'
   )
+  const [broadcastNavigateUrl, setBroadcastNavigateUrl] = useState('/dashboard')
+  const [broadcastImageUrl, setBroadcastImageUrl] = useState('')
   const [broadcastStats, setBroadcastStats] = useState<BroadcastStats | null>(null)
 
   const vapidConfigured = Boolean(
@@ -267,7 +317,8 @@ export default function TestPWAPage() {
           title: notificationTitle,
           message: notificationMessage,
           delay: delayMs,
-          navigateUrl: '/test-pwa',
+          navigateUrl: notificationNavigateUrl.trim() || '/test-pwa',
+          imageUrl: notificationImageUrl.trim() || undefined,
         }),
       })
 
@@ -305,7 +356,8 @@ export default function TestPWAPage() {
         body: JSON.stringify({
           title: broadcastTitle,
           message: broadcastMessage,
-          navigateUrl: '/test-pwa',
+          navigateUrl: broadcastNavigateUrl.trim() || '/dashboard',
+          imageUrl: broadcastImageUrl.trim() || undefined,
         }),
       })
 
@@ -343,18 +395,18 @@ export default function TestPWAPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">PWA Test Page</h1>
-          <p className="mt-1 text-slate-600">
+    <div className="min-h-screen overflow-x-hidden bg-slate-50 pb-12">
+      <div className="mx-auto w-full min-w-0 max-w-4xl px-4 py-6 sm:py-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">PWA Test Page</h1>
+          <p className="mt-1 text-sm text-slate-600 sm:text-base">
             Test Progressive Web App features and Declarative Web Push
           </p>
         </div>
 
         {toast ? (
           <div
-            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+            className={`mb-6 break-words rounded-xl border px-4 py-3 text-sm ${
               toast.type === 'success'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                 : toast.type === 'error'
@@ -382,16 +434,18 @@ export default function TestPWAPage() {
             <CardContent>
               <Row label="PWA Installed" value={isInstalled ? 'Yes' : 'No'} ok={isInstalled} />
               <Row label="Standalone Mode" value={isStandalone ? 'Yes' : 'No'} ok={isStandalone} />
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-slate-600">Device Type</span>
                 <span className="flex items-center gap-2 text-slate-800">
-                  {isIOS ? <Smartphone className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+                  {isIOS ? <Smartphone className="h-4 w-4 shrink-0" /> : <Monitor className="h-4 w-4 shrink-0" />}
                   {isIOS ? 'iOS' : 'Desktop/Android'}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <span className="shrink-0 text-slate-600">User Agent</span>
-                <span className="truncate font-mono text-xs text-slate-500">{userAgent || '…'}</span>
+              <div className="space-y-1 text-sm">
+                <span className="text-slate-600">User Agent</span>
+                <p className="break-all font-mono text-xs leading-relaxed text-slate-500">
+                  {userAgent || '…'}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -411,7 +465,7 @@ export default function TestPWAPage() {
               <Row label="Push Supported" value={pushSupported ? 'Yes' : 'No'} ok={pushSupported} />
 
               {mounted && supportsDeclarativePush ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                <div className="break-words rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                   <strong>Declarative Web Push available</strong> — iOS 18.4+ PWA installed. OS
                   handles notifications automatically.
                 </div>
@@ -439,9 +493,11 @@ export default function TestPWAPage() {
                   />
 
                   {pushSubscription ? (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
+                    <div className="break-words rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
                       <strong>Note:</strong> If VAPID keys changed, unsubscribe and resubscribe.
-                      Open DevTools console and filter <code>[PG Push]</code> for debug logs.
+                      Open DevTools console and filter{' '}
+                      <code className="break-all rounded bg-blue-100 px-1 py-0.5">[PG Push]</code> for
+                      debug logs.
                     </div>
                   ) : null}
 
@@ -474,7 +530,7 @@ export default function TestPWAPage() {
 
                       <div className="space-y-4 border-t border-slate-100 pt-4">
                         <h3 className="font-semibold text-slate-900">Send Test Notification</h3>
-                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                        <div className="break-words rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
                           <strong>Where to see notifications:</strong>
                           <ul className="mt-2 list-inside list-disc space-y-1 text-blue-700">
                             <li>
@@ -520,6 +576,14 @@ export default function TestPWAPage() {
                             Send, then close the app.
                           </p>
                         </div>
+                        <PushLinkAndImageFields
+                          navigateId="test-navigate-url"
+                          navigateUrl={notificationNavigateUrl}
+                          imageUrl={notificationImageUrl}
+                          onNavigateUrlChange={setNotificationNavigateUrl}
+                          onImageUrlChange={setNotificationImageUrl}
+                          navigatePlaceholder="/test-pwa or https://…"
+                        />
                         <Btn onClick={() => void sendTestNotification()} disabled={isSending}>
                           {isSending ? (
                             <>
@@ -558,7 +622,7 @@ export default function TestPWAPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+              <div className="break-words rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
                 <strong>How it works:</strong>
                 <ul className="mt-2 list-inside list-disc space-y-1 text-blue-700">
                   <li>Subscribed devices are saved to the database</li>
@@ -571,7 +635,7 @@ export default function TestPWAPage() {
               {broadcastStats ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                   <h4 className="mb-2 font-semibold text-emerald-900">Last Broadcast Results</h4>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3 sm:gap-4">
                     <div>
                       <span className="text-emerald-700">Total:</span>{' '}
                       <strong>{broadcastStats.total}</strong>
@@ -604,6 +668,13 @@ export default function TestPWAPage() {
                   onChange={(e) => setBroadcastMessage(e.target.value)}
                 />
               </div>
+              <PushLinkAndImageFields
+                navigateId="broadcast-navigate-url"
+                navigateUrl={broadcastNavigateUrl}
+                imageUrl={broadcastImageUrl}
+                onNavigateUrlChange={setBroadcastNavigateUrl}
+                onImageUrlChange={setBroadcastImageUrl}
+              />
               <Btn onClick={() => void sendBroadcastNotification()} disabled={isBroadcasting}>
                 {isBroadcasting ? (
                   <>
@@ -626,7 +697,7 @@ export default function TestPWAPage() {
               <CardTitle>Browser Capabilities</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-4">
                 <Row label="Service Worker" value={mounted && hasServiceWorker ? 'Yes' : 'No'} ok={hasServiceWorker} />
                 <Row label="Push Manager" value={mounted && hasPushManager ? 'Yes' : 'No'} ok={hasPushManager} />
                 <Row label="Notifications" value={mounted && hasNotification ? 'Yes' : 'No'} ok={hasNotification} />
@@ -652,9 +723,11 @@ function Row({
   bad?: boolean
 }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-slate-600">{label}</span>
-      <Badge variant={bad ? 'destructive' : ok ? 'default' : 'secondary'}>{value}</Badge>
+    <div className="flex min-w-0 flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <span className="shrink-0 text-slate-600">{label}</span>
+      <Badge variant={bad ? 'destructive' : ok ? 'default' : 'secondary'}>
+        <span className="break-words">{value}</span>
+      </Badge>
     </div>
   )
 }

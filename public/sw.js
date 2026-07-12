@@ -195,22 +195,46 @@ self.addEventListener('notificationclick', (event) => {
   const data = event.notification?.data || {};
   event.notification.close();
 
-  const urlToOpen = data.url || '/dashboard';
+  const rawUrl = data.url || '/dashboard';
+
+  /** Same-origin path (or full external URL) for navigation. */
+  let targetUrl = rawUrl;
+  try {
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      const parsed = new URL(rawUrl);
+      if (parsed.origin === self.location.origin) {
+        targetUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+    } else if (!rawUrl.startsWith('/')) {
+      targetUrl = `/${rawUrl}`;
+    }
+  } catch (_) {
+    targetUrl = '/dashboard';
+  }
+
+  const absoluteUrl =
+    targetUrl.startsWith('http://') || targetUrl.startsWith('https://')
+      ? targetUrl
+      : new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
-          return client.focus();
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      for (const client of clientList) {
+        if ('navigate' in client) {
+          try {
+            await client.navigate(absoluteUrl);
+            if ('focus' in client) {
+              return client.focus();
+            }
+            return undefined;
+          } catch (_) {
+            // try next client or openWindow
+          }
         }
       }
-      for (const client of clients) {
-        if ('focus' in client) {
-          return client.focus();
-        }
-      }
+
       if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
+        return self.clients.openWindow(absoluteUrl);
       }
       return undefined;
     })

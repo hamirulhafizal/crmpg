@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   try {
     debugSteps.push('1. Received POST /api/push/send-test')
     const body = await request.json()
-    const { subscription, title, message, delay = 0, navigateUrl } = body
+    const { subscription, title, message, delay = 0, navigateUrl, imageUrl } = body
 
     if (!subscription || !subscription.endpoint) {
       console.error(`${LOG} Missing subscription endpoint`)
@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       title: title || 'Test Notification',
       body: message || 'This is a test notification',
       navigateUrl: navigateFull,
+      imageUrl: typeof imageUrl === 'string' ? imageUrl.trim() || undefined : undefined,
       tag: 'test-notification',
     })
     debugSteps.push(`6. Payload built (declarative, navigate=${navigateFull})`)
