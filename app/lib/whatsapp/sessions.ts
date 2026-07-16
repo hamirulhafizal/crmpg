@@ -32,7 +32,18 @@ function normalizeSessionPhone(name: string): string {
 
 export async function listWhatsAppSessions(userId: string): Promise<WhatsAppSessionView[]> {
   const cfg = await getWhatsAppServerConfig({ userId })
-  const rows = await loadUserWhatsAppSessions(userId)
+  let rows = await loadUserWhatsAppSessions(userId)
+
+  if (rows.length === 0 && cfg.provider === 'wasender') {
+    const { relinkWasenderSessionsForUser } = await import('@/app/lib/whatsapp/relink-wasender')
+    try {
+      await relinkWasenderSessionsForUser(userId)
+    } catch (e) {
+      console.error('[whatsapp] relinkWasenderSessionsForUser failed:', userId, e)
+    }
+    rows = await loadUserWhatsAppSessions(userId)
+  }
+
   if (rows.length === 0) return []
 
   if (cfg.provider === 'wasender') {

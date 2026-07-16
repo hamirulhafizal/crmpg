@@ -101,6 +101,21 @@ export async function wasenderListAllSessions(cfg: WhatsAppServerConfig): Promis
   return Array.isArray(res?.data) ? res.data : []
 }
 
+export async function wasenderGetSession(
+  cfg: WhatsAppServerConfig,
+  sessionId: string
+): Promise<WasenderSessionData> {
+  const res = await wasenderPlatformFetch<WasenderEnvelope<WasenderSessionData>>(
+    cfg,
+    `/api/whatsapp-sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'GET' }
+  )
+  if (!res?.data) {
+    throw new WhatsAppApiError('Wasender session not found', 404, `/api/whatsapp-sessions/${sessionId}`, 'wasender')
+  }
+  return res.data
+}
+
 export async function wasenderCreateSession(
   cfg: WhatsAppServerConfig,
   input: { name: string; phoneNumber: string }

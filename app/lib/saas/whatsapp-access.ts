@@ -155,7 +155,7 @@ export async function loadPreferredWasenderServerId(): Promise<string | null> {
   return preferred?.id ?? null
 }
 
-/** After Pro payment: assign Wasender server and wipe sessions for a fresh QR scan. */
+/** After Pro payment: assign Wasender server; first upgrade clears sessions, renewals re-link. */
 export async function applyProPaidWhatsAppMigration(userId: string): Promise<void> {
   if (await hasAdminWahaServerAssignment(userId)) return
 
@@ -163,8 +163,22 @@ export async function applyProPaidWhatsAppMigration(userId: string): Promise<voi
   if (!wasenderId) return
 
   const admin = createServiceRoleClient()
-  await admin.from('profiles').update({ waha_server_id: wasenderId }).eq('id', userId)
-  await clearUserWhatsAppSessions(userId)
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('waha_server_id')
+    .eq('id', userId)
+    .maybeSingle()
+
+  const alreadyOnWasender = (profile?.waha_server_id || '').toString() === wasenderId
+
+  if (!alreadyOnWasender) {
+    await admin.from('profiles').update({ waha_server_id: wasenderId }).eq('id', userId)
+    await clearUserWhatsAppSessions(userId)
+    return
+  }
+
+  const { relinkWasenderSessionsForUser } = await import('@/app/lib/whatsapp/relink-wasender')
+  await relinkWasenderSessionsForUser(userId)
 }
 
 /** Pro trial: default to WAHA unless admin assigned Wasender; clear stale Wasender sessions. */
