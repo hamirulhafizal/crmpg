@@ -1,0 +1,631 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2424DBDD710634045DA67F1D /* AppState.swift */; };
+		072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A842864CC32DEEE666E1B /* CampaignDetailView.swift */; };
+		0B91F3DD7E4F8ACEB941C1FF /* WhatsAppSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */; };
+		196563A2C06C5C33B78295FE /* LuckyDrawViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */; };
+		1C1F8BC196E5A1FF6D6C6A99 /* SavedAccountsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */; };
+		30F5EE8F995DC52445AC494A /* CRMPGApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B37A0C7CA49F7F052DE3B97 /* CRMPGApp.swift */; };
+		34CE57E612B61D49F4F40818 /* CustomerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCD5032BD18B4405FB30082 /* CustomerListView.swift */; };
+		45BC578B02F1CC3F8F4930FB /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */; };
+		46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E72282731C2AFCC3A718F3 /* ProfileView.swift */; };
+		51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34BEA769C42497653F9750 /* DesignSystem.swift */; };
+		772EC11D03B2FA232BE66822 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63349485BF364EA8A15779 /* DashboardView.swift */; };
+		7BA90EDC7ECA006C73E00F73 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */; };
+		7D7293CE2548A2940E0389A8 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A19240B28937A646BD0D5B /* APIClient.swift */; };
+		8006747BF40A352EA0BB74FB /* CustomerFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */; };
+		890EF7A222233CDD48884276 /* PGSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */; };
+		8BD3ADC5C4A579E7B1E298F1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382C21C50B62CD046C53E9B6 /* Models.swift */; };
+		8E443E126310CA8290D839D4 /* CustomerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF659B73A922496EC355DE /* CustomerDetailView.swift */; };
+		995BBDB7446734BF537A0E5E /* ExcelToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */; };
+		9A829B3C87D44D2DED231956 /* SupabaseRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A7D335727D78DDCCAC4C8D /* SupabaseRepository.swift */; };
+		9AA0CFE62EF5295FAAA5D70E /* CustomerFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC9CCE9C3CEC186B2FE1BC16 /* CustomerFilterSheet.swift */; };
+		9E9B4EEB5DC5A79FF5D32810 /* ToolsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBC7C6E2AE039AD6A6CC8B7B /* ToolsHubView.swift */; };
+		A669C1A7C490DDBEF86D8802 /* CustomerTagsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD538379C76B109FFF9180B6 /* CustomerTagsView.swift */; };
+		A8EFC18FE469490511B2DADE /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB43098FF1F4D031AA7ABFF /* AppConfig.swift */; };
+		AD7330C92881DB601F1339F3 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6C074572DFEF0241810A8CE7 /* Supabase */; };
+		B38AFCFBFAAA2C07746D2FFF /* ChatHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49C008C2B2B04B3E866C583 /* ChatHistoryView.swift */; };
+		BAE9C41F010BAE33342F27C0 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5830655832146188BF62BC /* NotificationSettingsView.swift */; };
+		BB6B73DD9B75BE77862CB119 /* ProfileEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 484978B01999201F202D8387 /* ProfileEditView.swift */; };
+		BCC4703532DBDB6A133BA37A /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8565C772C7F1AF8475997355 /* MainTabView.swift */; };
+		C05D52A6F3873EEEE441F305 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */; };
+		CC5B919D0365876FF26B3E8E /* BillingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4214D10C2321C90D22741DFB /* BillingView.swift */; };
+		CCE3185C203857FDA2648011 /* CampaignListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14CAD2DB948A6573F2F4166D /* CampaignListView.swift */; };
+		E7579C61702D4679ABCA975B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F1E238DEC5026ADD53DE80C /* LoginView.swift */; };
+		F1C8BDE8F76C68145F1F4CB0 /* WhatsAppSessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */; };
+		FBA96F19FA9B702F2E6EBCDA /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppSessionDetailView.swift; sourceTree = "<group>"; };
+		0D34BEA769C42497653F9750 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		14CAD2DB948A6573F2F4166D /* CampaignListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignListView.swift; sourceTree = "<group>"; };
+		1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CRMPGApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F1E238DEC5026ADD53DE80C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		2424DBDD710634045DA67F1D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		32E72282731C2AFCC3A718F3 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		382C21C50B62CD046C53E9B6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcelToolsView.swift; sourceTree = "<group>"; };
+		41CF659B73A922496EC355DE /* CustomerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerDetailView.swift; sourceTree = "<group>"; };
+		4214D10C2321C90D22741DFB /* BillingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingView.swift; sourceTree = "<group>"; };
+		484978B01999201F202D8387 /* ProfileEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditView.swift; sourceTree = "<group>"; };
+		4A5830655832146188BF62BC /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
+		5AB43098FF1F4D031AA7ABFF /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		60A730AC1214117C08B55FAC /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAccountsStore.swift; sourceTree = "<group>"; };
+		80A19240B28937A646BD0D5B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		8565C772C7F1AF8475997355 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		8CCD5032BD18B4405FB30082 /* CustomerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerListView.swift; sourceTree = "<group>"; };
+		8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LuckyDrawViews.swift; sourceTree = "<group>"; };
+		95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
+		977A842864CC32DEEE666E1B /* CampaignDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignDetailView.swift; sourceTree = "<group>"; };
+		9B37A0C7CA49F7F052DE3B97 /* CRMPGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMPGApp.swift; sourceTree = "<group>"; };
+		ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PGSyncView.swift; sourceTree = "<group>"; };
+		AD538379C76B109FFF9180B6 /* CustomerTagsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerTagsView.swift; sourceTree = "<group>"; };
+		B49C008C2B2B04B3E866C583 /* ChatHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryView.swift; sourceTree = "<group>"; };
+		B7A7D335727D78DDCCAC4C8D /* SupabaseRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepository.swift; sourceTree = "<group>"; };
+		BC63349485BF364EA8A15779 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		CBC7C6E2AE039AD6A6CC8B7B /* ToolsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsHubView.swift; sourceTree = "<group>"; };
+		D166E539B105585AB177AC93 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppSessionsView.swift; sourceTree = "<group>"; };
+		FC9CCE9C3CEC186B2FE1BC16 /* CustomerFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerFilterSheet.swift; sourceTree = "<group>"; };
+		FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
+		FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerFormView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		49696AAE884B6D7A089E46AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD7330C92881DB601F1339F3 /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0837E8EC4608E4F6945CDDCA /* Billing */ = {
+			isa = PBXGroup;
+			children = (
+				4214D10C2321C90D22741DFB /* BillingView.swift */,
+			);
+			path = Billing;
+			sourceTree = "<group>";
+		};
+		10CFF92582F07E87806F2A41 /* Customers */ = {
+			isa = PBXGroup;
+			children = (
+				B49C008C2B2B04B3E866C583 /* ChatHistoryView.swift */,
+				41CF659B73A922496EC355DE /* CustomerDetailView.swift */,
+				FC9CCE9C3CEC186B2FE1BC16 /* CustomerFilterSheet.swift */,
+				FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */,
+				8CCD5032BD18B4405FB30082 /* CustomerListView.swift */,
+				AD538379C76B109FFF9180B6 /* CustomerTagsView.swift */,
+			);
+			path = Customers;
+			sourceTree = "<group>";
+		};
+		17FE5478B75FDF741037AA95 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				51B579D0F8120F24C2CCC115 /* Auth */,
+				3D54B60CF8902FA31B986175 /* Config */,
+				D7BBC26DE177C51AD444E5E5 /* DesignSystem */,
+				97F3ABE4F2F90D79B82F1637 /* Models */,
+				B2B8082D4CCA70A48C39B192 /* Networking */,
+				E530F3A926BD4B52FDCB480E /* Push */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		335CD58FC732A555163B1D0E /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				60A730AC1214117C08B55FAC /* Debug.xcconfig */,
+				D166E539B105585AB177AC93 /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		337E6D4033549E85A6398623 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				784CB54D80035B9E780F8F79 /* Auth */,
+				0837E8EC4608E4F6945CDDCA /* Billing */,
+				573D506F099420F2C0D0C8DE /* Campaigns */,
+				10CFF92582F07E87806F2A41 /* Customers */,
+				F2651AE6C0B5CFF480E9907B /* Dashboard */,
+				DFBD3A4861C17902321E00F3 /* Profile */,
+				7FD127F20CFC56F7D5605A1B /* Shell */,
+				F45F364EBD52210C5C12A15A /* Tools */,
+				3AA15BAC8EF5F04CCB1AD2EE /* WhatsApp */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		3AA15BAC8EF5F04CCB1AD2EE /* WhatsApp */ = {
+			isa = PBXGroup;
+			children = (
+				07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */,
+				E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */,
+			);
+			path = WhatsApp;
+			sourceTree = "<group>";
+		};
+		3D54B60CF8902FA31B986175 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				5AB43098FF1F4D031AA7ABFF /* AppConfig.swift */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		3E5175339AF8635D86C6EF36 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */,
+				2424DBDD710634045DA67F1D /* AppState.swift */,
+				9B37A0C7CA49F7F052DE3B97 /* CRMPGApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		49CC0CB1ACDA7C3785D79609 /* CRMPGApp */ = {
+			isa = PBXGroup;
+			children = (
+				3E5175339AF8635D86C6EF36 /* App */,
+				17FE5478B75FDF741037AA95 /* Core */,
+				337E6D4033549E85A6398623 /* Features */,
+			);
+			path = CRMPGApp;
+			sourceTree = "<group>";
+		};
+		51B579D0F8120F24C2CCC115 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */,
+				78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */,
+				95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */,
+				B7A7D335727D78DDCCAC4C8D /* SupabaseRepository.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		573D506F099420F2C0D0C8DE /* Campaigns */ = {
+			isa = PBXGroup;
+			children = (
+				977A842864CC32DEEE666E1B /* CampaignDetailView.swift */,
+				14CAD2DB948A6573F2F4166D /* CampaignListView.swift */,
+			);
+			path = Campaigns;
+			sourceTree = "<group>";
+		};
+		784CB54D80035B9E780F8F79 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				1F1E238DEC5026ADD53DE80C /* LoginView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		7FD127F20CFC56F7D5605A1B /* Shell */ = {
+			isa = PBXGroup;
+			children = (
+				8565C772C7F1AF8475997355 /* MainTabView.swift */,
+			);
+			path = Shell;
+			sourceTree = "<group>";
+		};
+		97F3ABE4F2F90D79B82F1637 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				382C21C50B62CD046C53E9B6 /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A8F674D45328B931CEA76D60 = {
+			isa = PBXGroup;
+			children = (
+				335CD58FC732A555163B1D0E /* Config */,
+				49CC0CB1ACDA7C3785D79609 /* CRMPGApp */,
+				C392D19BA25F249DFD1FC370 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B2B8082D4CCA70A48C39B192 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				80A19240B28937A646BD0D5B /* APIClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		C392D19BA25F249DFD1FC370 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D7BBC26DE177C51AD444E5E5 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				0D34BEA769C42497653F9750 /* DesignSystem.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		DFBD3A4861C17902321E00F3 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				4A5830655832146188BF62BC /* NotificationSettingsView.swift */,
+				484978B01999201F202D8387 /* ProfileEditView.swift */,
+				32E72282731C2AFCC3A718F3 /* ProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		E530F3A926BD4B52FDCB480E /* Push */ = {
+			isa = PBXGroup;
+			children = (
+				FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */,
+			);
+			path = Push;
+			sourceTree = "<group>";
+		};
+		F2651AE6C0B5CFF480E9907B /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				BC63349485BF364EA8A15779 /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		F45F364EBD52210C5C12A15A /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */,
+				8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */,
+				ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */,
+				CBC7C6E2AE039AD6A6CC8B7B /* ToolsHubView.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3F76BCF8D3C2D20F5151C059 /* CRMPGApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B4F76043F6ACA8A84460DB7F /* Build configuration list for PBXNativeTarget "CRMPGApp" */;
+			buildPhases = (
+				7EC060DF698BFB05708A0EB7 /* Sources */,
+				49696AAE884B6D7A089E46AA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CRMPGApp;
+			packageProductDependencies = (
+				6C074572DFEF0241810A8CE7 /* Supabase */,
+			);
+			productName = CRMPGApp;
+			productReference = 1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E1971F240CD71E234C3FA7D6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					3F76BCF8D3C2D20F5151C059 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = BCCAE913A78C0D2938EFB17E /* Build configuration list for PBXProject "CRMPGApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A8F674D45328B931CEA76D60;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D766F8C80B1EEE2CC3E29916 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C392D19BA25F249DFD1FC370 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3F76BCF8D3C2D20F5151C059 /* CRMPGApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7EC060DF698BFB05708A0EB7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7D7293CE2548A2940E0389A8 /* APIClient.swift in Sources */,
+				A8EFC18FE469490511B2DADE /* AppConfig.swift in Sources */,
+				7BA90EDC7ECA006C73E00F73 /* AppDelegate.swift in Sources */,
+				049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */,
+				CC5B919D0365876FF26B3E8E /* BillingView.swift in Sources */,
+				30F5EE8F995DC52445AC494A /* CRMPGApp.swift in Sources */,
+				072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */,
+				CCE3185C203857FDA2648011 /* CampaignListView.swift in Sources */,
+				B38AFCFBFAAA2C07746D2FFF /* ChatHistoryView.swift in Sources */,
+				8E443E126310CA8290D839D4 /* CustomerDetailView.swift in Sources */,
+				9AA0CFE62EF5295FAAA5D70E /* CustomerFilterSheet.swift in Sources */,
+				8006747BF40A352EA0BB74FB /* CustomerFormView.swift in Sources */,
+				34CE57E612B61D49F4F40818 /* CustomerListView.swift in Sources */,
+				A669C1A7C490DDBEF86D8802 /* CustomerTagsView.swift in Sources */,
+				772EC11D03B2FA232BE66822 /* DashboardView.swift in Sources */,
+				51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */,
+				995BBDB7446734BF537A0E5E /* ExcelToolsView.swift in Sources */,
+				C05D52A6F3873EEEE441F305 /* KeychainStore.swift in Sources */,
+				E7579C61702D4679ABCA975B /* LoginView.swift in Sources */,
+				196563A2C06C5C33B78295FE /* LuckyDrawViews.swift in Sources */,
+				BCC4703532DBDB6A133BA37A /* MainTabView.swift in Sources */,
+				8BD3ADC5C4A579E7B1E298F1 /* Models.swift in Sources */,
+				BAE9C41F010BAE33342F27C0 /* NotificationSettingsView.swift in Sources */,
+				890EF7A222233CDD48884276 /* PGSyncView.swift in Sources */,
+				BB6B73DD9B75BE77862CB119 /* ProfileEditView.swift in Sources */,
+				46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */,
+				FBA96F19FA9B702F2E6EBCDA /* PushNotificationService.swift in Sources */,
+				1C1F8BC196E5A1FF6D6C6A99 /* SavedAccountsStore.swift in Sources */,
+				45BC578B02F1CC3F8F4930FB /* SupabaseManager.swift in Sources */,
+				9A829B3C87D44D2DED231956 /* SupabaseRepository.swift in Sources */,
+				9E9B4EEB5DC5A79FF5D32810 /* ToolsHubView.swift in Sources */,
+				F1C8BDE8F76C68145F1F4CB0 /* WhatsAppSessionDetailView.swift in Sources */,
+				0B91F3DD7E4F8ACEB941C1FF /* WhatsAppSessionsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0779411FDE3E7222A830D739 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 60A730AC1214117C08B55FAC /* Debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CRMPGApp/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = CRMPGApp;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0E85A11172BDBFE74711B251 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D166E539B105585AB177AC93 /* Release.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Public Gold CRM";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2C456BF89F99E6B5E534851E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D166E539B105585AB177AC93 /* Release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CRMPGApp/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = CRMPGApp;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2F35E483469738DA935B394E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 60A730AC1214117C08B55FAC /* Debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Public Gold CRM";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B4F76043F6ACA8A84460DB7F /* Build configuration list for PBXNativeTarget "CRMPGApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0779411FDE3E7222A830D739 /* Debug */,
+				2C456BF89F99E6B5E534851E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BCCAE913A78C0D2938EFB17E /* Build configuration list for PBXProject "CRMPGApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F35E483469738DA935B394E /* Debug */,
+				0E85A11172BDBFE74711B251 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D766F8C80B1EEE2CC3E29916 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6C074572DFEF0241810A8CE7 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D766F8C80B1EEE2CC3E29916 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E1971F240CD71E234C3FA7D6 /* Project object */;
+}

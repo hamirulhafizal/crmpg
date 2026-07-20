@@ -1,20 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 
 type Params = { params: Promise<{ id: string }> }
 
 // GET /api/customers/[id]/crm-tags — tag IDs assigned to this customer
-export async function GET(_request: Request, context: Params) {
+export async function GET(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     if (!customerId) {
@@ -60,15 +54,9 @@ export async function GET(_request: Request, context: Params) {
 // PUT /api/customers/[id]/crm-tags — replace all CRM tags (body: { tag_ids: string[] })
 export async function PUT(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     if (!customerId) {

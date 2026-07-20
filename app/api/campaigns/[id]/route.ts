@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { normalizeSendTimeForDb } from '@/app/lib/campaigns/schedule'
 import { applyWorkflowToCampaignPayload } from '@/app/lib/workflows/api-payload'
@@ -15,17 +15,12 @@ import {
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function GET(_request: Request, ctx: Ctx) {
+export async function GET(request: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { data: campaign, error: cErr } = await supabase
       .from('campaigns')
@@ -121,14 +116,9 @@ export async function GET(_request: Request, ctx: Ctx) {
 export async function PATCH(request: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const body = await request.json().catch(() => ({}))
 
@@ -225,17 +215,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 }
 
-export async function DELETE(_request: Request, ctx: Ctx) {
+export async function DELETE(request: Request, ctx: Ctx) {
   try {
     const { id } = await ctx.params
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { error } = await supabase.from('campaigns').delete().eq('id', id).eq('user_id', user.id)
     if (error) throw error

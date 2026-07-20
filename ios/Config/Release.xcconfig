@@ -1,0 +1,3 @@
+#include "Secrets.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.publicgolds.crmpg

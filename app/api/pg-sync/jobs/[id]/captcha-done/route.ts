@@ -7,8 +7,8 @@ export const dynamic = 'force-dynamic'
 
 type Ctx = { params: Promise<{ id: string }> }
 
-export async function POST(_request: Request, ctx: Ctx) {
-  const auth = await requirePgSyncSession()
+export async function POST(request: Request, ctx: Ctx) {
+  const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }

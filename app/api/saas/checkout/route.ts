@@ -4,7 +4,7 @@ import { createPaymentIntent } from '@/app/lib/bayarcash/payment-intent'
 import { isGoogleAdsBayarcashRenewalEnabled } from '@/app/lib/bayarcash/config'
 import { checkoutPriceAmount, canCheckoutPro } from '@/app/lib/saas/billing'
 import { buildSaasMePayload } from '@/app/lib/saas/entitlements'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 function getAppOrigin(request: Request): string {
@@ -23,12 +23,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Online payment is not enabled' }, { status: 403 })
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user?.email) {
+  const auth = await requireUserApi(request)
+  if (!auth.ok) return auth.response
+  const { user } = auth
+  if (!user.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

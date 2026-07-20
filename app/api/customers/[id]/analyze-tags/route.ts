@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 import { fetchWahaChatMessages, formatChatTranscriptForLlm } from '@/app/lib/waha-chat-messages'
 import { WahaApiError } from '@/app/lib/waha'
@@ -93,17 +93,11 @@ function formatCustomerRecordForPrompt(row: {
  * POST /api/customers/[id]/analyze-tags
  * Fetch WAHA chat → LLM → replace all CRM tags with AI result (`source=ai`).
  */
-export async function POST(_request: Request, context: Params) {
+export async function POST(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     if (!customerId) {

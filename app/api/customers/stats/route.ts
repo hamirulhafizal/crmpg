@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { getAccountStatusKey, type AccountStatusKey } from '@/app/lib/customer-account-status'
 
 const noStoreHeaders = {
@@ -20,17 +20,13 @@ const STATUS_KEYS: AccountStatusKey[] = [
 
 // GET /api/customers/stats — counts by account status for the logged-in user
 // Use select('*') so missing optional columns (e.g. before migration 010) never break the query.
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    const auth = await requireUserApi(request)
+    if (!auth.ok) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders })
     }
+    const { user, supabase } = auth
 
     const counts: Record<AccountStatusKey, number> = {
       temporary: 0,

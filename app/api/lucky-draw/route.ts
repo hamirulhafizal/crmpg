@@ -1,22 +1,17 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { ensureDealerSettings } from '@/app/lib/lucky-draw/dealer-settings'
 import { ensureDealerDefaultLuckyDrawPage } from '@/app/lib/lucky-draw/platform-defaults'
 import { normalizeQuestions } from '@/app/lib/lucky-draw/questions'
 import { isValidSlug, normalizeSlug } from '@/app/lib/lucky-draw/slug'
 import { normalizePrizes } from '@/app/lib/lucky-draw/prizes'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
 
+    const { user, supabase } = auth
     const settings = await ensureDealerSettings(supabase, user.id)
     await ensureDealerDefaultLuckyDrawPage(supabase, user.id)
 
@@ -55,20 +50,17 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
 
+    const { user, supabase } = auth
     await ensureDealerSettings(supabase, user.id)
 
     const body = await request.json().catch(() => ({}))
     const title = typeof body.title === 'string' ? body.title.trim() : 'Lucky Draw'
-    const page_slug = normalizeSlug(typeof body.page_slug === 'string' ? body.page_slug : 'lucky-draw') || 'lucky-draw'
+    const page_slug =
+      normalizeSlug(typeof body.page_slug === 'string' ? body.page_slug : 'lucky-draw') ||
+      'lucky-draw'
 
     if (!isValidSlug(page_slug)) {
       return NextResponse.json({ error: 'Invalid page slug' }, { status: 400 })
@@ -96,7 +88,10 @@ export async function POST(request: Request) {
 
     if (pageErr) {
       if (pageErr.code === '23505') {
-        return NextResponse.json({ error: 'You already have a page with this slug.' }, { status: 409 })
+        return NextResponse.json(
+          { error: 'You already have a page with this slug.' },
+          { status: 409 }
+        )
       }
       throw pageErr
     }

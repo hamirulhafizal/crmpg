@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import {
   getAccountStatusKey,
   getLastPurchaseUtcMonthDate,
@@ -42,17 +42,14 @@ export async function GET(request: Request) {
       'Surrogate-Control': 'no-store',
     }
 
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
+    const auth = await requireUserApi(request)
+    if (!auth.ok) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401, headers: noStoreHeaders }
       )
     }
+    const { user, supabase } = auth
 
     // Get query parameters
     const { searchParams } = new URL(request.url)
@@ -497,17 +494,9 @@ export async function GET(request: Request) {
 // POST /api/customers - Create new customer(s)
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const body = await request.json()
     const { customers } = body

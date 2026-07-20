@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
 
 // Helper function to parse and normalize date strings to ISO format (YYYY-MM-DD)
@@ -120,17 +120,9 @@ function parseDate(dateValue: any): string | null {
 // POST /api/customers/bulk - Bulk create customers
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const body = await request.json()
     const { customers } = body
@@ -290,17 +282,9 @@ export async function POST(request: Request) {
 // DELETE /api/customers/bulk - Bulk delete customers
 export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
-    
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const body = await request.json()
     const { ids } = body

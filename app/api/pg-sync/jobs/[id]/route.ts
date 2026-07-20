@@ -12,8 +12,8 @@ function jobBelongsToUser(job: PgSyncJobView, pgCode: string): boolean {
   return job.pg_code?.trim().toUpperCase() === pgCode.trim().toUpperCase()
 }
 
-export async function GET(_request: Request, ctx: Ctx) {
-  const auth = await requirePgSyncSession()
+export async function GET(request: Request, ctx: Ctx) {
+  const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
@@ -34,7 +34,7 @@ export async function GET(_request: Request, ctx: Ctx) {
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {
-  const auth = await requirePgSyncSession()
+  const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }

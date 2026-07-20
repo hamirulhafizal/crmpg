@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 import { getProviderForUser } from '@/app/lib/whatsapp/resolve'
 import { fetchWhatsAppChatMessages } from '@/app/lib/whatsapp/chat-messages'
@@ -143,15 +143,9 @@ async function fetchMessagesByChatId(
 // GET /api/customers/[id]/chat-history?limit=80
 export async function GET(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     if (!customerId) {

@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { startProTrialForUser } from '@/app/lib/saas/start-trial'
 
-export async function POST() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export async function POST(request: Request) {
+  const auth = await requireUserApi(request)
+  if (!auth.ok) return auth.response
+  const { user } = auth
 
   const result = await startProTrialForUser(user.id)
   if (!result.ok) {

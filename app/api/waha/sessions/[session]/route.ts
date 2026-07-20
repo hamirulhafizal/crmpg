@@ -1,24 +1,22 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
-import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
-import { startWhatsAppSession, stopWhatsAppSession, deleteWhatsAppSession } from '@/app/lib/whatsapp/sessions'
-import { getProviderForUser } from '@/app/lib/whatsapp/resolve'
-import { listWhatsAppSessions } from '@/app/lib/whatsapp/sessions'
+import { isWhatsAppConfigured, getProviderForUser } from '@/app/lib/whatsapp/resolve'
+import {
+  startWhatsAppSession,
+  stopWhatsAppSession,
+  deleteWhatsAppSession,
+  listWhatsAppSessions,
+} from '@/app/lib/whatsapp/sessions'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user } = auth
     if (!(await isWhatsAppConfigured({ userId: user.id }))) {
       return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
@@ -37,18 +35,13 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user } = auth
     if (!(await isWhatsAppConfigured({ userId: user.id }))) {
       return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
@@ -68,14 +61,9 @@ export async function POST(
   { params }: { params: Promise<{ session: string }> }
 ) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user } = auth
 
     const { session } = await params
     const provider = await getProviderForUser(user.id)

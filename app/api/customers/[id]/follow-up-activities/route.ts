@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import {
   DEFAULT_MAX_TOUCHES_PER_WEEK,
   FOLLOW_UP_CHANNELS,
@@ -9,7 +10,7 @@ import {
   type FollowUpChannel,
 } from '@/app/lib/customer-follow-up-activities'
 
-async function assertCustomerOwned(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, customerId: string) {
+async function assertCustomerOwned(supabase: SupabaseClient, userId: string, customerId: string) {
   const { data, error } = await supabase
     .from('customers')
     .select('id')
@@ -22,16 +23,11 @@ async function assertCustomerOwned(supabase: Awaited<ReturnType<typeof createCli
 }
 
 /** GET — list activities + quota summary */
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     const ok = await assertCustomerOwned(supabase, user.id, customerId)
@@ -81,14 +77,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 /** POST — append activity (quota + topic cooldown) */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { id: customerId } = await context.params
     const ok = await assertCustomerOwned(supabase, user.id, customerId)

@@ -1,22 +1,17 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { normalizeQuestions } from '@/app/lib/lucky-draw/questions'
 import { isValidSlug, normalizeSlug } from '@/app/lib/lucky-draw/slug'
 import { normalizePrizes } from '@/app/lib/lucky-draw/prizes'
 
 type Params = { params: Promise<{ id: string }> }
 
-export async function GET(_request: Request, context: Params) {
+export async function GET(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
 
+    const { user, supabase } = auth
     const { id } = await context.params
     const { data: page, error } = await supabase
       .from('lucky_draw_pages')
@@ -52,15 +47,10 @@ export async function GET(_request: Request, context: Params) {
 
 export async function PATCH(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
 
+    const { user, supabase } = auth
     const { id } = await context.params
     const { data: existing } = await supabase
       .from('lucky_draw_pages')
@@ -77,7 +67,9 @@ export async function PATCH(request: Request, context: Params) {
     const patch: Record<string, unknown> = {}
 
     if (typeof body.title === 'string') patch.title = body.title.trim() || 'Lucky Draw'
-    if (typeof body.terms_and_conditions === 'string') patch.terms_and_conditions = body.terms_and_conditions
+    if (typeof body.terms_and_conditions === 'string') {
+      patch.terms_and_conditions = body.terms_and_conditions
+    }
     if (typeof body.target_audience === 'string') patch.target_audience = body.target_audience
     if (body.status === 'draft' || body.status === 'active' || body.status === 'closed') {
       patch.status = body.status
@@ -96,7 +88,10 @@ export async function PATCH(request: Request, context: Params) {
       const { error: updErr } = await supabase.from('lucky_draw_pages').update(patch).eq('id', id)
       if (updErr) {
         if (updErr.code === '23505') {
-          return NextResponse.json({ error: 'You already have a page with this slug.' }, { status: 409 })
+          return NextResponse.json(
+            { error: 'You already have a page with this slug.' },
+            { status: 409 }
+          )
         }
         throw updErr
       }
@@ -104,10 +99,7 @@ export async function PATCH(request: Request, context: Params) {
 
     if ('questions' in body) {
       const questions = normalizeQuestions(body.questions)
-      await supabase
-        .from('lucky_draw_pages')
-        .update({ uses_platform_defaults: false })
-        .eq('id', id)
+      await supabase.from('lucky_draw_pages').update({ uses_platform_defaults: false }).eq('id', id)
       await supabase.from('lucky_draw_questions').delete().eq('page_id', id)
       if (questions.length > 0) {
         const rows = questions.map((q) => ({
@@ -137,19 +129,18 @@ export async function PATCH(request: Request, context: Params) {
   }
 }
 
-export async function DELETE(_request: Request, context: Params) {
+export async function DELETE(request: Request, context: Params) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
 
+    const { user, supabase } = auth
     const { id } = await context.params
-    const { error } = await supabase.from('lucky_draw_pages').delete().eq('id', id).eq('user_id', user.id)
+    const { error } = await supabase
+      .from('lucky_draw_pages')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (error) throw error
 
     return NextResponse.json({ ok: true })

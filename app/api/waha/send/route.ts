@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
 import { sendWhatsAppText } from '@/app/lib/whatsapp/send'
 import { humanizeWhatsAppText } from '@/app/lib/campaigns/whatsapp-humanize'
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user } = auth
     if (!(await isWhatsAppConfigured({ userId: user.id }))) {
       return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }

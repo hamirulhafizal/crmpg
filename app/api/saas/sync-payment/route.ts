@@ -5,18 +5,13 @@ import {
   syncSaasPaymentByOrderNumber,
   syncSaasPaymentByPaymentIntentId,
 } from '@/app/lib/saas/sync-bayarcash-payment'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export async function GET(request: Request) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await requireUserApi(request)
+  if (!auth.ok) return auth.response
+  const { user } = auth
 
   const url = new URL(request.url)
   const syncAllPending = url.searchParams.get('sync_pending') === '1'
@@ -35,7 +30,7 @@ export async function GET(request: Request) {
   }
 
   if (paymentIntentId) {
-    const { data: paymentRow } = await supabase
+    const { data: paymentRow } = await admin
       .from('saas_payments')
       .select('order_number')
       .eq('payment_intent_id', paymentIntentId)
@@ -65,7 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'order_number is required' }, { status: 400 })
   }
 
-  const { data: paymentRow } = await supabase
+  const { data: paymentRow } = await admin
     .from('saas_payments')
     .select('order_number')
     .eq('order_number', orderNumber)

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
 import { resolveActiveJobIdForPgCode } from '@/app/lib/pg-sync/active-job'
 import { buildQueueInfo } from '@/app/lib/pg-sync/queue-info'
@@ -13,15 +12,14 @@ import type { PgSyncJobView, PgSyncServiceStatus } from '@/app/lib/pg-sync/types
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const auth = await requirePgSyncSession()
+export async function GET(request: Request) {
+  const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
   try {
-    const supabase = await createClient()
-    const dbJob = await getActivePgSyncJobForUser(supabase, auth.session.userId)
+    const dbJob = await getActivePgSyncJobForUser(auth.supabase, auth.session.userId)
 
     const status = await pgSyncFetch<PgSyncServiceStatus>('/v1/status')
     const myQueueEntry = status.queue.find(

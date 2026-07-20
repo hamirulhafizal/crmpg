@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 import { buildSaasMePayload, entitlementsFromMe } from '@/app/lib/saas/entitlements'
 
-export async function GET() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export async function GET(request: Request) {
+  const auth = await requireUserApi(request)
+  if (!auth.ok) return auth.response
+  const { user } = auth
 
   try {
     const payload = await buildSaasMePayload(user.id)

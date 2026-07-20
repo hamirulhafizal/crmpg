@@ -1,4 +1,5 @@
-import { createClient } from '@/app/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 
 export type PgSyncSession = {
   userId: string
@@ -6,20 +7,27 @@ export type PgSyncSession = {
   pgCode: string
 }
 
-export async function requirePgSyncSession(): Promise<
-  { ok: true; session: PgSyncSession } | { ok: false; status: number; error: string }
+/**
+ * Authenticate PG sync routes.
+ * Accepts Bearer (native iOS) or cookie session (web).
+ */
+export async function requirePgSyncSession(
+  request: Request
+): Promise<
+  | { ok: true; session: PgSyncSession; supabase: SupabaseClient }
+  | { ok: false; status: number; error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user?.email) {
+  const auth = await requireUserApi(request)
+  if (!auth.ok) {
     return { ok: false, status: 401, error: 'Unauthorized' }
   }
 
-  const { data: profile, error: profileError } = await supabase
+  const user = auth.user
+  if (!user.email) {
+    return { ok: false, status: 401, error: 'Unauthorized' }
+  }
+
+  const { data: profile, error: profileError } = await auth.supabase
     .from('profiles')
     .select('pgcode')
     .eq('id', user.id)
@@ -45,5 +53,6 @@ export async function requirePgSyncSession(): Promise<
       email: user.email.trim(),
       pgCode,
     },
+    supabase: auth.supabase,
   }
 }

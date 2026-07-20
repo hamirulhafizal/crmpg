@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { requireUserApi } from '@/app/lib/auth/require-user'
 
 const ACCOUNT_STATUS_FILTER = new Set([
   '',
@@ -12,7 +13,7 @@ const ACCOUNT_STATUS_FILTER = new Set([
 ])
 
 async function assertCustomerOwned(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: SupabaseClient,
   userId: string,
   customerId: string
 ) {
@@ -36,16 +37,11 @@ type BookmarkRow = {
 }
 
 /** GET — current user's bookmark or null */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { data, error } = await supabase
       .from('user_follow_up_bookmarks')
@@ -76,14 +72,9 @@ type PutBody = {
 /** PUT — upsert bookmark (customer must belong to user) */
 export async function PUT(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const body = (await request.json().catch(() => ({}))) as PutBody
     const customerId = typeof body.customerId === 'string' ? body.customerId.trim() : ''
@@ -142,16 +133,11 @@ export async function PUT(request: Request) {
 }
 
 /** DELETE — remove bookmark */
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const auth = await requireUserApi(request)
+    if (!auth.ok) return auth.response
+    const { user, supabase } = auth
 
     const { error } = await supabase.from('user_follow_up_bookmarks').delete().eq('user_id', user.id)
 

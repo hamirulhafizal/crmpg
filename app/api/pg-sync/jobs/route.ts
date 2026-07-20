@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
 import { pgSyncWebhookUrl } from '@/app/lib/pg-sync/config'
 import { insertPgSyncJob } from '@/app/lib/pg-sync/jobs-db'
@@ -14,7 +13,7 @@ type CreateBody = {
 }
 
 export async function POST(request: Request) {
-  const auth = await requirePgSyncSession()
+  const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
@@ -48,8 +47,7 @@ export async function POST(request: Request) {
       }),
     })
 
-    const supabase = await createClient()
-    await insertPgSyncJob(supabase, {
+    await insertPgSyncJob(auth.supabase, {
       userId: auth.session.userId,
       pgCode: auth.session.pgCode,
       workerJobId: created.job_id,
