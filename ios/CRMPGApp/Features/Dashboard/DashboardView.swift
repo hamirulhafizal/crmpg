@@ -15,6 +15,14 @@ final class DashboardViewModel {
         case supabase
     }
 
+    func resetForAccountSwitch() {
+        subscription = nil
+        customerCount = 0
+        errorMessage = nil
+        billingSource = .none
+        isLoading = true
+    }
+
     func load(userId: UUID?) async {
         isLoading = true
         errorMessage = nil
@@ -65,93 +73,45 @@ struct DashboardView: View {
     @Environment(AppState.self) private var appState
     @Binding var selectedTab: Int
     @State private var viewModel = DashboardViewModel()
+    @State private var showAccountSwitcher = false
+
+    private var showSkeleton: Bool {
+        // Skeleton for account switch and any dashboard fetch that still has no content.
+        appState.isSwitchingAccount
+            || (viewModel.isLoading && viewModel.customerCount == 0 && viewModel.subscription == nil)
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                header
+                if showSkeleton {
+                    DashboardSkeletonView()
+                } else {
+                    header
 
-                if let banner = viewModel.subscription?.expiryBanner {
-                    TrialBanner(message: banner) {
-                        selectedTab = 3
+                    if let banner = viewModel.subscription?.expiryBanner {
+                        TrialBanner(message: banner) {
+                            selectedTab = 3
+                        }
                     }
-                }
 
-                if let error = viewModel.errorMessage {
-                    ErrorBanner(message: error) {
-                        viewModel.errorMessage = nil
+                    if let error = viewModel.errorMessage {
+                        ErrorBanner(message: error) {
+                            viewModel.errorMessage = nil
+                        }
                     }
-                }
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    Button {
-                        selectedTab = 1
-                    } label: {
-                        ServiceTile(
-                            title: "Customers",
-                            value: "\(viewModel.customerCount)",
-                            icon: "person.2.fill",
-                            tint: PGColors.gold
-                        )
+                    tileGrid
+
+                    if viewModel.billingSource == .supabase {
+                        Text("Plan loaded via Supabase. Deploy Bearer API for full billing entitlements.")
+                            .font(PGTypography.caption)
+                            .foregroundStyle(PGColors.secondaryText)
                     }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        selectedTab = 3
-                    } label: {
-                        ServiceTile(
-                            title: "Plan",
-                            value: viewModel.subscription?.planName ?? "—",
-                            icon: "creditcard.fill",
-                            tint: .blue
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        selectedTab = 2
-                    } label: {
-                        ServiceTile(
-                            title: "WhatsApp",
-                            value: "Sessions",
-                            icon: "message.fill",
-                            tint: .green
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        CampaignListView()
-                    } label: {
-                        ServiceTile(
-                            title: "Campaigns",
-                            value: campaignValue,
-                            icon: "megaphone.fill",
-                            tint: .purple
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        ToolsHubView()
-                    } label: {
-                        ServiceTile(
-                            title: "Tools",
-                            value: "Sync & more",
-                            icon: "wrench.and.screwdriver.fill",
-                            tint: .orange
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if viewModel.billingSource == .supabase {
-                    Text("Plan loaded via Supabase. Deploy Bearer API for full billing entitlements.")
-                        .font(PGTypography.caption)
-                        .foregroundStyle(PGColors.secondaryText)
                 }
             }
             .padding(20)
+            .animation(.easeInOut(duration: 0.25), value: showSkeleton)
         }
         .background(PGColors.background)
         .navigationTitle("Dashboard")
@@ -159,13 +119,90 @@ struct DashboardView: View {
             await viewModel.load(userId: appState.profile?.id ?? SupabaseManager.shared.currentUser?.id)
             await appState.refreshProfile()
         }
-        .overlay {
-            if viewModel.isLoading && viewModel.customerCount == 0 && viewModel.subscription == nil {
-                LoadingView()
+        .task(id: appState.accountSessionID) {
+            if appState.isSwitchingAccount {
+                viewModel.resetForAccountSwitch()
             }
-        }
-        .task {
             await viewModel.load(userId: appState.profile?.id ?? SupabaseManager.shared.currentUser?.id)
+            appState.markAccountContentReady()
+        }
+        .sheet(isPresented: $showAccountSwitcher) {
+            NavigationStack {
+                AccountPickerView(mode: .switchAccount)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showAccountSwitcher = false }
+                                .fontWeight(.semibold)
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(24)
+        }
+    }
+
+    private var tileGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            Button {
+                selectedTab = 1
+            } label: {
+                ServiceTile(
+                    title: "Customers",
+                    value: "\(viewModel.customerCount)",
+                    icon: "person.2.fill",
+                    tint: PGColors.gold
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                selectedTab = 3
+            } label: {
+                ServiceTile(
+                    title: "Plan",
+                    value: viewModel.subscription?.planName ?? "—",
+                    icon: "creditcard.fill",
+                    tint: .blue
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                selectedTab = 2
+            } label: {
+                ServiceTile(
+                    title: "WhatsApp",
+                    value: "Sessions",
+                    icon: "message.fill",
+                    tint: .green
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                CampaignListView()
+            } label: {
+                ServiceTile(
+                    title: "Campaigns",
+                    value: campaignValue,
+                    icon: "megaphone.fill",
+                    tint: .purple
+                )
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                ToolsHubView()
+            } label: {
+                ServiceTile(
+                    title: "Tools",
+                    value: "Sync & more",
+                    icon: "wrench.and.screwdriver.fill",
+                    tint: .orange
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -175,31 +212,128 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Welcome back")
-                .font(PGTypography.caption)
-                .foregroundStyle(PGColors.secondaryText)
-            Text(appState.profile?.displayName ?? "Dealer")
-                .font(PGTypography.title)
-
-            if let pgcode = appState.profile?.pgcode, !pgcode.isEmpty {
-                Text(pgcode)
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Welcome back")
                     .font(PGTypography.caption)
-                    .foregroundStyle(PGColors.goldDark)
+                    .foregroundStyle(PGColors.secondaryText)
+                Text(appState.profile?.displayName ?? "Dealer")
+                    .font(PGTypography.title)
+
+                if let pgcode = appState.profile?.pgcode, !pgcode.isEmpty {
+                    Text(pgcode)
+                        .font(PGTypography.caption)
+                        .foregroundStyle(PGColors.goldDark)
+                }
+
+                if let status = viewModel.subscription?.status {
+                    Text(status.capitalized)
+                        .font(PGTypography.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(PGColors.gold.opacity(0.15))
+                        .foregroundStyle(PGColors.goldDark)
+                        .clipShape(Capsule())
+                        .padding(.top, 4)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                showAccountSwitcher = true
+            } label: {
+                dashboardAvatar
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Switch account")
+            .accessibilityHint("Opens saved dealers on this device")
+        }
+    }
+
+    @ViewBuilder
+    private var dashboardAvatar: some View {
+        let size: CGFloat = 56
+        ZStack(alignment: .bottomTrailing) {
+            AccountAvatarView(account: currentSavedAccountForAvatar, size: size)
+
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(PGColors.goldDark, in: Circle())
+                .overlay {
+                    Circle().stroke(Color.white, lineWidth: 2)
+                }
+                .offset(x: 2, y: 2)
+        }
+    }
+
+    private var currentSavedAccountForAvatar: SavedAccount {
+        let userId = appState.profile?.id
+            ?? SupabaseManager.shared.currentUser?.id
+            ?? UUID()
+        let email = SupabaseManager.shared.currentUser?.email ?? ""
+
+        if let saved = SavedAccountsStore.account(id: userId) {
+            return saved
+        }
+
+        return SavedAccount(
+            id: userId,
+            email: email,
+            displayName: appState.profile?.displayName ?? email.ifEmpty("Dealer"),
+            pgcode: appState.profile?.pgcode,
+            avatarURL: appState.profile?.avatarURL,
+            password: nil,
+            refreshToken: nil,
+            accessToken: nil,
+            expiresAt: nil,
+            lastUsedAt: Date()
+        )
+    }
+}
+
+/// Matches the live dashboard layout while dealer data is loading after an account switch.
+private struct DashboardSkeletonView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SkeletonBlock(height: 12, width: 90)
+                    SkeletonBlock(height: 26, width: 180)
+                    SkeletonBlock(height: 12, width: 100)
+                    SkeletonBlock(height: 22, width: 64, cornerRadius: 11)
+                        .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                SkeletonBlock(height: 56, width: 56, cornerRadius: 12)
             }
 
-            if let status = viewModel.subscription?.status {
-                Text(status.capitalized)
-                    .font(PGTypography.caption)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(PGColors.gold.opacity(0.15))
-                    .foregroundStyle(PGColors.goldDark)
-                    .clipShape(Capsule())
-                    .padding(.top, 4)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                ForEach(0..<5, id: \.self) { _ in
+                    skeletonTile
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading account")
+    }
+
+    private var skeletonTile: some View {
+        PGCard {
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(height: 28, width: 28, cornerRadius: 8)
+                SkeletonBlock(height: 20, width: 72)
+                SkeletonBlock(height: 12, width: 64)
+            }
+        }
+    }
+}
+
+private extension String {
+    func ifEmpty(_ fallback: String) -> String {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : self
     }
 }
 
@@ -259,4 +393,12 @@ struct ServiceTile: View {
         DashboardView(selectedTab: .constant(0))
             .environment(AppState())
     }
+}
+
+#Preview("Skeleton") {
+    ScrollView {
+        DashboardSkeletonView()
+            .padding(20)
+    }
+    .background(PGColors.background)
 }

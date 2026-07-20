@@ -43,6 +43,22 @@ struct MainTabView: View {
         .sheet(isPresented: $showOnboarding) {
             OnboardingSheet()
         }
+        .sheet(isPresented: Binding(
+            get: { appState.showPGSync },
+            set: { appState.showPGSync = $0 }
+        )) {
+            NavigationStack {
+                PGSyncView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { appState.showPGSync = false }
+                        }
+                    }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openPGSync)) { _ in
+            appState.showPGSync = true
+        }
         .onAppear {
             showOnboarding = !(appState.profile?.isProfileComplete ?? true)
         }
@@ -50,6 +66,11 @@ struct MainTabView: View {
             if isComplete == true {
                 showOnboarding = false
             }
+        }
+        .onChange(of: appState.accountSessionID) { _, _ in
+            guard appState.isSwitchingAccount else { return }
+            selectedTab = 0
+            showOnboarding = false
         }
     }
 }

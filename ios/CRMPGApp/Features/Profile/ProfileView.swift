@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @Environment(AppState.self) private var appState
     @State private var isSigningOut = false
+    @State private var showAccountSwitcher = false
 
     var body: some View {
         List {
@@ -53,6 +54,11 @@ struct ProfileView: View {
             }
 
             Section("Account") {
+                Button {
+                    showAccountSwitcher = true
+                } label: {
+                    Label("Switch account", systemImage: "person.2.fill")
+                }
                 NavigationLink {
                     CampaignListView()
                 } label: {
@@ -98,6 +104,20 @@ struct ProfileView: View {
         .navigationTitle("Profile")
         .refreshable {
             await appState.refreshProfile()
+        }
+        .sheet(isPresented: $showAccountSwitcher) {
+            NavigationStack {
+                AccountPickerView(mode: .switchAccount)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showAccountSwitcher = false }
+                                .fontWeight(.semibold)
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(24)
         }
     }
 

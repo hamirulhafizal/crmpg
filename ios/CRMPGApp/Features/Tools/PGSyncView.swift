@@ -7,14 +7,58 @@ final class PGSyncViewModel {
     var recentJobs: [PgSyncJobRecord] = []
     var pgPassword = ""
     var crmpgPassword = ""
+    var tacCode = ""
     var isLoading = false
     var isStarting = false
+    var isSubmittingTac = false
     var errorMessage: String?
     var infoMessage: String?
     var usedSupabaseFallback = false
     var needsWebFallback = false
 
     private var pollTask: Task<Void, Never>?
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var lastJobStatus: String?
+    private var scenePhase: ScenePhase = .active
+
+    var activeJobId: String? {
+        status?.activeJobId ?? status?.activeJob?.id ?? status?.dbJob?.workerJobId
+    }
+
+    var activeJobStatus: String? {
+        status?.activeJob?.status ?? status?.dbJob?.status
+    }
+
+    var isAwaitingTac: Bool {
+        (activeJobStatus ?? "").lowercased().contains("awaiting_tac")
+            || (activeJobStatus ?? "").lowercased() == "awaiting tac"
+    }
+
+    var isAwaitingCaptcha: Bool {
+        (activeJobStatus ?? "").lowercased().contains("captcha")
+    }
+
+    var hasActiveJob: Bool {
+        guard let status = activeJobStatus else { return false }
+        return activeStatus(status)
+    }
+
+    func updateScenePhase(_ phase: ScenePhase) {
+        scenePhase = phase
+        if phase == .background, hasActiveJob {
+            beginBackgroundPolling()
+            if isAwaitingTac, let jobId = activeJobId {
+                Task {
+                    await PGSyncLocalNotifier.notifyAwaitingTac(
+                        jobId: jobId,
+                        pgCode: status?.pgCode
+                    )
+                }
+            }
+        } else if phase == .active {
+            endBackgroundPolling()
+        }
+    }
 
     func load(userId: UUID?) async {
         isLoading = true
@@ -23,10 +67,15 @@ final class PGSyncViewModel {
         defer { isLoading = false }
 
         do {
+            let previous = lastJobStatus
             status = try await APIClient.shared.get(.pgSyncStatus)
+            await handleStatusTransition(previous: previous)
             startPolling(userId: userId)
             if let userId {
                 recentJobs = (try? await SupabaseRepository.fetchPgSyncJobs(userId: userId)) ?? []
+            }
+            if let message = status?.queueInfo?.displayMessage, !message.isEmpty {
+                infoMessage = message
             }
             return
         } catch {
@@ -59,6 +108,7 @@ final class PGSyncViewModel {
                     isMyTurn: nil,
                     error: nil
                 )
+                lastJobStatus = active.status
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -69,6 +119,7 @@ final class PGSyncViewModel {
         isStarting = true
         errorMessage = nil
         infoMessage = nil
+        needsWebFallback = false
         defer { isStarting = false }
 
         let pg = pgPassword.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -78,8 +129,8 @@ final class PGSyncViewModel {
             return
         }
 
-        // Ensure access token is fresh before hitting production API.
         await SupabaseManager.shared.refreshSessionIfNeeded()
+        await PGSyncLocalNotifier.prepareForActiveSync()
 
         do {
             let response: PgSyncCreateJobResponse = try await APIClient.shared.post(
@@ -112,30 +163,102 @@ final class PGSyncViewModel {
         }
     }
 
+    func submitTac(userId: UUID?) async {
+        let code = tacCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else {
+            errorMessage = "Enter the SMS TAC code."
+            return
+        }
+        guard let jobId = activeJobId, !jobId.isEmpty else {
+            errorMessage = "No active sync job found."
+            return
+        }
+
+        isSubmittingTac = true
+        errorMessage = nil
+        defer { isSubmittingTac = false }
+
+        await SupabaseManager.shared.refreshSessionIfNeeded()
+
+        do {
+            let _: PgSyncTacResponse = try await APIClient.shared.post(
+                .pgSyncJobTac(jobId: jobId),
+                body: PgSyncTacBody(tac: code)
+            )
+            tacCode = ""
+            infoMessage = "TAC submitted. Continuing sync…"
+            PGSyncLocalNotifier.clearTacNotification(jobId: jobId)
+            await load(userId: userId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
+        endBackgroundPolling()
     }
 
     private func startPolling(userId: UUID?) {
-        stopPolling()
+        pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                let interval: Duration = isAwaitingTac ? .seconds(2) : .seconds(5)
+                try? await Task.sleep(for: interval)
                 guard !Task.isCancelled else { break }
                 do {
+                    let previous = lastJobStatus
                     status = try await APIClient.shared.get(.pgSyncStatus)
+                    await handleStatusTransition(previous: previous)
                     if let userId {
                         recentJobs = (try? await SupabaseRepository.fetchPgSyncJobs(userId: userId)) ?? recentJobs
                     }
-                    if status?.activeJob == nil || !(status?.activeJob?.status.map { activeStatus($0) } ?? false) {
-                        // Keep polling lightly even when idle so queue updates appear.
+                    if let message = status?.queueInfo?.displayMessage, !message.isEmpty {
+                        infoMessage = message
                     }
                 } catch {
                     break
                 }
             }
         }
+    }
+
+    private func handleStatusTransition(previous: String?) async {
+        let next = activeJobStatus
+        lastJobStatus = next
+        guard let next, let jobId = activeJobId else { return }
+
+        let prevNorm = (previous ?? "").lowercased()
+        let nextNorm = next.lowercased()
+        let becameTac = nextNorm.contains("awaiting_tac") && !prevNorm.contains("awaiting_tac")
+
+        guard becameTac else { return }
+
+        infoMessage = "SMS TAC required — enter the code below to continue."
+
+        // Notify when app is not actively on screen, or always schedule so lock-screen sees it.
+        if scenePhase != .active {
+            await PGSyncLocalNotifier.notifyAwaitingTac(jobId: jobId, pgCode: status?.pgCode)
+        } else {
+            // Still notify so user gets a banner if they navigated away from this screen.
+            await PGSyncLocalNotifier.notifyAwaitingTac(jobId: jobId, pgCode: status?.pgCode)
+        }
+    }
+
+    private func beginBackgroundPolling() {
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "pg-sync-poll") { [weak self] in
+            Task { @MainActor in
+                self?.endBackgroundPolling()
+            }
+        }
+    }
+
+    private func endBackgroundPolling() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
     }
 
     private func activeStatus(_ status: String) -> Bool {
@@ -148,6 +271,7 @@ final class PGSyncViewModel {
 
 struct PGSyncView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = PGSyncViewModel()
     @State private var showPgPassword = false
     @State private var showCrmpgPassword = false
@@ -182,6 +306,48 @@ struct PGSyncView: View {
                     Text(info)
                         .font(PGTypography.caption)
                         .foregroundStyle(PGColors.success)
+                }
+            }
+
+            if viewModel.isAwaitingTac {
+                Section {
+                    Text("Enter the SMS TAC sent to your registered phone for PG Mall login.")
+                        .font(PGTypography.caption)
+                        .foregroundStyle(PGColors.secondaryText)
+                    TextField("TAC code", text: $viewModel.tacCode)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    Button {
+                        Task { await viewModel.submitTac(userId: userId) }
+                    } label: {
+                        if viewModel.isSubmittingTac {
+                            ProgressView()
+                        } else {
+                            Label("Submit TAC", systemImage: "checkmark.shield.fill")
+                        }
+                    }
+                    .disabled(viewModel.isSubmittingTac || viewModel.tacCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } header: {
+                    Text("TAC required")
+                } footer: {
+                    Text("The sync pauses until this code is submitted.")
+                }
+            }
+
+            if viewModel.isAwaitingCaptcha {
+                Section {
+                    Text("Complete the CAPTCHA in the sync browser session, then continue from the web if needed.")
+                        .font(PGTypography.caption)
+                        .foregroundStyle(PGColors.secondaryText)
+                    Button {
+                        showWebSync = true
+                    } label: {
+                        Label("Open sync on web", systemImage: "safari")
+                    }
+                } header: {
+                    Text("CAPTCHA required")
                 }
             }
 
@@ -224,31 +390,33 @@ struct PGSyncView: View {
                 }
             }
 
-            Section {
-                PasswordRevealField(
-                    title: "PG Business Center password",
-                    text: $viewModel.pgPassword,
-                    isVisible: $showPgPassword
-                )
-                PasswordRevealField(
-                    title: "CRMPG account password",
-                    text: $viewModel.crmpgPassword,
-                    isVisible: $showCrmpgPassword
-                )
-                Button {
-                    Task { await viewModel.startSync(userId: userId) }
-                } label: {
-                    if viewModel.isStarting {
-                        ProgressView()
-                    } else {
-                        Label("Start sync", systemImage: "play.fill")
+            if !viewModel.hasActiveJob {
+                Section {
+                    PasswordRevealField(
+                        title: "PG Business Center password",
+                        text: $viewModel.pgPassword,
+                        isVisible: $showPgPassword
+                    )
+                    PasswordRevealField(
+                        title: "CRMPG account password",
+                        text: $viewModel.crmpgPassword,
+                        isVisible: $showCrmpgPassword
+                    )
+                    Button {
+                        Task { await viewModel.startSync(userId: userId) }
+                    } label: {
+                        if viewModel.isStarting {
+                            ProgressView()
+                        } else {
+                            Label("Start sync", systemImage: "play.fill")
+                        }
                     }
+                    .disabled(viewModel.isStarting || (appState.profile?.pgcode?.isEmpty ?? true))
+                } header: {
+                    Text("Start job")
+                } footer: {
+                    Text("Passwords are sent securely to start the job and are never stored. You’ll get a notification if TAC is required while the app is in the background.")
                 }
-                .disabled(viewModel.isStarting || (appState.profile?.pgcode?.isEmpty ?? true))
-            } header: {
-                Text("Start job")
-            } footer: {
-                Text("Passwords are sent securely to start the job and are never stored.")
             }
 
             if !viewModel.recentJobs.isEmpty {
@@ -283,6 +451,9 @@ struct PGSyncView: View {
         .navigationTitle("PG Sync")
         .refreshable { await viewModel.load(userId: userId) }
         .task { await viewModel.load(userId: userId) }
+        .onChange(of: scenePhase) { _, phase in
+            viewModel.updateScenePhase(phase)
+        }
         .onDisappear { viewModel.stopPolling() }
         .sheet(isPresented: $showWebSync) {
             CampaignWebEditorSheet(title: "PG Sync (web)", url: webSyncURL)

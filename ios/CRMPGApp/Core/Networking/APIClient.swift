@@ -22,6 +22,7 @@ enum APIEndpoint {
     case campaign(id: UUID)
     case pgSyncStatus
     case pgSyncJobs
+    case pgSyncJobTac(jobId: String)
     case luckyDrawPages
     case luckyDrawPage(id: UUID)
 
@@ -69,6 +70,8 @@ enum APIEndpoint {
             "/api/pg-sync/status"
         case .pgSyncJobs:
             "/api/pg-sync/jobs"
+        case .pgSyncJobTac(let jobId):
+            "/api/pg-sync/jobs/\(Self.encoded(jobId))/tac"
         case .luckyDrawPages:
             "/api/lucky-draw"
         case .luckyDrawPage(let id):

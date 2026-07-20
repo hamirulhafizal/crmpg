@@ -13,6 +13,14 @@ final class AppState {
     var authStatus: AuthStatus = .loading
     var profile: Profile?
     var errorMessage: String?
+    /// Deep-link / notification: present PG Sync (e.g. awaiting TAC).
+    var showPGSync = false
+    /// When signed out, show Choose Account grid if saved dealers exist.
+    var prefersAccountPicker = true
+    /// True while switching dealers / until home content finishes reloading.
+    var isSwitchingAccount = false
+    /// Bumped after a successful account switch so tabs reload for the new user.
+    var accountSessionID = UUID()
 
     private let supabase = SupabaseManager.shared
 
@@ -25,9 +33,7 @@ final class AppState {
             // Profile + token refresh after UI is visible.
             Task {
                 await loadProfileQuietly()
-                if let user = supabase.currentUser, let email = user.email {
-                    SavedAccountsStore.upsert(from: profile, email: email, userId: user.id)
-                }
+                SavedAccountsStore.captureCurrentSession(profile: profile)
                 supabase.refreshSessionInBackground()
             }
         } else {
@@ -40,12 +46,113 @@ final class AppState {
         try await supabase.signIn(email: email, password: password)
         await loadProfileQuietly()
         if let user = supabase.currentUser, let email = user.email {
-            SavedAccountsStore.upsert(from: profile, email: email, userId: user.id)
+            SavedAccountsStore.upsert(
+                from: profile,
+                email: email,
+                userId: user.id,
+                password: password,
+                session: supabase.session
+            )
         }
         authStatus = .signedIn
     }
 
+    /// Signs out the current session, then restores another saved dealer (password or refresh token).
+    func switchToAccount(_ account: SavedAccount, password: String? = nil) async throws {
+        errorMessage = nil
+
+        // Keep the leaving account switchable later (tokens + any password already stored).
+        SavedAccountsStore.captureCurrentSession(profile: profile)
+
+        let latest = SavedAccountsStore.account(id: account.id) ?? account
+        let passwordToUse = (password ?? latest.password)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let refresh = latest.refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let access = latest.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let hasPassword = !(passwordToUse?.isEmpty ?? true)
+        let hasRefresh = !(refresh?.isEmpty ?? true)
+
+        guard hasPassword || hasRefresh else {
+            throw SwitchAccountError.credentialsMissing
+        }
+
+        if supabase.currentUser?.id == latest.id {
+            SavedAccountsStore.upsert(
+                from: profile,
+                email: latest.email,
+                userId: latest.id,
+                password: passwordToUse,
+                session: supabase.session
+            )
+            return
+        }
+
+        isSwitchingAccount = true
+        profile = nil
+
+        await PushNotificationService.shared.unregisterFromBackend()
+
+        do {
+            try await supabase.signOut()
+        } catch {
+            // Continue — local session may already be cleared.
+        }
+        KeychainStore.clearSession()
+
+        do {
+            if hasPassword, let passwordToUse {
+                try await supabase.signIn(email: latest.email, password: passwordToUse)
+            } else if let refresh, hasRefresh {
+                try await supabase.signInWithStoredSession(accessToken: access, refreshToken: refresh)
+            } else {
+                throw SwitchAccountError.credentialsMissing
+            }
+
+            await loadProfileQuietly()
+            if let user = supabase.currentUser, let email = user.email {
+                SavedAccountsStore.upsert(
+                    from: profile,
+                    email: email,
+                    userId: user.id,
+                    password: passwordToUse,
+                    session: supabase.session
+                )
+            }
+            authStatus = .signedIn
+            showPGSync = false
+            accountSessionID = UUID()
+            // Keep isSwitchingAccount true until Dashboard finishes reloading tiles.
+        } catch {
+            isSwitchingAccount = false
+            authStatus = .signedOut
+            prefersAccountPicker = !SavedAccountsStore.load().isEmpty
+            throw error
+        }
+    }
+
+    func markAccountContentReady() {
+        isSwitchingAccount = false
+    }
+
+    func prepareAddAccount() async {
+        errorMessage = nil
+        SavedAccountsStore.captureCurrentSession(profile: profile)
+        await PushNotificationService.shared.unregisterFromBackend()
+        do {
+            try await supabase.signOut()
+        } catch {
+            // Keep going to login.
+        }
+        profile = nil
+        KeychainStore.clearSession()
+        authStatus = .signedOut
+        showPGSync = false
+        prefersAccountPicker = false
+    }
+
     func signOut() async {
+        SavedAccountsStore.captureCurrentSession(profile: profile)
         await PushNotificationService.shared.unregisterFromBackend()
         do {
             try await supabase.signOut()
@@ -54,6 +161,7 @@ final class AppState {
         }
         profile = nil
         authStatus = .signedOut
+        prefersAccountPicker = true
     }
 
     func loadProfile() async throws {
@@ -70,6 +178,7 @@ final class AppState {
 
     func refreshProfile() async {
         await loadProfileQuietly()
+        SavedAccountsStore.captureCurrentSession(profile: profile)
     }
 
     private func loadProfileQuietly() async {
@@ -90,6 +199,17 @@ final class AppState {
         } catch {
             profile = placeholder
             // Don't surface profile errors on splash/login — they spam the UI.
+        }
+    }
+}
+
+enum SwitchAccountError: LocalizedError {
+    case credentialsMissing
+
+    var errorDescription: String? {
+        switch self {
+        case .credentialsMissing:
+            "Enter the password for this account once — it will be saved on this device for next time."
         }
     }
 }

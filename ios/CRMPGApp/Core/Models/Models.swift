@@ -719,6 +719,11 @@ struct SavedAccount: Codable, Identifiable, Hashable, Sendable {
     var displayName: String
     var pgcode: String?
     var avatarURL: String?
+    /// Stored on this device only (Keychain) for one-tap account switch.
+    var password: String?
+    var refreshToken: String?
+    var accessToken: String?
+    var expiresAt: Date?
     var lastUsedAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -727,7 +732,33 @@ struct SavedAccount: Codable, Identifiable, Hashable, Sendable {
         case displayName = "display_name"
         case pgcode
         case avatarURL = "avatar_url"
+        case password
+        case refreshToken = "refresh_token"
+        case accessToken = "access_token"
+        case expiresAt = "expires_at"
         case lastUsedAt = "last_used_at"
+    }
+
+    var pickerLabel: String {
+        if let pgcode, !pgcode.isEmpty { return pgcode }
+        return displayName
+    }
+
+    var initials: String {
+        let source = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if source.isEmpty { return "?" }
+        let parts = source.split(separator: " ").prefix(2)
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        }
+        return String(source.prefix(2)).uppercased()
+    }
+
+    /// Enough to switch without prompting (password and/or refresh token).
+    var hasSwitchCredentials: Bool {
+        let hasPassword = !(password?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasRefresh = !(refreshToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        return hasPassword || hasRefresh
     }
 }
 
@@ -1436,6 +1467,24 @@ struct PgSyncQueueInfo: Decodable, Hashable, Sendable {
     var position: Int?
     var length: Int?
     var message: String?
+    var badgeLabel: String?
+    var formHint: String?
+    var myQueuePosition: Int?
+    var readiness: String?
+
+    enum CodingKeys: String, CodingKey {
+        case position, length, message, readiness
+        case badgeLabel = "badge_label"
+        case formHint = "form_hint"
+        case myQueuePosition = "my_queue_position"
+    }
+
+    var displayMessage: String? {
+        if let formHint, !formHint.isEmpty { return formHint }
+        if let badgeLabel, !badgeLabel.isEmpty { return badgeLabel }
+        if let message, !message.isEmpty { return message }
+        return nil
+    }
 }
 
 struct PgSyncStatusResponse: Decodable, Sendable {
@@ -1512,6 +1561,16 @@ struct PgSyncCreatedJob: Decodable, Sendable {
         case jobId = "job_id"
         case queuePosition = "queue_position"
     }
+}
+
+struct PgSyncTacBody: Encodable, Sendable {
+    let tac: String
+}
+
+struct PgSyncTacResponse: Decodable, Sendable {
+    var ok: Bool?
+    var error: String?
+    var message: String?
 }
 
 struct LuckyDrawPage: Decodable, Identifiable, Hashable, Sendable {

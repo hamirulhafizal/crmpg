@@ -109,6 +109,51 @@ struct LoadingView: View {
     }
 }
 
+/// Soft shimmer placeholder used while account/dashboard data loads.
+struct SkeletonBlock: View {
+    var height: CGFloat = 16
+    var width: CGFloat? = nil
+    var cornerRadius: CGFloat = 8
+
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color(.tertiarySystemFill))
+            .frame(width: width, height: height)
+            .overlay {
+                GeometryReader { geo in
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            Color.white.opacity(0.45),
+                            .clear,
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width * 0.45)
+                    .offset(x: phase * geo.size.width)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: false)) {
+                    phase = 1.2
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+struct SkeletonCircle: View {
+    var size: CGFloat = 56
+
+    var body: some View {
+        SkeletonBlock(height: size, width: size, cornerRadius: size / 2)
+    }
+}
+
 struct EmptyStateView: View {
     let icon: String
     let title: String

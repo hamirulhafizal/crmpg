@@ -73,6 +73,9 @@ final class SupabaseManager: @unchecked Sendable {
                     SupabaseManager.shared.setSession(session)
                 }
                 try? SupabaseManager.shared.persistTokens(session)
+                await MainActor.run {
+                    SavedAccountsStore.captureCurrentSession(profile: nil)
+                }
             } catch {
                 // Keep existing local session.
             }
@@ -81,6 +84,24 @@ final class SupabaseManager: @unchecked Sendable {
 
     func signIn(email: String, password: String) async throws {
         let session = try await client.auth.signIn(email: email, password: password)
+        setSession(session)
+        try persistTokens(session)
+    }
+
+    /// Restore a previously saved dealer session (one-tap switch without retyping password).
+    func signInWithStoredSession(accessToken: String?, refreshToken: String) async throws {
+        let access = accessToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let refresh = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !refresh.isEmpty else {
+            throw SwitchAccountError.credentialsMissing
+        }
+
+        let session: Session
+        if !access.isEmpty {
+            session = try await client.auth.setSession(accessToken: access, refreshToken: refresh)
+        } else {
+            session = try await client.auth.refreshSession(refreshToken: refresh)
+        }
         setSession(session)
         try persistTokens(session)
     }

@@ -266,24 +266,60 @@ func campaignStatusTint(_ status: CampaignStatusKind) -> Color {
     }
 }
 
-/// Opens the web campaign builder (full workflow editor stays on web for v1).
+/// Opens a web CRM page in Safari, signing the native session into web cookies first.
 struct CampaignWebEditorSheet: View {
     let title: String
+    /// Absolute URL or site path (e.g. `/excel-processor`). Prefer path so handoff can attach session.
     let url: URL
     @Environment(\.dismiss) private var dismiss
+    @State private var resolvedURL: URL?
+    @State private var loadError: String?
 
     var body: some View {
         NavigationStack {
-            SafariView(url: url)
-                .ignoresSafeArea()
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
+            Group {
+                if let resolvedURL {
+                    SafariView(url: resolvedURL)
+                        .ignoresSafeArea()
+                } else if let loadError {
+                    ContentUnavailableView(
+                        "Couldn’t open page",
+                        systemImage: "safari",
+                        description: Text(loadError)
+                    )
+                } else {
+                    ProgressView("Signing you into the web app…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                await resolveHandoff()
+            }
         }
+    }
+
+    private func resolveHandoff() async {
+        loadError = nil
+        let path: String = {
+            if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                let pathPart = comps.path.isEmpty ? "/" : comps.path
+                if let query = comps.query, !query.isEmpty {
+                    return "\(pathPart)?\(query)"
+                }
+                return pathPart
+            }
+            return url.path
+        }()
+
+        let handoff = await AuthenticatedWebSession.url(opening: path)
+        resolvedURL = handoff
     }
 }
 
