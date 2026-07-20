@@ -40,10 +40,13 @@ final class AppState {
                 SavedAccountsStore.captureCurrentSession(profile: profile)
                 supabase.refreshSessionInBackground()
                 await WidgetSnapshotSync.refreshCurrentDealerStats(profile: profile)
+                await KeyboardCacheSync.refreshFromApp(profile: profile)
             }
         } else {
             authStatus = .signedOut
             WidgetSnapshotSync.syncDealersFromSavedAccounts()
+            KeyboardShared.clearSession()
+            KeyboardShared.saveCustomers([])
         }
     }
 

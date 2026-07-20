@@ -80,6 +80,7 @@ final class CustomersViewModel {
     func loadStatsAndPublishWidget(profile: Profile?) async {
         await loadStats()
         WidgetSnapshotSync.publish(stats: stats, profile: profile)
+        await KeyboardCacheSync.refreshFromApp(profile: profile)
     }
 
     func scheduleSearch() {

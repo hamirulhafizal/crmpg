@@ -58,6 +58,8 @@ targets:
         product: Supabase
       - target: CRMPGWidgets
         embed: true
+      - target: CRMPGKeyboard
+        embed: true
 
   CRMPGWidgets:
     type: app-extension
@@ -84,12 +86,41 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.widgets
     scheme: {}
 
+  CRMPGKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CRMPGKeyboard
+        excludes:
+          - Info.plist
+          - CRMPGKeyboard.entitlements
+      - path: Shared
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: CRMPGKeyboard
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: CRMPGKeyboard/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CRMPGKeyboard/CRMPGKeyboard.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+        SKIP_INSTALL: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Public Gold CRM"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.debug.keyboard
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.keyboard
+    scheme: {}
+
 schemes:
   CRMPGApp:
     build:
       targets:
         CRMPGApp: all
         CRMPGWidgets: all
+        CRMPGKeyboard: all
     run:
       config: Debug
     archive:

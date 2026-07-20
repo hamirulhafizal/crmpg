@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1600"
+   wasCreatedForAppExtension = "YES"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -15,37 +16,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "3F76BCF8D3C2D20F5151C059"
-               BuildableName = "CRMPGApp.app"
-               BlueprintName = "CRMPGApp"
-               ReferencedContainer = "container:CRMPGApp.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
                BlueprintIdentifier = "97BB2EFD3A5F1EC93E29A6F1"
                BuildableName = "CRMPGKeyboard.appex"
                BlueprintName = "CRMPGKeyboard"
-               ReferencedContainer = "container:CRMPGApp.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "8D32E35F915E377C24630991"
-               BuildableName = "CRMPGWidgets.appex"
-               BlueprintName = "CRMPGWidgets"
                ReferencedContainer = "container:CRMPGApp.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -60,32 +33,35 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3F76BCF8D3C2D20F5151C059"
-            BuildableName = "CRMPGApp.app"
-            BlueprintName = "CRMPGApp"
+            BlueprintIdentifier = "97BB2EFD3A5F1EC93E29A6F1"
+            BuildableName = "CRMPGKeyboard.appex"
+            BlueprintName = "CRMPGKeyboard"
             ReferencedContainer = "container:CRMPGApp.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
-      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      selectedDebuggerIdentifier = ""
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
-      allowLocationSimulation = "YES">
+      allowLocationSimulation = "YES"
+      launchAutomaticallySubstyle = "2">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3F76BCF8D3C2D20F5151C059"
-            BuildableName = "CRMPGApp.app"
-            BlueprintName = "CRMPGApp"
+            BlueprintIdentifier = "97BB2EFD3A5F1EC93E29A6F1"
+            BuildableName = "CRMPGKeyboard.appex"
+            BlueprintName = "CRMPGKeyboard"
             ReferencedContainer = "container:CRMPGApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -102,12 +78,14 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3F76BCF8D3C2D20F5151C059"
-            BuildableName = "CRMPGApp.app"
-            BlueprintName = "CRMPGApp"
+            BlueprintIdentifier = "97BB2EFD3A5F1EC93E29A6F1"
+            BuildableName = "CRMPGKeyboard.appex"
+            BlueprintName = "CRMPGKeyboard"
             ReferencedContainer = "container:CRMPGApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

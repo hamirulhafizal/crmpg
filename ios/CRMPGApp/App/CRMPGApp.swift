@@ -21,6 +21,7 @@ struct CRMPGApp: App {
                         await appState.refreshProfile()
                         if appState.authStatus == .signedIn {
                             await WidgetSnapshotSync.refreshCurrentDealerStats(profile: appState.profile)
+                            await KeyboardCacheSync.refreshFromApp(profile: appState.profile)
                         }
                     }
                 }
