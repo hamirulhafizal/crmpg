@@ -88,9 +88,14 @@ private struct EmptyBody: Encodable {}
 
 struct BillingView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.openURL) private var openURL
     @State private var viewModel = BillingViewModel()
     @State private var confirmTrial = false
+    @State private var showBillingWeb = false
+    @State private var showCheckoutWeb = false
+
+    private var billingWebURL: URL {
+        URL(string: "/dashboard/billing", relativeTo: AppConfig.apiBaseURL)!.absoluteURL
+    }
 
     var body: some View {
         List {
@@ -125,8 +130,8 @@ struct BillingView: View {
                 Button {
                     Task {
                         await viewModel.startCheckout()
-                        if let url = viewModel.checkoutURL {
-                            openURL(url)
+                        if viewModel.checkoutURL != nil {
+                            showCheckoutWeb = true
                         }
                     }
                 } label: {
@@ -134,7 +139,9 @@ struct BillingView: View {
                 }
                 .disabled(viewModel.isActing)
 
-                Link(destination: URL(string: "https://www.publicgolds.com/dashboard/billing")!) {
+                Button {
+                    showBillingWeb = true
+                } label: {
                     Label("Open billing on web", systemImage: "safari")
                 }
             }
@@ -175,6 +182,15 @@ struct BillingView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This uses your one-time Pro trial if available.")
+        }
+        .sheet(isPresented: $showBillingWeb) {
+            CampaignWebEditorSheet(title: "Billing", url: billingWebURL)
+        }
+        .sheet(isPresented: $showCheckoutWeb) {
+            CampaignWebEditorSheet(
+                title: "Checkout",
+                url: viewModel.checkoutURL ?? billingWebURL
+            )
         }
     }
 
