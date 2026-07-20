@@ -72,6 +72,11 @@ struct MainTabView: View {
             selectedTab = 0
             showOnboarding = false
         }
+        .onChange(of: appState.pendingCustomersTab) { _, pending in
+            if pending {
+                selectedTab = 1
+            }
+        }
     }
 }
 

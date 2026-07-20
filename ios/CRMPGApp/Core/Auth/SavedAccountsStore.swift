@@ -20,6 +20,17 @@ enum SavedAccountsStore {
               let string = String(data: data, encoding: .utf8)
         else { return }
         try? KeychainStore.save(string, for: .savedAccounts)
+        // Mirror metadata (no secrets) for Home Screen widget dealer picker.
+        WidgetShared.saveDealers(
+            trimmed.map {
+                WidgetDealer(
+                    id: $0.id.uuidString,
+                    email: $0.email,
+                    displayName: $0.displayName,
+                    pgcode: $0.pgcode
+                )
+            }
+        )
     }
 
     static func upsert(

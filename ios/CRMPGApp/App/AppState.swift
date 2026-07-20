@@ -21,6 +21,10 @@ final class AppState {
     var isSwitchingAccount = false
     /// Bumped after a successful account switch so tabs reload for the new user.
     var accountSessionID = UUID()
+    /// Deep link from Home Screen widget → Customers tab + status filter.
+    var pendingCustomersTab = false
+    var pendingCustomerStatusFilter: AccountStatusKey?
+    var pendingCustomerDealerId: UUID?
 
     private let supabase = SupabaseManager.shared
 
@@ -35,10 +39,42 @@ final class AppState {
                 await loadProfileQuietly()
                 SavedAccountsStore.captureCurrentSession(profile: profile)
                 supabase.refreshSessionInBackground()
+                await WidgetSnapshotSync.refreshCurrentDealerStats(profile: profile)
             }
         } else {
             authStatus = .signedOut
+            WidgetSnapshotSync.syncDealersFromSavedAccounts()
         }
+    }
+
+    func handleDeepLink(_ url: URL) {
+        guard let parsed = WidgetShared.parseDeepLink(url) else { return }
+        pendingCustomersTab = true
+        pendingCustomerDealerId = parsed.dealerId.flatMap(UUID.init(uuidString:))
+        if let raw = parsed.status?.lowercased(), raw != "total" {
+            pendingCustomerStatusFilter = AccountStatusKey(rawValue: raw)
+        } else {
+            pendingCustomerStatusFilter = nil
+        }
+
+        // If the widget dealer differs, switch when credentials are available.
+        if let dealerId = pendingCustomerDealerId,
+           supabase.currentUser?.id != dealerId,
+           let account = SavedAccountsStore.account(id: dealerId),
+           account.hasSwitchCredentials {
+            Task {
+                try? await switchToAccount(account)
+            }
+        }
+    }
+
+    func consumePendingCustomerDeepLink() -> (status: AccountStatusKey?, dealerId: UUID?) {
+        let status = pendingCustomerStatusFilter
+        let dealer = pendingCustomerDealerId
+        pendingCustomerStatusFilter = nil
+        pendingCustomerDealerId = nil
+        pendingCustomersTab = false
+        return (status, dealer)
     }
 
     func signIn(email: String, password: String) async throws {

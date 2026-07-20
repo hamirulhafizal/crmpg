@@ -9,21 +9,27 @@
 /* Begin PBXBuildFile section */
 		049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2424DBDD710634045DA67F1D /* AppState.swift */; };
 		072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A842864CC32DEEE666E1B /* CampaignDetailView.swift */; };
+		0B0702A7C02E1E0F7D77D632 /* WidgetSnapshotSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A9E9BFFC1CA4BDCF2FECA5 /* WidgetSnapshotSync.swift */; };
 		0B91F3DD7E4F8ACEB941C1FF /* WhatsAppSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */; };
 		196563A2C06C5C33B78295FE /* LuckyDrawViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */; };
 		1C1F8BC196E5A1FF6D6C6A99 /* SavedAccountsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */; };
-		2E8A1B4C9D0F6E73A5C1D8B0 /* AuthenticatedWebSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3C9A2E1B8D4E60C5A7F9D1 /* AuthenticatedWebSession.swift */; };
+		2CA114A1939202110265F1D1 /* AuthenticatedWebSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180DE221C317A616D541A775 /* AuthenticatedWebSession.swift */; };
+		306743108191C7BA07512A19 /* DealerIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D85FD56035AA6B6EE9E8C9 /* DealerIntent.swift */; };
 		30F5EE8F995DC52445AC494A /* CRMPGApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B37A0C7CA49F7F052DE3B97 /* CRMPGApp.swift */; };
 		34CE57E612B61D49F4F40818 /* CustomerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CCD5032BD18B4405FB30082 /* CustomerListView.swift */; };
 		45BC578B02F1CC3F8F4930FB /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */; };
 		46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E72282731C2AFCC3A718F3 /* ProfileView.swift */; };
 		51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34BEA769C42497653F9750 /* DesignSystem.swift */; };
+		5AC00AB1307D97FE9A75F05E /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
+		64D4385325E70E5463086023 /* CRMPGWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41436209B023EA246AF115CE /* CRMPGWidgetsBundle.swift */; };
 		67A266899E47B4EFF7E68A1A /* PGSyncLocalNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D86E31483DBE4E5189D718 /* PGSyncLocalNotifier.swift */; };
+		700747104D4CD0680AF6F36C /* AccountStatusWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EFF95C8B1EB478EF4938FB /* AccountStatusWidget.swift */; };
 		772EC11D03B2FA232BE66822 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC63349485BF364EA8A15779 /* DashboardView.swift */; };
 		7BA90EDC7ECA006C73E00F73 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */; };
 		7D7293CE2548A2940E0389A8 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A19240B28937A646BD0D5B /* APIClient.swift */; };
 		8006747BF40A352EA0BB74FB /* CustomerFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */; };
 		890EF7A222233CDD48884276 /* PGSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */; };
+		8AC2A22F2DF1A9F4EE55AADA /* CRMPGWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8BD3ADC5C4A579E7B1E298F1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382C21C50B62CD046C53E9B6 /* Models.swift */; };
 		8E443E126310CA8290D839D4 /* CustomerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF659B73A922496EC355DE /* CustomerDetailView.swift */; };
 		995BBDB7446734BF537A0E5E /* ExcelToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */; };
@@ -40,21 +46,49 @@
 		C05D52A6F3873EEEE441F305 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */; };
 		CC5B919D0365876FF26B3E8E /* BillingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4214D10C2321C90D22741DFB /* BillingView.swift */; };
 		CCE3185C203857FDA2648011 /* CampaignListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14CAD2DB948A6573F2F4166D /* CampaignListView.swift */; };
+		D22A17C507BB2ABDF36D73AF /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
 		E7579C61702D4679ABCA975B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F1E238DEC5026ADD53DE80C /* LoginView.swift */; };
 		F1C8BDE8F76C68145F1F4CB0 /* WhatsAppSessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */; };
 		FBA96F19FA9B702F2E6EBCDA /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		F4E08CB1A6E4BC6B059A4906 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E1971F240CD71E234C3FA7D6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8D32E35F915E377C24630991;
+			remoteInfo = CRMPGWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		659ABE39D55B3D44238E4086 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8AC2A22F2DF1A9F4EE55AADA /* CRMPGWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppSessionDetailView.swift; sourceTree = "<group>"; };
 		0D34BEA769C42497653F9750 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		12A9E9BFFC1CA4BDCF2FECA5 /* WidgetSnapshotSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotSync.swift; sourceTree = "<group>"; };
 		14CAD2DB948A6573F2F4166D /* CampaignListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignListView.swift; sourceTree = "<group>"; };
+		180DE221C317A616D541A775 /* AuthenticatedWebSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedWebSession.swift; sourceTree = "<group>"; };
 		1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CRMPGApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F1E238DEC5026ADD53DE80C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		2424DBDD710634045DA67F1D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		32E72282731C2AFCC3A718F3 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		382C21C50B62CD046C53E9B6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcelToolsView.swift; sourceTree = "<group>"; };
+		41436209B023EA246AF115CE /* CRMPGWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMPGWidgetsBundle.swift; sourceTree = "<group>"; };
 		41CF659B73A922496EC355DE /* CustomerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerDetailView.swift; sourceTree = "<group>"; };
 		4214D10C2321C90D22741DFB /* BillingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingView.swift; sourceTree = "<group>"; };
 		484978B01999201F202D8387 /* ProfileEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileEditView.swift; sourceTree = "<group>"; };
@@ -63,20 +97,23 @@
 		5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		60A730AC1214117C08B55FAC /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		60D86E31483DBE4E5189D718 /* PGSyncLocalNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PGSyncLocalNotifier.swift; sourceTree = "<group>"; };
+		6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CRMPGWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAccountsStore.swift; sourceTree = "<group>"; };
-		7F3C9A2E1B8D4E60C5A7F9D1 /* AuthenticatedWebSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedWebSession.swift; sourceTree = "<group>"; };
 		80A19240B28937A646BD0D5B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		81495714184751CB929143CE /* WidgetShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
 		8565C772C7F1AF8475997355 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		8CCD5032BD18B4405FB30082 /* CustomerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerListView.swift; sourceTree = "<group>"; };
 		8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LuckyDrawViews.swift; sourceTree = "<group>"; };
 		95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseManager.swift; sourceTree = "<group>"; };
 		977A842864CC32DEEE666E1B /* CampaignDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignDetailView.swift; sourceTree = "<group>"; };
 		9B37A0C7CA49F7F052DE3B97 /* CRMPGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMPGApp.swift; sourceTree = "<group>"; };
+		A9D85FD56035AA6B6EE9E8C9 /* DealerIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealerIntent.swift; sourceTree = "<group>"; };
 		ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PGSyncView.swift; sourceTree = "<group>"; };
 		AD538379C76B109FFF9180B6 /* CustomerTagsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerTagsView.swift; sourceTree = "<group>"; };
 		B49C008C2B2B04B3E866C583 /* ChatHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHistoryView.swift; sourceTree = "<group>"; };
 		B7A7D335727D78DDCCAC4C8D /* SupabaseRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepository.swift; sourceTree = "<group>"; };
 		BC63349485BF364EA8A15779 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		C4EFF95C8B1EB478EF4938FB /* AccountStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStatusWidget.swift; sourceTree = "<group>"; };
 		CBC7C6E2AE039AD6A6CC8B7B /* ToolsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsHubView.swift; sourceTree = "<group>"; };
 		D166E539B105585AB177AC93 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -98,6 +135,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0206B79044B95C8412464BB7 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				81495714184751CB929143CE /* WidgetShared.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		0837E8EC4608E4F6945CDDCA /* Billing */ = {
 			isa = PBXGroup;
 			children = (
@@ -128,6 +173,7 @@
 				97F3ABE4F2F90D79B82F1637 /* Models */,
 				B2B8082D4CCA70A48C39B192 /* Networking */,
 				E530F3A926BD4B52FDCB480E /* Push */,
+				4E11F237ADC0E86E580722E6 /* Widgets */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -194,10 +240,18 @@
 			path = CRMPGApp;
 			sourceTree = "<group>";
 		};
+		4E11F237ADC0E86E580722E6 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				12A9E9BFFC1CA4BDCF2FECA5 /* WidgetSnapshotSync.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
 		51B579D0F8120F24C2CCC115 /* Auth */ = {
 			isa = PBXGroup;
 			children = (
-				7F3C9A2E1B8D4E60C5A7F9D1 /* AuthenticatedWebSession.swift */,
+				180DE221C317A616D541A775 /* AuthenticatedWebSession.swift */,
 				E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */,
 				78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */,
 				95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */,
@@ -244,8 +298,20 @@
 			children = (
 				335CD58FC732A555163B1D0E /* Config */,
 				49CC0CB1ACDA7C3785D79609 /* CRMPGApp */,
+				ADD84FFE9F8F751BE2010EEA /* CRMPGWidgets */,
+				0206B79044B95C8412464BB7 /* Shared */,
 				C392D19BA25F249DFD1FC370 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		ADD84FFE9F8F751BE2010EEA /* CRMPGWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				C4EFF95C8B1EB478EF4938FB /* AccountStatusWidget.swift */,
+				41436209B023EA246AF115CE /* CRMPGWidgetsBundle.swift */,
+				A9D85FD56035AA6B6EE9E8C9 /* DealerIntent.swift */,
+			);
+			path = CRMPGWidgets;
 			sourceTree = "<group>";
 		};
 		B2B8082D4CCA70A48C39B192 /* Networking */ = {
@@ -260,6 +326,7 @@
 			isa = PBXGroup;
 			children = (
 				1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */,
+				6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -319,10 +386,12 @@
 			buildPhases = (
 				7EC060DF698BFB05708A0EB7 /* Sources */,
 				49696AAE884B6D7A089E46AA /* Frameworks */,
+				659ABE39D55B3D44238E4086 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5FF376F1071010C682D43A08 /* PBXTargetDependency */,
 			);
 			name = CRMPGApp;
 			packageProductDependencies = (
@@ -331,6 +400,23 @@
 			productName = CRMPGApp;
 			productReference = 1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */;
 			productType = "com.apple.product-type.application";
+		};
+		8D32E35F915E377C24630991 /* CRMPGWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F6ED1A222F5ED3714D009B4F /* Build configuration list for PBXNativeTarget "CRMPGWidgets" */;
+			buildPhases = (
+				EB6727FBD7B610EC1A6E4764 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CRMPGWidgets;
+			packageProductDependencies = (
+			);
+			productName = CRMPGWidgets;
+			productReference = 6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -342,6 +428,10 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					3F76BCF8D3C2D20F5151C059 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					8D32E35F915E377C24630991 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
@@ -365,6 +455,7 @@
 			projectRoot = "";
 			targets = (
 				3F76BCF8D3C2D20F5151C059 /* CRMPGApp */,
+				8D32E35F915E377C24630991 /* CRMPGWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -378,6 +469,7 @@
 				A8EFC18FE469490511B2DADE /* AppConfig.swift in Sources */,
 				7BA90EDC7ECA006C73E00F73 /* AppDelegate.swift in Sources */,
 				049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */,
+				2CA114A1939202110265F1D1 /* AuthenticatedWebSession.swift in Sources */,
 				CC5B919D0365876FF26B3E8E /* BillingView.swift in Sources */,
 				30F5EE8F995DC52445AC494A /* CRMPGApp.swift in Sources */,
 				072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */,
@@ -403,16 +495,36 @@
 				46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */,
 				FBA96F19FA9B702F2E6EBCDA /* PushNotificationService.swift in Sources */,
 				1C1F8BC196E5A1FF6D6C6A99 /* SavedAccountsStore.swift in Sources */,
-				2E8A1B4C9D0F6E73A5C1D8B0 /* AuthenticatedWebSession.swift in Sources */,
 				45BC578B02F1CC3F8F4930FB /* SupabaseManager.swift in Sources */,
 				9A829B3C87D44D2DED231956 /* SupabaseRepository.swift in Sources */,
 				9E9B4EEB5DC5A79FF5D32810 /* ToolsHubView.swift in Sources */,
 				F1C8BDE8F76C68145F1F4CB0 /* WhatsAppSessionDetailView.swift in Sources */,
 				0B91F3DD7E4F8ACEB941C1FF /* WhatsAppSessionsView.swift in Sources */,
+				D22A17C507BB2ABDF36D73AF /* WidgetShared.swift in Sources */,
+				0B0702A7C02E1E0F7D77D632 /* WidgetSnapshotSync.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EB6727FBD7B610EC1A6E4764 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				700747104D4CD0680AF6F36C /* AccountStatusWidget.swift in Sources */,
+				64D4385325E70E5463086023 /* CRMPGWidgetsBundle.swift in Sources */,
+				306743108191C7BA07512A19 /* DealerIntent.swift in Sources */,
+				5AC00AB1307D97FE9A75F05E /* WidgetShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5FF376F1071010C682D43A08 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8D32E35F915E377C24630991 /* CRMPGWidgets */;
+			targetProxy = F4E08CB1A6E4BC6B059A4906 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0779411FDE3E7222A830D739 /* Debug */ = {
@@ -420,6 +532,7 @@
 			baseConfigurationReference = 60A730AC1214117C08B55FAC /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CRMPGApp/CRMPGApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGApp/Info.plist;
@@ -506,6 +619,7 @@
 			baseConfigurationReference = D166E539B105585AB177AC93 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CRMPGApp/CRMPGApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGApp/Info.plist;
@@ -593,6 +707,38 @@
 			};
 			name = Debug;
 		};
+		C1B9C4CE29A9281817F9AD5F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = CRMPGWidgets/CRMPGWidgets.entitlements;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CRMPGWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Account Status";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.publicgolds.crmpg.widgets;
+				PRODUCT_NAME = CRMPGWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		EDF2A8BDA593333DD9DD510D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = CRMPGWidgets/CRMPGWidgets.entitlements;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CRMPGWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Account Status";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.publicgolds.crmpg.debug.widgets;
+				PRODUCT_NAME = CRMPGWidgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -610,6 +756,15 @@
 			buildConfigurations = (
 				2F35E483469738DA935B394E /* Debug */,
 				0E85A11172BDBFE74711B251 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F6ED1A222F5ED3714D009B4F /* Build configuration list for PBXNativeTarget "CRMPGWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EDF2A8BDA593333DD9DD510D /* Debug */,
+				C1B9C4CE29A9281817F9AD5F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

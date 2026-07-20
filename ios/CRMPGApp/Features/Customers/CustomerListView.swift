@@ -77,6 +77,11 @@ final class CustomersViewModel {
         stats = CustomerStats(total: ownedTotal)
     }
 
+    func loadStatsAndPublishWidget(profile: Profile?) async {
+        await loadStats()
+        WidgetSnapshotSync.publish(stats: stats, profile: profile)
+    }
+
     func scheduleSearch() {
         searchTask?.cancel()
         searchTask = Task {
@@ -118,6 +123,7 @@ final class CustomersViewModel {
 }
 
 struct CustomerListView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = CustomersViewModel()
 
     var body: some View {
@@ -225,7 +231,7 @@ struct CustomerListView: View {
         .sheet(isPresented: $viewModel.showCreate) {
             CustomerFormView(mode: .create) { created in
                 viewModel.customers.insert(created, at: 0)
-                Task { await viewModel.loadStats() }
+                Task { await viewModel.loadStatsAndPublishWidget(profile: appState.profile) }
             }
         }
         .sheet(isPresented: $viewModel.showFilters) {
@@ -238,7 +244,7 @@ struct CustomerListView: View {
         }
         .refreshable {
             await viewModel.load()
-            await viewModel.loadStats()
+            await viewModel.loadStatsAndPublishWidget(profile: appState.profile)
         }
         .overlay(alignment: .top) {
             if let error = viewModel.errorMessage {
@@ -250,7 +256,37 @@ struct CustomerListView: View {
         }
         .task {
             await viewModel.load()
-            await viewModel.loadStats()
+            await viewModel.loadStatsAndPublishWidget(profile: appState.profile)
+            applyPendingDeepLinkIfNeeded()
+        }
+        .onChange(of: appState.pendingCustomersTab) { _, pending in
+            if pending {
+                applyPendingDeepLinkIfNeeded()
+            }
+        }
+        .onChange(of: appState.accountSessionID) { _, _ in
+            Task {
+                await viewModel.load()
+                await viewModel.loadStatsAndPublishWidget(profile: appState.profile)
+                applyPendingDeepLinkIfNeeded()
+            }
+        }
+    }
+
+    private func applyPendingDeepLinkIfNeeded() {
+        guard appState.pendingCustomersTab else { return }
+        if let dealerId = appState.pendingCustomerDealerId,
+           SupabaseManager.shared.currentUser?.id != dealerId {
+            // Wait until account switch finishes.
+            return
+        }
+        let pending = appState.consumePendingCustomerDeepLink()
+        if let status = pending.status {
+            viewModel.filters.accountStatus = status
+            viewModel.filters.journey = nil
+            Task { await viewModel.load() }
+        } else {
+            viewModel.clearFilters()
         }
     }
 }

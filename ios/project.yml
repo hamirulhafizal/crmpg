@@ -38,6 +38,8 @@ targets:
       - path: CRMPGApp
         excludes:
           - Info.plist
+          - CRMPGApp.entitlements
+      - path: Shared
     configFiles:
       Debug: Config/Debug.xcconfig
       Release: Config/Release.xcconfig
@@ -46,6 +48,7 @@ targets:
         PRODUCT_NAME: CRMPGApp
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: CRMPGApp/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CRMPGApp/CRMPGApp.entitlements
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
@@ -53,12 +56,40 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - target: CRMPGWidgets
+        embed: true
+
+  CRMPGWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: CRMPGWidgets
+        excludes:
+          - Info.plist
+          - CRMPGWidgets.entitlements
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: CRMPGWidgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: CRMPGWidgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: CRMPGWidgets/CRMPGWidgets.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+        SKIP_INSTALL: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Account Status"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.debug.widgets
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.widgets
+    scheme: {}
 
 schemes:
   CRMPGApp:
     build:
       targets:
         CRMPGApp: all
+        CRMPGWidgets: all
     run:
       config: Debug
     archive:

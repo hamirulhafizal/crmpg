@@ -12,10 +12,16 @@ struct CRMPGApp: App {
                 .onAppear {
                     appState.bootstrap()
                 }
+                .onOpenURL { url in
+                    appState.handleDeepLink(url)
+                }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     Task {
                         await SupabaseManager.shared.refreshSessionIfNeeded()
                         await appState.refreshProfile()
+                        if appState.authStatus == .signedIn {
+                            await WidgetSnapshotSync.refreshCurrentDealerStats(profile: appState.profile)
+                        }
                     }
                 }
         }
