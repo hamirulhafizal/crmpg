@@ -80,7 +80,15 @@ final class CustomersViewModel {
     func loadStatsAndPublishWidget(profile: Profile?) async {
         await loadStats()
         WidgetSnapshotSync.publish(stats: stats, profile: profile)
-        await KeyboardCacheSync.refreshFromApp(profile: profile)
+        if let customers = try? await SupabaseRepository.fetchCustomers(
+            limit: KeyboardCacheSync.maxCachedCustomers,
+            search: nil,
+            filters: CustomerListFilters()
+        ) {
+            KeyboardCacheSync.publishCustomers(customers, profile: profile)
+        } else {
+            KeyboardCacheSync.publishCustomers(self.customers, profile: profile)
+        }
     }
 
     func scheduleSearch() {

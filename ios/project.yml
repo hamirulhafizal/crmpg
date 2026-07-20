@@ -95,9 +95,6 @@ targets:
           - Info.plist
           - CRMPGKeyboard.entitlements
       - path: Shared
-    configFiles:
-      Debug: Config/Debug.xcconfig
-      Release: Config/Release.xcconfig
     settings:
       base:
         PRODUCT_NAME: CRMPGKeyboard
@@ -106,7 +103,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: CRMPGKeyboard/CRMPGKeyboard.entitlements
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
         SKIP_INSTALL: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "Public Gold CRM"
+        INFOPLIST_KEY_CFBundleDisplayName: "PG CRM"
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.publicgolds.crmpg.debug.keyboard

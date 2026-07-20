@@ -1,9 +1,11 @@
 import Foundation
 
-/// Keeps the custom keyboard cache + session in sync with the signed-in dealer.
+/// Publishes the signed-in dealer's customers + session into App Group for the keyboard.
 enum KeyboardCacheSync {
+    static let maxCachedCustomers = 400
+
     @MainActor
-    static func publishSession(profile: Profile?) {
+    static func publishSessionAndConfig(profile: Profile?) {
         guard let user = SupabaseManager.shared.currentUser,
               let session = SupabaseManager.shared.session
                 ?? SupabaseManager.shared.client.auth.currentSession
@@ -18,26 +20,62 @@ enum KeyboardCacheSync {
             return user.email ?? "Dealer"
         }()
 
+        KeyboardShared.saveSupabaseConfig(
+            url: AppConfig.supabaseURL.absoluteString,
+            anonKey: AppConfig.supabaseAnonKey
+        )
         KeyboardShared.saveSession(
-            KeyboardShared.SessionSnapshot(
+            KeyboardSessionBridge(
                 userId: user.id.uuidString,
                 email: user.email,
-                dealerLabel: label,
                 accessToken: session.accessToken,
                 refreshToken: session.refreshToken,
+                dealerLabel: label,
+                updatedAt: Date()
+            )
+        )
+        WidgetShared.setActiveDealerId(user.id.uuidString)
+    }
+
+    /// Wipe previous dealer customers and stamp the new active dealer label/session.
+    @MainActor
+    static func resetCacheForActiveDealer(profile: Profile?) {
+        publishSessionAndConfig(profile: profile)
+        guard let userId = SupabaseManager.shared.currentUser?.id.uuidString else {
+            KeyboardShared.clearCache()
+            return
+        }
+        let label = KeyboardShared.loadSession()?.dealerLabel ?? profile?.displayName ?? "Dealer"
+        KeyboardShared.saveCache(
+            KeyboardCustomerCache(
+                dealerId: userId,
+                dealerLabel: label,
+                customers: [],
                 updatedAt: Date()
             )
         )
     }
 
+    /// Called after account switch: reset then reload customers for the new session.
     @MainActor
-    static func publishCustomers(_ customers: [Customer]) {
-        let mapped = customers.map { customer -> KeyboardCustomer in
+    static func switchToActiveDealer(profile: Profile?) async {
+        resetCacheForActiveDealer(profile: profile)
+        await refreshFromApp(profile: profile)
+    }
+
+    @MainActor
+    static func publishCustomers(_ customers: [Customer], profile: Profile?) {
+        publishSessionAndConfig(profile: profile)
+        guard let userId = SupabaseManager.shared.currentUser?.id.uuidString else { return }
+
+        let label = KeyboardShared.loadSession()?.dealerLabel ?? profile?.displayName ?? "Dealer"
+        let mapped = customers.prefix(maxCachedCustomers).map { customer -> KeyboardCustomer in
             KeyboardCustomer(
                 id: customer.id.uuidString,
+                userId: customer.userId?.uuidString ?? userId,
                 name: customer.name,
-                phone: customer.phone,
                 email: customer.email,
+                phone: customer.phone,
                 location: customer.location,
                 pgCode: customer.pgCode,
                 gender: customer.gender,
@@ -48,111 +86,98 @@ enum KeyboardCacheSync {
                 isMarried: customer.isMarried,
                 isFriend: customer.isFriend,
                 salesJourneyStage: customer.salesJourneyStage,
-                statusTitle: customer.accountStatus.title
+                accountStatus: customer.accountStatus.rawValue
             )
         }
-        KeyboardShared.saveCustomers(mapped)
+
+        KeyboardShared.saveCache(
+            KeyboardCustomerCache(
+                dealerId: userId,
+                dealerLabel: label,
+                customers: Array(mapped),
+                updatedAt: Date()
+            )
+        )
     }
 
+    /// Full refresh for keyboard: session + up to N customers for the active dealer.
     @MainActor
     static func refreshFromApp(profile: Profile?) async {
-        publishSession(profile: profile)
-        guard SupabaseManager.shared.currentUser != nil else {
-            KeyboardShared.saveCustomers([])
+        publishSessionAndConfig(profile: profile)
+        guard let userId = SupabaseManager.shared.currentUser?.id.uuidString else {
+            KeyboardShared.clearCache()
             return
         }
-        if let customers = try? await SupabaseRepository.fetchCustomers(limit: KeyboardShared.maxCachedCustomers, search: nil, filters: CustomerListFilters()) {
-            publishCustomers(customers)
+
+        // Drop stale cache from a previous dealer before fetching.
+        if let existing = KeyboardShared.loadCache(), existing.dealerId != userId {
+            resetCacheForActiveDealer(profile: profile)
         }
+
+        if let customers = try? await SupabaseRepository.fetchCustomers(
+            limit: maxCachedCustomers,
+            search: nil,
+            filters: CustomerListFilters()
+        ) {
+            publishCustomers(customers, profile: profile)
+        }
+
         await flushPendingEdits()
     }
 
     @MainActor
     static func flushPendingEdits() async {
-        let pending = KeyboardShared.loadPending()
-        guard !pending.isEmpty, let userId = SupabaseManager.shared.currentUser?.id else { return }
+        let pending = KeyboardShared.loadPendingEdits()
+        guard !pending.isEmpty else { return }
+        let activeUserId = SupabaseManager.shared.currentUser?.id.uuidString
 
-        var remaining: [PendingCustomerEdit] = []
+        var remaining: [KeyboardPendingEdit] = []
         for edit in pending {
+            // Only flush edits that belong to the current dealer.
+            if let activeUserId, let owner = edit.customer.userId, owner != activeUserId {
+                remaining.append(edit)
+                continue
+            }
             do {
-                switch edit.kind {
-                case .create:
-                    let draft = CustomerDraft(
-                        userId: userId,
-                        name: edit.payload.name,
-                        phone: edit.payload.phone,
-                        email: edit.payload.email,
-                        location: edit.payload.location,
-                        pgCode: edit.payload.pgCode,
-                        gender: edit.payload.gender,
-                        ethnicity: edit.payload.ethnicity,
-                        senderName: edit.payload.senderName,
-                        saveName: edit.payload.saveName,
-                        dob: edit.payload.dob,
-                        isMarried: edit.payload.isMarried,
-                        isFriend: edit.payload.isFriend,
-                        salesJourneyStage: edit.payload.salesJourneyStage
-                    )
-                    let created = try await SupabaseRepository.createCustomer(draft)
-                    KeyboardShared.upsertCustomer(
-                        KeyboardCustomer(
-                            id: created.id.uuidString,
-                            name: created.name,
-                            phone: created.phone,
-                            email: created.email,
-                            location: created.location,
-                            pgCode: created.pgCode,
-                            gender: created.gender,
-                            ethnicity: created.ethnicity,
-                            senderName: created.senderName,
-                            saveName: created.saveName,
-                            dob: created.dob,
-                            isMarried: created.isMarried,
-                            isFriend: created.isFriend,
-                            salesJourneyStage: created.salesJourneyStage,
-                            statusTitle: created.accountStatus.title
-                        )
-                    )
-                case .update:
-                    guard let id = edit.customerId.flatMap(UUID.init(uuidString:)) else {
+                if edit.isCreate {
+                    guard let userId = SupabaseManager.shared.currentUser?.id else {
                         remaining.append(edit)
                         continue
                     }
+                    let draft = CustomerDraft(
+                        userId: userId,
+                        name: edit.customer.name,
+                        phone: edit.customer.phone,
+                        email: edit.customer.email,
+                        location: edit.customer.location,
+                        pgCode: edit.customer.pgCode,
+                        gender: edit.customer.gender,
+                        ethnicity: edit.customer.ethnicity,
+                        senderName: edit.customer.senderName,
+                        saveName: edit.customer.saveName,
+                        dob: edit.customer.dob,
+                        isMarried: edit.customer.isMarried,
+                        isFriend: edit.customer.isFriend,
+                        salesJourneyStage: edit.customer.salesJourneyStage
+                    )
+                    _ = try await SupabaseRepository.createCustomer(draft)
+                } else if let id = UUID(uuidString: edit.customer.id) {
                     let patch = CustomerPatch(
-                        name: edit.payload.name,
-                        phone: edit.payload.phone,
-                        email: edit.payload.email,
-                        location: edit.payload.location,
-                        pgCode: edit.payload.pgCode,
-                        gender: edit.payload.gender,
-                        ethnicity: edit.payload.ethnicity,
-                        senderName: edit.payload.senderName,
-                        saveName: edit.payload.saveName,
-                        dob: edit.payload.dob,
-                        isMarried: edit.payload.isMarried,
-                        isFriend: edit.payload.isFriend,
-                        salesJourneyStage: edit.payload.salesJourneyStage
+                        name: edit.customer.name,
+                        phone: edit.customer.phone,
+                        email: edit.customer.email,
+                        location: edit.customer.location,
+                        pgCode: edit.customer.pgCode,
+                        gender: edit.customer.gender,
+                        ethnicity: edit.customer.ethnicity,
+                        senderName: edit.customer.senderName,
+                        saveName: edit.customer.saveName,
+                        dob: edit.customer.dob,
+                        isMarried: edit.customer.isMarried,
+                        isFriend: edit.customer.isFriend,
+                        salesJourneyStage: edit.customer.salesJourneyStage
                     )
-                    let updated = try await SupabaseRepository.updateCustomer(id: id, patch: patch)
-                    KeyboardShared.upsertCustomer(
-                        KeyboardCustomer(
-                            id: updated.id.uuidString,
-                            name: updated.name,
-                            phone: updated.phone,
-                            email: updated.email,
-                            location: updated.location,
-                            pgCode: updated.pgCode,
-                            gender: updated.gender,
-                            ethnicity: updated.ethnicity,
-                            senderName: updated.senderName,
-                            saveName: updated.saveName,
-                            dob: updated.dob,
-                            isMarried: updated.isMarried,
-                            isFriend: updated.isFriend,
-                            salesJourneyStage: updated.salesJourneyStage,
-                            statusTitle: updated.accountStatus.title
-                        )
-                    )
+                    _ = try await SupabaseRepository.updateCustomer(id: id, patch: patch)
                 }
             } catch {
                 remaining.append(edit)
@@ -160,9 +185,17 @@ enum KeyboardCacheSync {
         }
 
         if remaining.isEmpty {
-            KeyboardShared.clearPending()
+            KeyboardShared.clearPendingEdits()
         } else {
-            KeyboardShared.replacePending(remaining)
+            KeyboardShared.savePendingEdits(remaining)
+        }
+
+        if let customers = try? await SupabaseRepository.fetchCustomers(
+            limit: maxCachedCustomers,
+            search: nil,
+            filters: CustomerListFilters()
+        ) {
+            publishCustomers(customers, profile: nil)
         }
     }
 }

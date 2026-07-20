@@ -1,70 +1,57 @@
 import SwiftUI
 import UIKit
 
+@objc(KeyboardViewController)
 final class KeyboardViewController: UIInputViewController {
-    private let store = KeyboardStore()
     private var hostingController: UIHostingController<KeyboardRootView>?
+    private let viewModel = KeyboardViewModel()
+    private var heightConstraint: NSLayoutConstraint?
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
-        embedSwiftUI()
+        setupKeyboard()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        store.hasFullAccess = hasFullAccess
-        store.reloadFromCache()
-        Task { @MainActor in
-            await store.performSearch()
-        }
-        updateHeight()
+        viewModel.bootstrap(hasFullAccess: hasFullAccess)
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        updateHeight()
-    }
-
-    private func updateHeight() {
-        let height: CGFloat = 360
-        for constraint in view.constraints where constraint.firstAttribute == .height {
-            constraint.constant = height
-            return
-        }
-        let heightConstraint = view.heightAnchor.constraint(equalToConstant: height)
-        heightConstraint.priority = .defaultHigh
-        heightConstraint.isActive = true
-    }
-
-    private func embedSwiftUI() {
+    private func setupKeyboard() {
         let root = KeyboardRootView(
-            store: store,
+            viewModel: viewModel,
             onInsert: { [weak self] text in
-                guard let self, !text.isEmpty else { return }
-                self.textDocumentProxy.insertText(text)
+                self?.textDocumentProxy.insertText(text)
             },
             onAdvance: { [weak self] in
-                // Best-effort move to next field in forms.
-                self?.textDocumentProxy.insertText("\t")
+                self?.advanceToNextInputMode()
             },
-            onDismissKeyboard: { [weak self] in
+            onDismiss: { [weak self] in
                 self?.dismissKeyboard()
             }
         )
 
         let host = UIHostingController(rootView: root)
-        host.view.backgroundColor = .clear
+        hostingController = host
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
+
+        let height = view.heightAnchor.constraint(equalToConstant: 320)
+        height.priority = .defaultHigh
+        heightConstraint = height
+
         NSLayoutConstraint.activate([
             host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             host.view.topAnchor.constraint(equalTo: view.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            height,
         ])
         host.didMove(toParent: self)
-        hostingController = host
+        view.backgroundColor = .secondarySystemBackground
     }
+
+    override func textWillChange(_ textInput: (any UITextInput)?) {}
+    override func textDidChange(_ textInput: (any UITextInput)?) {}
 }

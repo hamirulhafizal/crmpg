@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0441454911537AB99CE7FDD4 /* KeyboardAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C0DA82F6BE1B33EE901E62 /* KeyboardAPI.swift */; };
 		049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2424DBDD710634045DA67F1D /* AppState.swift */; };
 		072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A842864CC32DEEE666E1B /* CampaignDetailView.swift */; };
 		0B0702A7C02E1E0F7D77D632 /* WidgetSnapshotSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A9E9BFFC1CA4BDCF2FECA5 /* WidgetSnapshotSync.swift */; };
 		0B91F3DD7E4F8ACEB941C1FF /* WhatsAppSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */; };
+		0BA47D5E496E9DBBE5B9EAD5 /* KeyboardNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6914FA782B6916870CF17F8C /* KeyboardNetwork.swift */; };
 		0CDBF99C81A8D8BA5D6DFD22 /* CRMPGKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 241611243370280678230BC4 /* CRMPGKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		196563A2C06C5C33B78295FE /* LuckyDrawViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */; };
 		1C1F8BC196E5A1FF6D6C6A99 /* SavedAccountsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */; };
@@ -23,6 +23,8 @@
 		46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E72282731C2AFCC3A718F3 /* ProfileView.swift */; };
 		51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34BEA769C42497653F9750 /* DesignSystem.swift */; };
 		5AC00AB1307D97FE9A75F05E /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
+		5AE3F64841B366433037BB6E /* KeyboardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84AC867F1D39501B1C19020A /* KeyboardViews.swift */; };
+		5E35C5109486C5A2D9A5DDA8 /* KeyboardSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDA5D641F577D3168D42923F /* KeyboardSetupView.swift */; };
 		64D4385325E70E5463086023 /* CRMPGWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41436209B023EA246AF115CE /* CRMPGWidgetsBundle.swift */; };
 		6597B8F6E9676A7F4A621642 /* KeyboardShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4127091CC62066AB802458 /* KeyboardShared.swift */; };
 		67A266899E47B4EFF7E68A1A /* PGSyncLocalNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D86E31483DBE4E5189D718 /* PGSyncLocalNotifier.swift */; };
@@ -32,6 +34,7 @@
 		7BA90EDC7ECA006C73E00F73 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AFBA32463CBD15DFE9174C2 /* AppDelegate.swift */; };
 		7D7293CE2548A2940E0389A8 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A19240B28937A646BD0D5B /* APIClient.swift */; };
 		8006747BF40A352EA0BB74FB /* CustomerFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */; };
+		875EB56CDAF91591E946CB98 /* KeyboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC40BDCB055E81946DBF9BF3 /* KeyboardViewModel.swift */; };
 		890EF7A222233CDD48884276 /* PGSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACBF1A52B73EAA97205629C9 /* PGSyncView.swift */; };
 		8AC2A22F2DF1A9F4EE55AADA /* CRMPGWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8BD3ADC5C4A579E7B1E298F1 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 382C21C50B62CD046C53E9B6 /* Models.swift */; };
@@ -55,7 +58,6 @@
 		CCE3185C203857FDA2648011 /* CampaignListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14CAD2DB948A6573F2F4166D /* CampaignListView.swift */; };
 		D22A17C507BB2ABDF36D73AF /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
 		D3E41DB495FA210F70994235 /* KeyboardShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4127091CC62066AB802458 /* KeyboardShared.swift */; };
-		DFB11C91F7BC46B922C5B7A1 /* KeyboardRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73C40DD1851ADA8B2392430A /* KeyboardRootView.swift */; };
 		E7579C61702D4679ABCA975B /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F1E238DEC5026ADD53DE80C /* LoginView.swift */; };
 		F1C8BDE8F76C68145F1F4CB0 /* WhatsAppSessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ED237F4CFB2E59EF704D82 /* WhatsAppSessionDetailView.swift */; };
 		FBA96F19FA9B702F2E6EBCDA /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */; };
@@ -116,11 +118,12 @@
 		5C4127091CC62066AB802458 /* KeyboardShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShared.swift; sourceTree = "<group>"; };
 		60A730AC1214117C08B55FAC /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		60D86E31483DBE4E5189D718 /* PGSyncLocalNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PGSyncLocalNotifier.swift; sourceTree = "<group>"; };
+		6914FA782B6916870CF17F8C /* KeyboardNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardNetwork.swift; sourceTree = "<group>"; };
 		6DE2FBC9631FEC583A3F50B9 /* CRMPGWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CRMPGWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		73C40DD1851ADA8B2392430A /* KeyboardRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardRootView.swift; sourceTree = "<group>"; };
 		78FFBA41E34D9D24DB586B10 /* SavedAccountsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAccountsStore.swift; sourceTree = "<group>"; };
 		80A19240B28937A646BD0D5B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		81495714184751CB929143CE /* WidgetShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetShared.swift; sourceTree = "<group>"; };
+		84AC867F1D39501B1C19020A /* KeyboardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViews.swift; sourceTree = "<group>"; };
 		8565C772C7F1AF8475997355 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		8CCD5032BD18B4405FB30082 /* CustomerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerListView.swift; sourceTree = "<group>"; };
 		8ED1CC525FB268445CCB462F /* LuckyDrawViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LuckyDrawViews.swift; sourceTree = "<group>"; };
@@ -136,11 +139,12 @@
 		BF67F3F56C774BED3D1DAF12 /* KeyboardCacheSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardCacheSync.swift; sourceTree = "<group>"; };
 		C4EFF95C8B1EB478EF4938FB /* AccountStatusWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStatusWidget.swift; sourceTree = "<group>"; };
 		CBC7C6E2AE039AD6A6CC8B7B /* ToolsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolsHubView.swift; sourceTree = "<group>"; };
+		CDA5D641F577D3168D42923F /* KeyboardSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSetupView.swift; sourceTree = "<group>"; };
 		D166E539B105585AB177AC93 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		DC40BDCB055E81946DBF9BF3 /* KeyboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewModel.swift; sourceTree = "<group>"; };
 		E3CB69956A81B36CB7A5F495 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		E42D8EA735D293BCF8A42994 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		E55BA47BA181E35C16DBA501 /* WhatsAppSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsAppSessionsView.swift; sourceTree = "<group>"; };
-		E7C0DA82F6BE1B33EE901E62 /* KeyboardAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAPI.swift; sourceTree = "<group>"; };
 		FC9CCE9C3CEC186B2FE1BC16 /* CustomerFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerFilterSheet.swift; sourceTree = "<group>"; };
 		FDA85A3429335AA4E3FD9A02 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
 		FDD13150E29AAF166002D9E6 /* CustomerFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerFormView.swift; sourceTree = "<group>"; };
@@ -297,9 +301,10 @@
 		66C6AA3A8BA4C5D37B682619 /* CRMPGKeyboard */ = {
 			isa = PBXGroup;
 			children = (
-				E7C0DA82F6BE1B33EE901E62 /* KeyboardAPI.swift */,
-				73C40DD1851ADA8B2392430A /* KeyboardRootView.swift */,
+				6914FA782B6916870CF17F8C /* KeyboardNetwork.swift */,
 				E42D8EA735D293BCF8A42994 /* KeyboardViewController.swift */,
+				DC40BDCB055E81946DBF9BF3 /* KeyboardViewModel.swift */,
+				84AC867F1D39501B1C19020A /* KeyboardViews.swift */,
 			);
 			path = CRMPGKeyboard;
 			sourceTree = "<group>";
@@ -387,6 +392,7 @@
 		DFBD3A4861C17902321E00F3 /* Profile */ = {
 			isa = PBXGroup;
 			children = (
+				CDA5D641F577D3168D42923F /* KeyboardSetupView.swift */,
 				4A5830655832146188BF62BC /* NotificationSettingsView.swift */,
 				484978B01999201F202D8387 /* ProfileEditView.swift */,
 				32E72282731C2AFCC3A718F3 /* ProfileView.swift */,
@@ -533,10 +539,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0441454911537AB99CE7FDD4 /* KeyboardAPI.swift in Sources */,
-				DFB11C91F7BC46B922C5B7A1 /* KeyboardRootView.swift in Sources */,
+				0BA47D5E496E9DBBE5B9EAD5 /* KeyboardNetwork.swift in Sources */,
 				77A45FCFE0DB835054DB4067 /* KeyboardShared.swift in Sources */,
 				C4C121DDA865DB15AA633BE1 /* KeyboardViewController.swift in Sources */,
+				875EB56CDAF91591E946CB98 /* KeyboardViewModel.swift in Sources */,
+				5AE3F64841B366433037BB6E /* KeyboardViews.swift in Sources */,
 				A98DCB6ABAE84BAB64B6E663 /* WidgetShared.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -564,6 +571,7 @@
 				51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */,
 				995BBDB7446734BF537A0E5E /* ExcelToolsView.swift in Sources */,
 				BAAA80F3881C480CD120A346 /* KeyboardCacheSync.swift in Sources */,
+				5E35C5109486C5A2D9A5DDA8 /* KeyboardSetupView.swift in Sources */,
 				6597B8F6E9676A7F4A621642 /* KeyboardShared.swift in Sources */,
 				C05D52A6F3873EEEE441F305 /* KeychainStore.swift in Sources */,
 				E7579C61702D4679ABCA975B /* LoginView.swift in Sources */,
@@ -813,12 +821,11 @@
 		};
 		C24CAFD80BFD72825E4F87A5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D166E539B105585AB177AC93 /* Release.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = CRMPGKeyboard/CRMPGKeyboard.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGKeyboard/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Public Gold CRM";
+				INFOPLIST_KEY_CFBundleDisplayName = "PG CRM";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.publicgolds.crmpg.keyboard;
 				PRODUCT_NAME = CRMPGKeyboard;
@@ -846,12 +853,11 @@
 		};
 		F6DA26E8A7AC31134B62D233 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 60A730AC1214117C08B55FAC /* Debug.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = CRMPGKeyboard/CRMPGKeyboard.entitlements;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGKeyboard/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Public Gold CRM";
+				INFOPLIST_KEY_CFBundleDisplayName = "PG CRM";
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = com.publicgolds.crmpg.debug.keyboard;
 				PRODUCT_NAME = CRMPGKeyboard;

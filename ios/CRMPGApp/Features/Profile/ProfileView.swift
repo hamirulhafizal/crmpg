@@ -78,6 +78,11 @@ struct ProfileView: View {
 
             Section("App") {
                 LabeledContent("Version", value: appVersion)
+                NavigationLink {
+                    KeyboardSetupView()
+                } label: {
+                    Label("CRM keyboard setup", systemImage: "keyboard")
+                }
                 Link("Privacy policy", destination: URL(string: "https://www.publicgolds.com/privacy")!)
                 Link("Chrome extension", destination: URL(string: "https://www.publicgolds.com/extension-download")!)
                 Link("Manage on web", destination: URL(string: "https://www.publicgolds.com/profile")!)

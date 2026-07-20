@@ -1,36 +1,87 @@
 import Foundation
 
-/// App Group bridge for the custom keyboard (cache + session + insert templates).
+/// Shared App Group storage for the custom keyboard (cache + session bridge + templates).
 enum KeyboardShared {
     static let appGroupID = WidgetShared.appGroupID
-    static let maxCachedCustomers = 400
 
-    static var defaults: UserDefaults { WidgetShared.defaults }
+    static var defaults: UserDefaults {
+        UserDefaults(suiteName: appGroupID) ?? .standard
+    }
 
-    private static let customersKey = "keyboard_customers_v1"
+    private static let cacheKey = "keyboard_customer_cache_v1"
     private static let sessionKey = "keyboard_session_v1"
     private static let templatesKey = "keyboard_templates_v1"
     private static let pendingEditsKey = "keyboard_pending_edits_v1"
+    private static let configKey = "keyboard_supabase_config_v1"
 
-    // MARK: - Session (for Full Access live calls)
+    // MARK: - Customer cache
 
-    struct SessionSnapshot: Codable, Sendable {
-        var userId: String
-        var email: String?
-        var dealerLabel: String
-        var accessToken: String
-        var refreshToken: String
-        var updatedAt: Date
+    static func saveCache(_ cache: KeyboardCustomerCache) {
+        guard let data = try? JSONEncoder().encode(cache) else { return }
+        defaults.set(data, forKey: cacheKey)
     }
 
-    static func saveSession(_ session: SessionSnapshot) {
+    static func loadCache() -> KeyboardCustomerCache? {
+        guard let data = defaults.data(forKey: cacheKey),
+              let cache = try? JSONDecoder().decode(KeyboardCustomerCache.self, from: data)
+        else { return nil }
+        return cache
+    }
+
+    static func upsertCachedCustomer(_ customer: KeyboardCustomer) {
+        guard var cache = loadCache() else {
+            saveCache(
+                KeyboardCustomerCache(
+                    dealerId: customer.userId ?? "",
+                    dealerLabel: "Dealer",
+                    customers: [customer],
+                    updatedAt: Date()
+                )
+            )
+            return
+        }
+        if let idx = cache.customers.firstIndex(where: { $0.id == customer.id }) {
+            cache.customers[idx] = customer
+        } else {
+            cache.customers.insert(customer, at: 0)
+        }
+        cache.updatedAt = Date()
+        saveCache(cache)
+    }
+
+    static func searchCache(_ query: String, limit: Int = 40) -> [KeyboardCustomer] {
+        guard let cache = loadCache() else { return [] }
+        // Never show another dealer's cached rows.
+        if let activeId = loadSession()?.userId, cache.dealerId != activeId {
+            return []
+        }
+        let customers = cache.customers
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty {
+            return Array(customers.prefix(limit))
+        }
+        return customers.filter {
+            ($0.name ?? "").lowercased().contains(q)
+                || ($0.phone ?? "").lowercased().contains(q)
+                || ($0.pgCode ?? "").lowercased().contains(q)
+                || ($0.email ?? "").lowercased().contains(q)
+                || ($0.senderName ?? "").lowercased().contains(q)
+                || ($0.saveName ?? "").lowercased().contains(q)
+        }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    // MARK: - Session bridge (for Full Access network)
+
+    static func saveSession(_ session: KeyboardSessionBridge) {
         guard let data = try? JSONEncoder().encode(session) else { return }
         defaults.set(data, forKey: sessionKey)
     }
 
-    static func loadSession() -> SessionSnapshot? {
+    static func loadSession() -> KeyboardSessionBridge? {
         guard let data = defaults.data(forKey: sessionKey),
-              let session = try? JSONDecoder().decode(SessionSnapshot.self, from: data)
+              let session = try? JSONDecoder().decode(KeyboardSessionBridge.self, from: data)
         else { return nil }
         return session
     }
@@ -39,110 +90,104 @@ enum KeyboardShared {
         defaults.removeObject(forKey: sessionKey)
     }
 
-    // MARK: - Customer cache
-
-    static func saveCustomers(_ customers: [KeyboardCustomer]) {
-        let trimmed = Array(customers.prefix(maxCachedCustomers))
-        guard let data = try? JSONEncoder().encode(trimmed) else { return }
-        defaults.set(data, forKey: customersKey)
+    static func saveSupabaseConfig(url: String, anonKey: String) {
+        let payload = KeyboardSupabaseConfig(url: url, anonKey: anonKey)
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        defaults.set(data, forKey: configKey)
     }
 
-    static func loadCustomers() -> [KeyboardCustomer] {
-        guard let data = defaults.data(forKey: customersKey),
-              let rows = try? JSONDecoder().decode([KeyboardCustomer].self, from: data)
-        else { return [] }
-        return rows
-    }
-
-    static func upsertCustomer(_ customer: KeyboardCustomer) {
-        var rows = loadCustomers().filter { $0.id != customer.id }
-        rows.insert(customer, at: 0)
-        saveCustomers(rows)
-    }
-
-    static func searchCustomers(_ query: String) -> [KeyboardCustomer] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let rows = loadCustomers()
-        guard !q.isEmpty else { return Array(rows.prefix(40)) }
-        return rows.filter {
-            $0.searchBlob.contains(q)
-        }.prefix(60).map { $0 }
+    static func loadSupabaseConfig() -> KeyboardSupabaseConfig? {
+        guard let data = defaults.data(forKey: configKey),
+              let config = try? JSONDecoder().decode(KeyboardSupabaseConfig.self, from: data)
+        else { return nil }
+        return config
     }
 
     // MARK: - Templates
 
-    static func defaultTemplates() -> [InsertTemplate] {
-        [
-            InsertTemplate(
-                id: "card",
-                name: "Contact card",
-                body: "{name}\n{pgcode}\n{phone}"
-            ),
-            InsertTemplate(
-                id: "wa_hi",
-                name: "WhatsApp hi",
-                body: "Hi {name}, this is regarding your PG account {pgcode}. Thank you!"
-            ),
-            InsertTemplate(
-                id: "phone_only",
-                name: "Phone only",
-                body: "{phone}"
-            ),
-            InsertTemplate(
-                id: "pg_only",
-                name: "PG code only",
-                body: "{pgcode}"
-            ),
-        ]
-    }
-
-    static func loadTemplates() -> [InsertTemplate] {
-        guard let data = defaults.data(forKey: templatesKey),
-              let rows = try? JSONDecoder().decode([InsertTemplate].self, from: data),
-              !rows.isEmpty
-        else {
-            return defaultTemplates()
+    static func loadTemplates() -> [KeyboardInsertTemplate] {
+        if let data = defaults.data(forKey: templatesKey),
+           let templates = try? JSONDecoder().decode([KeyboardInsertTemplate].self, from: data),
+           !templates.isEmpty {
+            return templates
         }
-        return rows
+        return KeyboardInsertTemplate.defaults
     }
 
-    static func saveTemplates(_ templates: [InsertTemplate]) {
+    static func saveTemplates(_ templates: [KeyboardInsertTemplate]) {
         guard let data = try? JSONEncoder().encode(templates) else { return }
         defaults.set(data, forKey: templatesKey)
     }
 
     // MARK: - Pending edits (no Full Access)
 
-    static func enqueuePending(_ edit: PendingCustomerEdit) {
-        var rows = loadPending()
-        rows.removeAll { $0.customerId == edit.customerId && $0.kind == edit.kind }
-        rows.append(edit)
-        guard let data = try? JSONEncoder().encode(rows) else { return }
+    static func enqueuePendingEdit(_ edit: KeyboardPendingEdit) {
+        var all = loadPendingEdits()
+        all.removeAll { $0.id == edit.id }
+        all.append(edit)
+        guard let data = try? JSONEncoder().encode(all) else { return }
         defaults.set(data, forKey: pendingEditsKey)
     }
 
-    static func loadPending() -> [PendingCustomerEdit] {
+    static func loadPendingEdits() -> [KeyboardPendingEdit] {
         guard let data = defaults.data(forKey: pendingEditsKey),
-              let rows = try? JSONDecoder().decode([PendingCustomerEdit].self, from: data)
+              let edits = try? JSONDecoder().decode([KeyboardPendingEdit].self, from: data)
         else { return [] }
-        return rows
+        return edits
     }
 
-    static func clearPending() {
+    static func clearPendingEdits() {
         defaults.removeObject(forKey: pendingEditsKey)
     }
 
-    static func replacePending(_ edits: [PendingCustomerEdit]) {
+    static func savePendingEdits(_ edits: [KeyboardPendingEdit]) {
         guard let data = try? JSONEncoder().encode(edits) else { return }
         defaults.set(data, forKey: pendingEditsKey)
     }
+
+    static func clearCache() {
+        defaults.removeObject(forKey: cacheKey)
+    }
+
+    static func renderTemplate(_ template: String, customer: KeyboardCustomer) -> String {
+        template
+            .replacingOccurrences(of: "{name}", with: customer.displayName)
+            .replacingOccurrences(of: "{phone}", with: customer.phone ?? "")
+            .replacingOccurrences(of: "{pg}", with: customer.pgCode ?? "")
+            .replacingOccurrences(of: "{email}", with: customer.email ?? "")
+            .replacingOccurrences(of: "{location}", with: customer.location ?? "")
+            .replacingOccurrences(of: "{sender}", with: customer.senderName ?? customer.displayName)
+            .replacingOccurrences(of: "{save_name}", with: customer.saveName ?? customer.displayName)
+    }
+}
+
+struct KeyboardSupabaseConfig: Codable, Sendable {
+    var url: String
+    var anonKey: String
+}
+
+struct KeyboardSessionBridge: Codable, Sendable {
+    var userId: String
+    var email: String?
+    var accessToken: String
+    var refreshToken: String
+    var dealerLabel: String
+    var updatedAt: Date
+}
+
+struct KeyboardCustomerCache: Codable, Sendable {
+    var dealerId: String
+    var dealerLabel: String
+    var customers: [KeyboardCustomer]
+    var updatedAt: Date
 }
 
 struct KeyboardCustomer: Codable, Identifiable, Hashable, Sendable {
     var id: String
+    var userId: String?
     var name: String?
-    var phone: String?
     var email: String?
+    var phone: String?
     var location: String?
     var pgCode: String?
     var gender: String?
@@ -153,7 +198,7 @@ struct KeyboardCustomer: Codable, Identifiable, Hashable, Sendable {
     var isMarried: Bool?
     var isFriend: Bool?
     var salesJourneyStage: String?
-    var statusTitle: String?
+    var accountStatus: String?
 
     var displayName: String {
         if let saveName, !saveName.isEmpty { return saveName }
@@ -162,38 +207,25 @@ struct KeyboardCustomer: Codable, Identifiable, Hashable, Sendable {
         if let phone, !phone.isEmpty { return phone }
         return "Customer"
     }
-
-    var searchBlob: String {
-        [name, saveName, senderName, phone, email, pgCode, location, gender, ethnicity, dob]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-    }
 }
 
-struct InsertTemplate: Codable, Identifiable, Hashable, Sendable {
+struct KeyboardInsertTemplate: Codable, Identifiable, Hashable, Sendable {
     var id: String
-    var name: String
+    var title: String
     var body: String
 
-    func render(customer: KeyboardCustomer) -> String {
-        body
-            .replacingOccurrences(of: "{name}", with: customer.displayName)
-            .replacingOccurrences(of: "{phone}", with: customer.phone ?? "")
-            .replacingOccurrences(of: "{email}", with: customer.email ?? "")
-            .replacingOccurrences(of: "{pgcode}", with: customer.pgCode ?? "")
-            .replacingOccurrences(of: "{location}", with: customer.location ?? "")
-            .replacingOccurrences(of: "{sender}", with: customer.senderName ?? "")
-            .replacingOccurrences(of: "{journey}", with: customer.salesJourneyStage ?? "")
-            .replacingOccurrences(of: "{status}", with: customer.statusTitle ?? "")
-    }
+    static let defaults: [KeyboardInsertTemplate] = [
+        .init(id: "name", title: "Name", body: "{name}"),
+        .init(id: "phone", title: "Phone", body: "{phone}"),
+        .init(id: "pg", title: "PG code", body: "{pg}"),
+        .init(id: "card", title: "Contact card", body: "{name}\n{pg}\n{phone}"),
+        .init(id: "wa", title: "WhatsApp hello", body: "Hi {name}, "),
+    ]
 }
 
-struct PendingCustomerEdit: Codable, Identifiable, Hashable, Sendable {
-    enum Kind: String, Codable { case create, update }
-
+struct KeyboardPendingEdit: Codable, Identifiable, Sendable {
     var id: String
-    var kind: Kind
-    var customerId: String?
-    var payload: KeyboardCustomer
+    var isCreate: Bool
+    var customer: KeyboardCustomer
     var createdAt: Date
 }

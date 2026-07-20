@@ -45,8 +45,6 @@ final class AppState {
         } else {
             authStatus = .signedOut
             WidgetSnapshotSync.syncDealersFromSavedAccounts()
-            KeyboardShared.clearSession()
-            KeyboardShared.saveCustomers([])
         }
     }
 
@@ -129,6 +127,9 @@ final class AppState {
 
         isSwitchingAccount = true
         profile = nil
+        // Drop previous dealer's keyboard cache immediately so the extension can't show stale rows.
+        KeyboardShared.clearCache()
+        KeyboardShared.clearSession()
 
         await PushNotificationService.shared.unregisterFromBackend()
 
@@ -162,6 +163,8 @@ final class AppState {
             showPGSync = false
             accountSessionID = UUID()
             // Keep isSwitchingAccount true until Dashboard finishes reloading tiles.
+            // Immediately swap keyboard/session cache to the new dealer (don't leave previous account data).
+            await KeyboardCacheSync.switchToActiveDealer(profile: profile)
         } catch {
             isSwitchingAccount = false
             authStatus = .signedOut

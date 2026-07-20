@@ -1,3 +1,0 @@
-#include "Secrets.xcconfig"
-
-// Keyboard extension — keep Secrets only (do not inherit app PRODUCT_BUNDLE_IDENTIFIER).
