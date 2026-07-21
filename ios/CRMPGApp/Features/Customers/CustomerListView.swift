@@ -129,16 +129,41 @@ final class CustomersViewModel {
         filters.clear()
         Task { await load() }
     }
+
+    func resetForAccountSwitch() {
+        customers = []
+        stats = CustomerStats()
+        errorMessage = nil
+        isLoading = true
+        isLoadingStats = true
+        searchText = ""
+        filters = CustomerListFilters()
+    }
 }
 
 struct CustomerListView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = CustomersViewModel()
 
+    private var showSkeleton: Bool {
+        appState.isSwitchingAccount
+            || (viewModel.isLoading && viewModel.customers.isEmpty)
+            || (viewModel.isLoadingStats && !viewModel.hasStats && viewModel.customers.isEmpty)
+    }
+
     var body: some View {
         Group {
-            if viewModel.isLoading && viewModel.customers.isEmpty {
-                LoadingView(message: "Loading customers…")
+            if showSkeleton {
+                List {
+                    Section {
+                        CustomersSkeletonView()
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+                .listStyle(.insetGrouped)
+                .disabled(true)
             } else {
                 List {
                     Section {
@@ -213,6 +238,7 @@ struct CustomerListView: View {
                 .listStyle(.insetGrouped)
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: showSkeleton)
         .navigationTitle("Customers")
         .searchable(text: $viewModel.searchText, prompt: "Search name, phone, PG, email")
         .onChange(of: viewModel.searchText) { _, _ in
@@ -228,6 +254,7 @@ struct CustomerListView: View {
                 } label: {
                     Image(systemName: viewModel.filters.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
+                .disabled(showSkeleton)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -235,6 +262,7 @@ struct CustomerListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .disabled(showSkeleton)
             }
         }
         .sheet(isPresented: $viewModel.showCreate) {
@@ -274,6 +302,7 @@ struct CustomerListView: View {
             }
         }
         .onChange(of: appState.accountSessionID) { _, _ in
+            viewModel.resetForAccountSwitch()
             Task {
                 await viewModel.load()
                 await viewModel.loadStatsAndPublishWidget(profile: appState.profile)
@@ -297,6 +326,60 @@ struct CustomerListView: View {
         } else {
             viewModel.clearFilters()
         }
+    }
+}
+
+/// Matches account-status cards + directory rows while customers load.
+private struct CustomersSkeletonView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                SkeletonBlock(height: 18, width: 120)
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(0..<7, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBlock(height: 10, width: 48)
+                        SkeletonBlock(height: 22, width: 56)
+                        SkeletonBlock(height: 10, width: 72)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.tertiarySystemFill).opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+
+            HStack {
+                SkeletonBlock(height: 12, width: 70)
+                Spacer()
+                SkeletonBlock(height: 12, width: 54)
+            }
+            .padding(.top, 8)
+
+            ForEach(0..<5, id: \.self) { _ in
+                HStack(alignment: .top, spacing: 12) {
+                    SkeletonCircle(size: 44)
+                    VStack(alignment: .leading, spacing: 8) {
+                        SkeletonBlock(height: 14, width: 160)
+                        SkeletonBlock(height: 12, width: 100)
+                        SkeletonBlock(height: 12, width: 120)
+                        HStack(spacing: 10) {
+                            SkeletonBlock(height: 10, width: 52)
+                            SkeletonBlock(height: 10, width: 44)
+                            SkeletonBlock(height: 10, width: 56)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    SkeletonBlock(height: 20, width: 52, cornerRadius: 10)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading customers")
     }
 }
 

@@ -52,7 +52,16 @@ final class AuthViewModel {
 
 struct LoginView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = AuthViewModel()
+    @State private var isPasswordVisible = false
+    @State private var hasAppeared = false
+    @FocusState private var focusedField: LoginField?
+
+    private enum LoginField {
+        case email
+        case password
+    }
 
     private var showPicker: Bool {
         appState.prefersAccountPicker && !viewModel.savedAccounts.isEmpty
@@ -74,73 +83,318 @@ struct LoginView: View {
 
     private var loginForm: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 28) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(PGColors.gold)
-                            .symbolEffect(.pulse, options: .repeating)
+            ZStack {
+                loginBackground
 
-                        Text("Public Gold CRM")
-                            .font(PGTypography.largeTitle)
-                            .multilineTextAlignment(.center)
+                ScrollView {
+                    VStack(spacing: 24) {
+                        premiumHeader
+                            .padding(.top, 28)
+                            .opacity(hasAppeared ? 1 : 0)
+                            .offset(y: hasAppeared ? 0 : -18)
 
-                        Text("Manage customers, WhatsApp, and campaigns on the go.")
-                            .font(PGTypography.body)
+                        VStack(spacing: 20) {
+                            if !viewModel.savedAccounts.isEmpty {
+                                savedAccountButton
+                            }
+
+                            VStack(spacing: 14) {
+                                premiumEmailField
+                                premiumPasswordField
+                            }
+
+                            if let error = viewModel.errorMessage ?? appState.errorMessage {
+                                ErrorBanner(message: error) {
+                                    viewModel.errorMessage = nil
+                                    appState.errorMessage = nil
+                                }
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+
+                            signInButton
+
+                            Link(
+                                "Forgot password?",
+                                destination: URL(string: "https://www.publicgolds.com/forgot-password")!
+                            )
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PGColors.brandPurple)
+                        }
+                        .padding(20)
+                        .background {
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(.ultraThinMaterial)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                        .stroke(.white.opacity(0.9), lineWidth: 1)
+                                }
+                                .shadow(color: PGColors.brandPurple.opacity(0.13), radius: 28, y: 14)
+                        }
+                        .opacity(hasAppeared ? 1 : 0)
+                        .offset(y: hasAppeared ? 0 : 24)
+
+                        Text("Secure access for Public Gold dealers")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(PGColors.secondaryText)
-                            .multilineTextAlignment(.center)
+                            .opacity(hasAppeared ? 0.8 : 0)
+                            .padding(.bottom, 24)
                     }
-                    .padding(.top, 24)
-
-                    if !viewModel.savedAccounts.isEmpty {
-                        Button {
-                            appState.prefersAccountPicker = true
-                        } label: {
-                            Label("Choose saved account", systemImage: "person.2.fill")
-                                .font(PGTypography.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(PGColors.card)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    VStack(spacing: 16) {
-                        PGTextField(
-                            title: "Email",
-                            text: $viewModel.email,
-                            keyboard: .emailAddress,
-                            textContentType: .username
-                        )
-                        PGTextField(
-                            title: "Password",
-                            text: $viewModel.password,
-                            isSecure: true,
-                            textContentType: .password
-                        )
-                    }
-
-                    if let error = viewModel.errorMessage ?? appState.errorMessage {
-                        ErrorBanner(message: error) {
-                            viewModel.errorMessage = nil
-                            appState.errorMessage = nil
-                        }
-                    }
-
-                    PGPrimaryButton(title: "Sign In", isLoading: viewModel.isLoading) {
-                        Task { await viewModel.signIn(appState: appState) }
-                    }
-
-                    Link("Forgot password?", destination: URL(string: "https://www.publicgolds.com/forgot-password")!)
-                        .font(PGTypography.caption)
-                        .foregroundStyle(PGColors.goldDark)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: 520)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(24)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .background(PGColors.background)
             .navigationBarHidden(true)
+            .onAppear {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.7, dampingFraction: 0.82)) {
+                    hasAppeared = true
+                }
+            }
+        }
+    }
+
+    private var loginBackground: some View {
+        ZStack {
+            Color(red: 0.965, green: 0.96, blue: 0.99)
+
+            Circle()
+                .fill(PGColors.brandPurple.opacity(0.16))
+                .frame(width: 330, height: 330)
+                .blur(radius: 8)
+                .offset(x: 170, y: -330)
+
+            Circle()
+                .fill(PGColors.gold.opacity(0.12))
+                .frame(width: 260, height: 260)
+                .blur(radius: 12)
+                .offset(x: -180, y: 360)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var premiumHeader: some View {
+        VStack(spacing: 14) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.39, green: 0.25, blue: 0.86),
+                                PGColors.brandPurple
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 104, height: 104)
+                    .overlay {
+                        Text("CRMPG")
+                            .font(.system(size: 21, weight: .heavy, design: .rounded))
+                            .tracking(-0.8)
+                            .foregroundStyle(.white)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(.white.opacity(0.35), lineWidth: 1)
+                    }
+                    .shadow(color: PGColors.brandPurple.opacity(0.35), radius: 22, y: 12)
+
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .background(PGColors.gold.gradient, in: Circle())
+                    .overlay { Circle().stroke(.white, lineWidth: 2) }
+                    .offset(x: 8, y: -8)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(spacing: 6) {
+                Text("Welcome back")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(red: 0.10, green: 0.08, blue: 0.17))
+
+                Text("Sign in to Public Gold CRM")
+                    .font(.system(size: 16))
+                    .foregroundStyle(PGColors.secondaryText)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var savedAccountButton: some View {
+        Button {
+            appState.prefersAccountPicker = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(PGColors.brandPurple)
+                    .frame(width: 34, height: 34)
+                    .background(PGColors.brandPurple.opacity(0.1), in: Circle())
+
+                Text("Choose saved account")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(PGColors.primaryText)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(PGColors.secondaryText)
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.72))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(PGColors.brandPurple.opacity(0.12), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var premiumEmailField: some View {
+        PremiumFieldContainer(
+            title: "Email address",
+            icon: "envelope.fill",
+            isFocused: focusedField == .email
+        ) {
+            TextField("name@example.com", text: $viewModel.email)
+                .textContentType(.username)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focusedField, equals: .email)
+                .submitLabel(.next)
+                .onSubmit { focusedField = .password }
+        }
+    }
+
+    private var premiumPasswordField: some View {
+        PremiumFieldContainer(
+            title: "Password",
+            icon: "lock.fill",
+            isFocused: focusedField == .password
+        ) {
+            HStack(spacing: 8) {
+                Group {
+                    if isPasswordVisible {
+                        TextField("Enter your password", text: $viewModel.password)
+                    } else {
+                        SecureField("Enter your password", text: $viewModel.password)
+                    }
+                }
+                .textContentType(.password)
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit { submitSignIn() }
+
+                Button {
+                    isPasswordVisible.toggle()
+                    focusedField = .password
+                } label: {
+                    Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(
+                            focusedField == .password
+                                ? PGColors.brandPurple
+                                : PGColors.secondaryText
+                        )
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+            }
+        }
+    }
+
+    private var signInButton: some View {
+        Button(action: submitSignIn) {
+            HStack(spacing: 10) {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .transition(.scale.combined(with: .opacity))
+                }
+
+                Text(viewModel.isLoading ? "Signing in…" : "Sign In")
+                    .font(.system(size: 17, weight: .bold))
+
+                if !viewModel.isLoading {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14, weight: .bold))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .foregroundStyle(.white)
+            .background {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.38, green: 0.23, blue: 0.84),
+                        PGColors.brandPurple
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .shadow(color: PGColors.brandPurple.opacity(0.3), radius: 14, y: 7)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isLoading)
+        .opacity(viewModel.isLoading ? 0.82 : 1)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+    }
+
+    private func submitSignIn() {
+        focusedField = nil
+        Task { await viewModel.signIn(appState: appState) }
+    }
+}
+
+private struct PremiumFieldContainer<Content: View>: View {
+    let title: String
+    let icon: String
+    let isFocused: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isFocused ? PGColors.brandPurple : PGColors.secondaryText)
+
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(isFocused ? PGColors.brandPurple : PGColors.secondaryText)
+                    .frame(width: 20)
+
+                content
+                    .font(.system(size: 16))
+                    .foregroundStyle(PGColors.primaryText)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 54)
+            .background(Color.white.opacity(0.86))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        isFocused ? PGColors.brandPurple : PGColors.brandPurple.opacity(0.1),
+                        lineWidth: isFocused ? 1.5 : 1
+                    )
+            }
+            .shadow(
+                color: isFocused ? PGColors.brandPurple.opacity(0.12) : .clear,
+                radius: 10,
+                y: 4
+            )
+            .animation(.easeOut(duration: 0.2), value: isFocused)
         }
     }
 }

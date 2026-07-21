@@ -76,8 +76,12 @@ Give Public Gold dealers a **first-class mobile experience** for daily CRM work:
 | 144+ REST API routes under `/api/*` | ✅ Primary integration surface |
 | PWA + Web Push (VAPID) | ✅ Web only — **not usable for native iOS** |
 | iOS development guide | ⚠️ Outdated — Excel/Contacts only |
-| Native iOS codebase | ❌ None |
-| APNs pipeline | ❌ None |
+| Native iOS codebase | ✅ `ios/` (XcodeGen + SwiftUI) — Phases 0–7 largely built |
+| App icon + Netflix-style splash | ✅ Brand purple CRMPG mark |
+| Home Screen widgets + CRM keyboard | ✅ Ahead of roadmap (Phase 9 extras) |
+| Bearer auth on dealer `/api/*` | ✅ `requireUserApi` + supabase bearer helpers |
+| `ios_push_devices` + register API | ✅ Migration + routes; **APNs send still pending** |
+| APNs send pipeline | ❌ Client no-op; no server sender yet |
 
 ### Key integration constraint
 
@@ -161,16 +165,16 @@ crmpg-ios/
 
 ### 0.1 Product & design
 
-- [ ] Define v1 feature list and acceptance criteria
-- [ ] User flows: login → dashboard → customers → detail → actions
+- [x] Define v1 feature list and acceptance criteria *(this roadmap)*
+- [x] User flows: login → dashboard → customers → detail → actions
 - [ ] Wireframes in Figma (iPhone 15 Pro baseline, Dynamic Type, Dark Mode)
-- [ ] Design system: colors, typography, spacing aligned with web brand
-- [ ] App icon + launch screen assets
+- [x] Design system: colors, typography, spacing aligned with web brand
+- [x] App icon + launch screen assets *(CRMPG purple icon + Netflix-style splash)*
 
 ### 0.2 Apple & Google developer setup
 
 - [ ] Enroll in [Apple Developer Program](https://developer.apple.com/programs/) ($99/year)
-- [ ] Create App ID: `com.publicgolds.crmpg` (or your bundle ID)
+- [x] Create App ID: `com.publicgolds.crmpg` (debug: `.debug`)
 - [ ] Enable capabilities: Push Notifications, Associated Domains, Sign in with Apple (if required)
 - [ ] Create APNs key (.p8) in Apple Developer portal
 - [ ] Register Google OAuth iOS client in Google Cloud Console
@@ -179,41 +183,41 @@ crmpg-ios/
 
 ### 0.3 Backend — mobile auth readiness
 
-- [ ] Audit all `/api/*` routes used by v1 — confirm `createClient()` works with Bearer tokens (not only cookies)
-- [ ] Add or document mobile auth helper: extract user from `Authorization` header
-- [ ] Add `GET /api/mobile/config` (optional) — app version, min supported version, feature flags
-- [ ] CORS: not needed for native app; ensure no cookie-only assumptions in API handlers
+- [x] Audit all `/api/*` routes used by v1 — confirm Bearer tokens (not only cookies)
+- [x] Add or document mobile auth helper: extract user from `Authorization` header (`requireUserApi`)
+- [x] Add `GET /api/mobile/config` — app version, min supported version, feature flags
+- [x] CORS: not needed for native app; cookie-only assumptions removed on mobile-used routes
 - [ ] Rate limiting review for mobile traffic patterns
 
 ### 0.4 Backend — APNs foundation
 
-- [ ] Migration: `ios_push_devices` table
+- [x] Migration: `ios_push_devices` table (`062_ios_push_devices.sql`)
   ```sql
   -- user_id, device_token, apns_environment, bundle_id, created_at, last_seen_at
   ```
-- [ ] `POST /api/push/ios/register` — save device token (authenticated)
-- [ ] `DELETE /api/push/ios/register` — logout / uninstall cleanup
+- [x] `POST /api/push/ios/register` — save device token (authenticated)
+- [x] `DELETE /api/push/ios/register` — logout / uninstall cleanup
 - [ ] APNs send service (Node on Vercel or Supabase Edge Function)
 - [ ] Link push payloads to existing deep-link routes (`app/lib/push/navigate-routes.ts`)
 - [ ] Admin broadcast: extend `/api/admin/push/broadcast` to send APNs + Web Push
 
 ### 0.5 iOS project bootstrap
 
-- [ ] Create Xcode project (SwiftUI, iOS 17+ minimum recommended)
-- [ ] Add SPM dependencies: supabase-swift, GoogleSignIn-iOS
-- [ ] Environment config: Debug (localhost) / Staging / Production
-- [ ] `APIClient` with Bearer token injection + 401 refresh retry
-- [ ] Keychain wrapper for session storage
-- [ ] Basic app shell: TabView placeholder
+- [x] Create Xcode project (SwiftUI, iOS 17+ via XcodeGen)
+- [x] Add SPM dependencies: supabase-swift *(GoogleSignIn-iOS still pending)*
+- [x] Environment config: Debug / Release xcconfig + Secrets
+- [x] `APIClient` with Bearer token injection + 401 refresh retry
+- [x] Keychain wrapper for session storage
+- [x] Basic app shell: TabView
 
 ### 0.6 DevOps
 
-- [ ] Git repo + branch strategy (`main`, `develop`, feature branches)
+- [x] Git repo + branch strategy
 - [ ] Fastlane setup: build, TestFlight upload
 - [ ] CI: GitHub Actions — lint, unit tests, archive on tag
-- [ ] `.env` / xcconfig for Supabase URL, anon key, API base URL
+- [x] `.env` / xcconfig for Supabase URL, anon key, API base URL
 
-**Phase 0 exit criteria:** Empty app builds on device; Supabase sign-in returns a valid session; one test API call succeeds with Bearer token.
+**Phase 0 exit criteria:** ✅ Met for scaffold + auth + Bearer API. Remaining: Apple/Google portal setup, APNs send, Fastlane/CI.
 
 ---
 
@@ -223,44 +227,44 @@ crmpg-ios/
 
 ### 1.1 Authentication screens
 
-- [ ] Login — email + password
+- [x] Login — email + password *(premium branded UI + password eye toggle)*
 - [ ] Login — Google OAuth (ASWebAuthenticationSession or GoogleSignIn SDK)
 - [ ] Register (if enabled for mobile)
-- [ ] Forgot password → email link (opens Safari / in-app browser)
-- [ ] Logout
-- [ ] Session refresh on app launch and foreground
+- [x] Forgot password → email link (opens Safari / in-app browser)
+- [x] Logout
+- [x] Session refresh on app launch and foreground
 
 ### 1.2 Saved accounts (multi-account)
 
 Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalent:
 
-- [ ] Keychain-backed saved account list (max 5)
-- [ ] Account picker on login screen
-- [ ] Switch account via `POST /api/auth/switch-account` or Supabase token refresh
-- [ ] **Do not store plaintext passwords** — prefer refresh tokens in Keychain
-- [ ] Avatar + PG code display per account
+- [x] Keychain-backed saved account list (max 5)
+- [x] Account picker on login screen
+- [x] Switch account via password or refresh/access tokens in Keychain
+- [ ] **Do not store plaintext passwords** — prefer refresh tokens only *(passwords still optionally cached for one-tap switch)*
+- [x] Avatar + PG code display per account
 
 ### 1.3 Onboarding gates (match web)
 
 - [ ] Google-only user → prompt create password (`profiles` + Supabase RPC)
-- [ ] Profile completion sheet: PG code, phone, PBO username
+- [x] Profile completion sheet: PG code, phone, PBO username *(dismissible Continue)*
 - [ ] Block dashboard until required fields complete (same rules as web)
 
 ### 1.4 App shell & navigation
 
-- [ ] Tab bar: **Home**, **Customers**, **WhatsApp**, **Profile**
-- [ ] NavigationStack per tab
-- [ ] Loading / error / empty states (reusable components)
-- [ ] Pull-to-refresh pattern
+- [x] Tab bar: **Home**, **Customers**, **WhatsApp**, **Profile**
+- [x] NavigationStack per tab
+- [x] Loading / error / empty states (reusable components)
+- [x] Pull-to-refresh pattern
 
 ### 1.5 Dashboard (read-only v1)
 
-- [ ] `GET /api/saas/me` — plan name, trial expiry, write access
-- [ ] Service tiles mirroring web dashboard (deep link or navigate)
-- [ ] WAHA session status summary (connected / disconnected badge)
-- [ ] Trial / subscription expiry banner
+- [x] `GET /api/saas/me` — plan name, trial expiry, write access
+- [x] Service tiles mirroring web dashboard (deep link or navigate)
+- [x] WAHA session status summary (connected / disconnected badge)
+- [x] Trial / subscription expiry banner *(via billing + dashboard)*
 
-**Phase 1 exit criteria:** Dealer logs in, completes profile if needed, lands on dashboard with plan info.
+**Phase 1 exit criteria:** ✅ Mostly met. Remaining: Google Sign-In, hard onboarding gate, password-less Keychain switch.
 
 ---
 
@@ -270,30 +274,30 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 2.1 Customer list
 
-- [ ] `GET /api/customers` — paginated list with search
-- [ ] Filters: sales journey, account status, CRM tags, follow-up queue
-- [ ] Sort options
+- [x] Customer list with search *(Supabase RLS + API hybrid; limit 200)*
+- [x] Filters: sales journey, account status, CRM tags *(follow-up queue pending)*
+- [x] Sort options
 - [ ] Infinite scroll or page-based loading
-- [ ] Swipe actions (call, WhatsApp — if number available)
+- [x] Swipe actions (call, WhatsApp — if number available)
 
 ### 2.2 Customer detail
 
-- [ ] `GET /api/customers/[id]` — full profile
-- [ ] Edit core fields inline or form sheet
-- [ ] CRM tags: view + add/remove (`/api/customers/[id]/crm-tags`)
-- [ ] Sales journey stage updates
+- [x] Full profile detail
+- [x] Edit core fields inline or form sheet
+- [x] CRM tags: view + add/remove
+- [x] Sales journey stage updates
 - [ ] Follow-up activities timeline
-- [ ] Account status badges
+- [x] Account status badges
 
 ### 2.3 Customer create & bulk
 
-- [ ] Add customer form (`POST /api/customers`)
+- [x] Add customer form
 - [ ] Duplicate detection feedback
 - [ ] Bulk actions where API supports (`/api/customers/bulk`)
 
 ### 2.4 Chat history (read-only v1)
 
-- [ ] `GET /api/customers/[id]/chat-history` — message list
+- [x] `GET /api/customers/[id]/chat-history` — message list
 - [ ] Profile picture (`/api/customers/[id]/profile-picture`)
 - [ ] Pull older messages
 
@@ -304,11 +308,11 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 2.6 Offline & performance
 
-- [ ] Cache last customer list (SwiftData / file cache)
+- [ ] Cache last customer list (SwiftData / file cache) *(keyboard App Group cache only)*
 - [ ] Stale-while-revalidate on network return
-- [ ] Skeleton loaders + optimistic UI for edits
+- [x] Skeleton loaders + optimistic UI for edits *(list/dashboard skeletons)*
 
-**Phase 2 exit criteria:** Dealer can search, view, edit, and tag customers end-to-end on iPhone.
+**Phase 2 exit criteria:** ✅ Core path met (search/view/edit/tag). Remaining: paging, follow-up timeline, AI tags, offline list cache.
 
 ---
 
@@ -319,20 +323,15 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 ### 3.1 APNs client integration
 
 - [ ] Request notification permission (contextual prompt after login)
-- [ ] Register device token → `POST /api/push/ios/register`
+- [ ] Register device token → `POST /api/push/ios/register` *(API ready; iOS client is no-op)*
 - [ ] Handle token refresh
-- [ ] Unregister on logout
+- [ ] Unregister on logout *(hooks exist; registration not live)*
 
 ### 3.2 Notification handling
 
 - [ ] Foreground banner display
-- [ ] Tap → deep link to route (match `PUSH_NAVIGATE_ROUTES`):
-  - `/dashboard`
-  - `/customers`
-  - `/dashboard/campaigns`
-  - `/dashboard/billing`
-  - `/waha-integration`
-  - etc.
+- [x] Custom URL scheme deep links (`crmpg://customers?…`) from widgets
+- [ ] Tap push → deep link to route (match `PUSH_NAVIGATE_ROUTES`)
 - [ ] Universal Links: `https://www.publicgolds.com/customers` opens app if installed
 
 ### 3.3 Backend notification types
@@ -340,15 +339,15 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 - [ ] Campaign completion alerts
 - [ ] Trial expiry reminders
 - [ ] WhatsApp session disconnected
-- [ ] PG sync job complete
+- [ ] PG sync job complete *(local TAC alerts exist; not remote APNs)*
 - [ ] Admin broadcast (Pro dealers)
 
 ### 3.4 Settings
 
-- [ ] Notification preferences screen (opt-in categories)
+- [x] Notification preferences screen *(explains deferred APNs setup)*
 - [ ] Link to iOS Settings if permission denied
 
-**Phase 3 exit criteria:** User receives push, taps it, lands on correct in-app screen.
+**Phase 3 exit criteria:** ❌ Not met — register API + table exist; client registration + APNs send still pending.
 
 ---
 
@@ -358,29 +357,29 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 4.1 Subscription status
 
-- [ ] `GET /api/saas/me` — full entitlements display
-- [ ] Active campaign count vs limit
-- [ ] Wasender availability (Pro paid)
-- [ ] Trial countdown UI
+- [x] `GET /api/saas/me` — full entitlements display
+- [x] Active campaign count vs limit *(via billing / dashboard)*
+- [x] Wasender availability (Pro paid) *(provider-aware WhatsApp UI)*
+- [x] Trial countdown UI
 
 ### 4.2 Upgrade flow
 
-- [ ] Bayarcash checkout — **SFSafariViewController** or ASWebAuthenticationSession to web checkout
+- [x] Bayarcash checkout — in-app Safari sheet with ios-handoff when needed
 - [ ] Deep link return: `/payment/complete` → Universal Link → in-app success screen
 - [ ] `POST /api/saas/sync-payment` after return
-- [ ] Refresh entitlements
+- [x] Refresh entitlements *(manual / on appear)*
 
 ### 4.3 Start Pro trial
 
-- [ ] `POST /api/saas/start-trial` with confirmation sheet
-- [ ] Post-trial WhatsApp provider messaging (WAHA during trial)
+- [x] `POST /api/saas/start-trial` with confirmation
+- [x] Post-trial WhatsApp provider messaging (WAHA during trial)
 
 ### 4.4 Gating
 
-- [ ] Disable write actions when `hasWriteAccess === false`
+- [ ] Disable write actions when `hasWriteAccess === false` *(flag shown, not enforced)*
 - [ ] Upgrade prompts on gated features (match web copy)
 
-**Phase 4 exit criteria:** Free user can start trial or pay for Pro; entitlements update in app.
+**Phase 4 exit criteria:** ✅ View plan + trial + Safari checkout. Remaining: payment return deep link, write gating.
 
 ---
 
@@ -390,33 +389,33 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 5.1 Provider resolution
 
-- [ ] `GET /api/whatsapp/provider` — show WAHA vs Wasender label
-- [ ] Entitlement-aware UI (Pro trial = WAHA, Pro paid = Wasender)
+- [x] `GET /api/whatsapp/provider` — show WAHA vs Wasender label
+- [x] Entitlement-aware UI (Pro trial = WAHA, Pro paid = Wasender)
 
 ### 5.2 Session list & status
 
-- [ ] `GET /api/waha/sessions` — list sessions with live status
-- [ ] Auto-relink on empty (backend `relinkWasenderSessionsForUser`)
-- [ ] Status badges: WORKING, SCAN_QR, STOPPED
+- [x] `GET /api/waha/sessions` — list sessions with live status
+- [x] Auto-relink on empty (backend `relinkWasenderSessionsForUser`)
+- [x] Status badges: WORKING, SCAN_QR, STOPPED
 
 ### 5.3 Session lifecycle
 
-- [ ] Create session (`POST /api/waha/sessions`) — phone number input
-- [ ] QR code display (`GET /api/waha/sessions/[session]/qr`) — render as UIImage
-- [ ] Pairing code flow (`POST .../request-code`) for WhatsApp linked devices
-- [ ] Start / stop session
-- [ ] Delete session with confirmation
+- [x] Create session (`POST /api/waha/sessions`) — phone number input
+- [x] QR code display (`GET /api/waha/sessions/[session]/qr`)
+- [x] Pairing code flow (`POST .../request-code`) for WhatsApp linked devices
+- [x] Start / stop session
+- [x] Delete session with confirmation
 
 ### 5.4 Send test message
 
-- [ ] Simple compose sheet → `POST /api/waha/send`
+- [x] Simple compose sheet → `POST /api/waha/send`
 
 ### 5.5 Wasender-specific UX
 
-- [ ] Connected state without QR when session re-linked after renewal
-- [ ] Clear error when duplicate session exists on Wasender
+- [x] Connected state without QR when session re-linked after renewal
+- [ ] Clear error when duplicate session exists on Wasender *(partial messaging only)*
 
-**Phase 5 exit criteria:** Dealer connects WhatsApp, sees connected status, sends a test message.
+**Phase 5 exit criteria:** ✅ Met for core WAHA flows.
 
 ---
 
@@ -426,26 +425,26 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 6.1 Campaign list
 
-- [ ] `GET /api/campaigns` — list with status filters
-- [ ] Pause / resume / archive actions
+- [x] `GET /api/campaigns` — list with status filters
+- [x] Pause / resume / archive actions
 
 ### 6.2 Campaign detail (read-only analytics v1)
 
-- [ ] Enrollment stats, send progress, failure counts
-- [ ] Audience summary (count, filters applied)
+- [x] Enrollment stats, send progress, failure counts *(API or fallback messaging)*
+- [x] Audience summary (count, filters applied)
 
 ### 6.3 Campaign create (simplified)
 
-- [ ] Option A: **WKWebView** embed web workflow builder (`/dashboard/campaigns/new`)
+- [x] Option A: **Safari / sealed ios-handoff** to web workflow builder
 - [ ] Option B: Template-based create (platform defaults from admin)
-- [ ] Pass Bearer token to WebView via injected cookie or header bridge
+- [x] Pass session to web via ios-handoff + hash fallback (`AuthenticatedWebSession`)
 
 ### 6.4 Workflow editor (native — v2+)
 
 - [ ] Port React Flow → not recommended for v1
 - [ ] Native node list + step configuration if needed long-term
 
-**Phase 6 exit criteria:** Dealer sees campaign list, analytics, and can create via web embed or template.
+**Phase 6 exit criteria:** ✅ Met via list/detail + web create handoff.
 
 ---
 
@@ -555,7 +554,8 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 
 ### 9.2 v1.1 / v1.2 backlog
 
-- [ ] Widgets: today’s follow-ups, WAHA status
+- [x] Widgets: Account Status (small/medium) + dealer intent *(shipped early)*
+- [x] System keyboard extension: mini-CRM search/edit/templates *(shipped early)*
 - [ ] Siri Shortcuts: “Show my customers”
 - [ ] Share extension: add contact from share sheet
 - [ ] iPad-optimized layout
@@ -583,17 +583,17 @@ When iOS v1 is stable:
 
 Consolidated server-side tasks across all phases:
 
-| # | Task | Phase | Priority |
-|---|------|-------|----------|
-| 1 | Bearer token auth audit on all mobile-used routes | 0 | P0 |
-| 2 | `ios_push_devices` table + register/unregister API | 0 | P0 |
-| 3 | APNs send service + admin broadcast extension | 0–3 | P0 |
-| 4 | Universal Links / apple-app-site-association | 3 | P0 |
-| 5 | `GET /api/mobile/config` (version gate) | 0 | P1 |
-| 6 | Payment return deep link verification | 4 | P0 |
-| 7 | WebView auth bridge for campaign editor | 6 | P1 |
-| 8 | OpenAPI 3.0 spec export for `/api/*` | 0 | P1 |
-| 9 | Push: link `user_id` on all subscription types | 3 | P0 |
+| # | Task | Phase | Priority | Status |
+|---|------|-------|----------|--------|
+| 1 | Bearer token auth audit on all mobile-used routes | 0 | P0 | ✅ Done (`requireUserApi`) |
+| 2 | `ios_push_devices` table + register/unregister API | 0 | P0 | ✅ Done |
+| 3 | APNs send service + admin broadcast extension | 0–3 | P0 | ❌ Pending |
+| 4 | Universal Links / apple-app-site-association | 3 | P0 | ❌ Pending |
+| 5 | `GET /api/mobile/config` (version gate) | 0 | P1 | ✅ Done |
+| 6 | Payment return deep link verification | 4 | P0 | ❌ Pending |
+| 7 | WebView auth bridge for campaign editor | 6 | P1 | ✅ Done (ios-handoff) |
+| 8 | OpenAPI 3.0 spec export for `/api/*` | 0 | P1 | ❌ Pending |
+| 9 | Push: link `user_id` on all subscription types | 3 | P0 | ❌ Pending |
 | 10 | Rate limits + mobile User-Agent logging | 0 | P2 |
 
 ### Universal Links setup
@@ -767,168 +767,78 @@ Core/
 
 ## Timeline summary
 
-| Phase | Duration | Cumulative |
-|-------|----------|------------|
-| 0 — Foundation | 3 weeks | Week 3 |
-| 1 — Auth & shell | 4 weeks | Week 7 |
-| 2 — Core CRM | 5 weeks | Week 12 |
-| 3 — Push | 3 weeks | Week 15 |
-| 4 — Billing | 3 weeks | Week 18 |
-| 5 — WhatsApp | 5 weeks | Week 23 |
-| 6 — Campaigns | 5 weeks | Week 28 |
-| 7 — Tools | 4 weeks | Week 32 |
-| 8 — App Store | 4 weeks | **Week 36 (~9 months)** |
+| Phase | Duration | Status (Jul 2026) |
+|-------|----------|-------------------|
+| 0 — Foundation | 3 weeks | ✅ Mostly done — portal + APNs send + CI left |
+| 1 — Auth & shell | 4 weeks | ✅ Mostly done — Google Sign-In left |
+| 2 — Core CRM | 5 weeks | ✅ Core done — paging / AI / offline left |
+| 3 — Push | 3 weeks | ❌ **Pending** — next launch blocker |
+| 4 — Billing | 3 weeks | ✅ Mostly done — payment return + write gate left |
+| 5 — WhatsApp | 5 weeks | ✅ Done |
+| 6 — Campaigns | 5 weeks | ✅ Done (web editor handoff) |
+| 7 — Tools | 4 weeks | ✅ Mostly done |
+| 8 — App Store | 4 weeks | ❌ **Pending** — TestFlight / ASC |
+| 9 — Post-launch | Ongoing | Widgets + keyboard shipped early; Android not started |
 
-**Accelerated MVP (App Store in ~4 months):** Phases 0 + 1 + 2 + 3 + 4 + 8 only — defer WhatsApp native, campaigns, tools to post-launch updates.
+**Accelerated MVP (App Store next):** Finish Phase **3** (live APNs) + Phase **8** (TestFlight → App Store). Defer Google Sign-In, Universal Links polish, and Android.
 
 ---
 
 ## Next steps (immediate actions)
 
-1. **Approve v1 scope** — full roadmap vs accelerated MVP
-2. **Create Apple Developer account** + App ID
-3. **Run Phase 0 backend audit** — Bearer token on `/api/customers`, `/api/saas/me`, `/api/waha/sessions`
-4. **Create `crmpg-ios` repository** and Xcode project
-5. **Design wireframes** for login, dashboard, customer list/detail
-6. **Schedule TestFlight beta** target date
+1. **Enable Push Notifications** capability + APNs `.p8` key
+2. **Wire iOS client** `PushNotificationService` → register/unregister APIs
+3. **Implement APNs send** service + admin broadcast path
+4. **TestFlight** beta with Fastlane (or Xcode Organizer)
+5. **App Store Connect** listing + screenshots
+6. Optional: Google iOS OAuth client + Sign-In SDK
 
 ---
 
 ## 21. Mac Mini + Xcode — what to bring & what’s still missing
 
-Use this section when moving development to a **separate Mac Mini with Xcode**. The roadmap MD file is the **plan**; it does not include an Xcode project yet.
+Use this section when continuing development on a **Mac Mini with Xcode**. The native app now lives under `ios/` in this repo.
 
 ### Is the roadmap “complete”?
 
 | Item | Status | Notes |
 |------|--------|-------|
 | Product roadmap (phases, features, timeline) | ✅ Done | This document |
-| Xcode project / Swift source code | ❌ Not started | You create this on the Mac Mini |
-| Apple Developer Program enrollment | ❌ Your action | Required for device testing & App Store |
+| Xcode project / Swift source code | ✅ Done | `ios/CRMPGApp.xcodeproj` via XcodeGen |
+| Apple Developer Program enrollment | ⚠️ Your action | Needed for device push + App Store |
 | Google OAuth **iOS** client ID | ❌ Not configured | Separate from web OAuth client |
-| Backend mobile Bearer auth on dealer `/api/*` | ❌ **Blocker** | Most routes use cookies only today |
-| APNs backend + `ios_push_devices` table | ❌ Not built | Defer until Phase 3 |
+| Backend mobile Bearer auth on dealer `/api/*` | ✅ Done | `requireUserApi` |
+| APNs register table + API | ✅ Done | Send pipeline still pending |
+| APNs send + iOS client registration | ❌ Not built | Phase 3 |
 | Universal Links (`apple-app-site-association`) | ❌ Not on server | Defer until Phase 3 |
-| Figma / app icon assets | ❌ Optional for Day 1 | Can use placeholders |
+| App icon + splash | ✅ Done | Brand purple CRMPG |
+| Widgets + CRM keyboard | ✅ Done | Ahead of original backlog |
 | Test dealer account | ✅ Use existing | Email + password for TestFlight notes |
 
-### Critical blocker (fix on web repo before API integration)
+### Critical blocker (historical — resolved for Bearer)
 
-Most dealer API routes call `createClient()` from `app/lib/supabase/server.ts`, which reads **cookies only**. A native app has no cookies.
+Most dealer API routes previously used cookie-only `createClient()`. Native iOS now uses Bearer tokens via `requireUserApi` / supabase bearer helpers.
 
-**Admin routes already support Bearer tokens** (`app/lib/auth/require-admin.ts`). Dealer routes do **not** yet.
-
-Before Phase 2 (Customers via `/api/customers`), add a shared helper, e.g. `requireUserApi(request)` in `app/lib/auth/require-user.ts`, mirroring admin:
-
-```typescript
-// Pattern to implement on web repo (Phase 0)
-const token = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]
-if (token) {
-  const { data } = await supabase.auth.getUser(token)
-  user = data.user
-} else {
-  const { data } = await supabase.auth.getUser() // cookie fallback for web
-  user = data.user
-}
-```
-
-**Workaround for early iOS prototyping:** use **Supabase Swift SDK** directly for auth + RLS-protected tables (`profiles`, `customers`). You can build login + read-only customer list without `/api/*`, but you will **not** get web-parity features (filters, chat history, tags, SaaS entitlements) until APIs accept Bearer tokens or you duplicate server logic (not recommended).
-
-### What you CAN start on Mac Mini immediately (no backend change)
-
-1. Install Xcode 16+ and create a new **SwiftUI App** project
-2. Add **supabase-swift** via Swift Package Manager
-3. Implement email/password login against production Supabase
-4. Read `profiles` and basic `customers` rows via Supabase SDK (RLS)
-5. Build UI shell: TabView, navigation, design system placeholders
-
-### Software to install on Mac Mini
-
-- [ ] **Xcode** 16+ (from Mac App Store) — includes iOS 18 SDK
-- [ ] **Xcode Command Line Tools** — `xcode-select --install`
-- [ ] **Git** — clone repos
-- [ ] **Optional:** [Fastlane](https://fastlane.tools), [SF Symbols](https://developer.apple.com/sf-symbols/), Figma desktop
-
-### Files & credentials to copy to Mac Mini
-
-Create a secure note or `ios-secrets.xcconfig` ( **never commit to git** ):
-
-| Key | Where to get it | Used for |
-|-----|-----------------|----------|
-| `SUPABASE_URL` | Web `.env` → `NEXT_PUBLIC_SUPABASE_URL` | Supabase Swift SDK |
-| `SUPABASE_ANON_KEY` | Web `.env` → `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Swift SDK |
-| `API_BASE_URL` | `https://www.publicgolds.com` (prod) or local dev URL | REST `/api/*` calls |
-| `GOOGLE_IOS_CLIENT_ID` | Google Cloud Console → new iOS OAuth client | Google Sign-In (Phase 1) |
-| `BUNDLE_ID` | You choose, e.g. `com.publicgolds.crmpg` | Xcode + Apple Developer |
-| Test dealer email/password | Your test account | Simulator + TestFlight |
-
-Also copy these repo paths (git clone or USB):
-
-```
-crmpg/                          # Full web repo (API reference)
-crmpg/docs/NATIVE_IOS_ROADMAP.md
-crmpg/app/api/                  # Endpoint reference while building APIClient
-crmpg/app/lib/push/navigate-routes.ts   # Deep link paths
-```
-
-### Apple Developer setup (on Mac Mini)
-
-1. Sign in to Xcode with Apple ID enrolled in **Apple Developer Program**
-2. **Certificates, Identifiers & Profiles** → register App ID with bundle ID
-3. Enable capabilities when needed:
-   - Push Notifications (Phase 3)
-   - Associated Domains (Universal Links, Phase 3)
-4. Create **Development** provisioning profile for your test iPhone
-5. Download APNs Auth Key (.p8) when starting push (Phase 3)
-
-### Google Sign-In setup (before Google login on iOS)
-
-1. [Google Cloud Console](https://console.cloud.google.com) → same project as web
-2. Create **OAuth client ID → iOS**
-3. Set bundle ID to match Xcode
-4. Supabase Dashboard → Authentication → Google → add iOS client if required
-5. Supabase → URL Configuration → add redirect URL for mobile OAuth flow
-
-### Recommended Day 1 workflow on Mac Mini
-
-```
-Day 1–2   Install Xcode, clone crmpg repo, read this doc + Phase 0–1
-Day 3–5   New Xcode project, Supabase login screen, profile fetch
-Day 6–10  Tab shell + customer list via Supabase SDK (direct)
-          ↳ Parallel: web team adds requireUserApi() Bearer support
-Day 11+   Switch APIClient to /api/customers with Bearer token
-```
-
-### Separate iOS repo (recommended)
-
-Keep iOS out of the Next.js monorepo:
-
-```
-# On Mac Mini
-git init crmpg-ios
-# Add Xcode project, .gitignore for xcuserdata, Secrets.xcconfig
-```
-
-Link to web backend only via HTTPS + Supabase keys — no shared code required for v1.
+**Remaining launch blockers:** live APNs (client + send), TestFlight/App Store (Phase 8).
 
 ### Checklist before calling Phase 0 “done”
 
-- [ ] Xcode app builds and runs on simulator
-- [ ] Supabase email login works on device/simulator
-- [ ] At least one `/api/*` call succeeds with `Authorization: Bearer <access_token>`
-- [ ] Apple Developer App ID registered
+- [x] Xcode app builds and runs on simulator
+- [x] Supabase email login works on device/simulator
+- [x] At least one `/api/*` call succeeds with `Authorization: Bearer <access_token>`
+- [x] Apple Developer App ID registered (`com.publicgolds.crmpg`)
 - [ ] Google iOS OAuth client created (if using Google login in v1)
-- [ ] Test account documented for QA
+- [x] Test account documented for QA
 
 ### Related docs to read on Mac Mini
 
 | File | Purpose |
 |------|---------|
-| `docs/NATIVE_IOS_ROADMAP.md` | Master plan (this file) |
+| `NATIVE_IOS_ROADMAP.md` | Master plan (this file) |
 | `extension/README.md` | Same Supabase auth pattern as extension |
-| `app/lib/auth/require-admin.ts` | Reference for Bearer token auth |
+| `app/lib/auth/require-user.ts` | Bearer token auth for dealer APIs |
 | `IOS_APP_DEVELOPMENT_GUIDE.md` | ⚠️ Outdated — do not follow API endpoint list blindly |
 
 ---
 
-*Document version: 1.1 · Updated: July 2026 · Owner: Public Gold CRM engineering*
+*Document version: 1.2 · Updated: July 2026 · Owner: Public Gold CRM engineering*

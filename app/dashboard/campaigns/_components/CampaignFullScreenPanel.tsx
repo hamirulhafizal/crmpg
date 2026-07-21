@@ -161,23 +161,30 @@ function CampaignPanelBody({
   )
 }
 
-function PanelChrome(props: { title: string; subtitle?: string; onClose: () => void }) {
+function PanelChrome(props: {
+  title: string
+  subtitle?: string
+  onClose: () => void
+  hideClose?: boolean
+}) {
   return (
     <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-8">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{props.title}</h1>
         {props.subtitle ? <p className="mt-1 text-sm text-slate-600">{props.subtitle}</p> : null}
       </div>
-      <button
-        type="button"
-        onClick={props.onClose}
-        className="shrink-0 rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50"
-        aria-label="Close"
-      >
-        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {!props.hideClose ? (
+        <button
+          type="button"
+          onClick={props.onClose}
+          className="shrink-0 rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50"
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      ) : null}
     </header>
   )
 }
@@ -286,6 +293,7 @@ function ViewPanelInner({
   const [payload, setPayload] = useState<CampaignDetailPayload | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const isEmbeddedIOS = searchParams.get('embedded') === 'ios'
   const [testRunBusy, setTestRunBusy] = useState(false)
   const [retryFailedBusy, setRetryFailedBusy] = useState(false)
   const workflowFromUrl = workflowOpenFromSearchParams(searchParams)
@@ -432,7 +440,12 @@ function ViewPanelInner({
 
   return (
     <>
-      <PanelChrome title={'Campaign'} subtitle="Details & analytics" onClose={onClose} />
+      <PanelChrome
+        title="Campaign"
+        subtitle="Details & analytics"
+        onClose={onClose}
+        hideClose={isEmbeddedIOS}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8">
         {loading ? (
           <CampaignDetailSkeleton />

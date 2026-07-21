@@ -8,19 +8,40 @@ struct ProfileView: View {
     var body: some View {
         List {
             Section {
-                HStack(spacing: 16) {
-                    avatar
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(appState.profile?.displayName ?? "Dealer")
-                            .font(PGTypography.headline)
-                        if let email = SupabaseManager.shared.currentUser?.email {
-                            Text(email)
-                                .font(PGTypography.caption)
-                                .foregroundStyle(PGColors.secondaryText)
+                Button {
+                    showAccountSwitcher = true
+                } label: {
+                    HStack(spacing: 16) {
+                        avatar
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(appState.profile?.displayName ?? "Dealer")
+                                .font(PGTypography.headline)
+                                .foregroundStyle(PGColors.primaryText)
+
+                            if let email = SupabaseManager.shared.currentUser?.email {
+                                Text(email)
+                                    .font(PGTypography.caption)
+                                    .foregroundStyle(PGColors.secondaryText)
+                                    .lineLimit(1)
+                            }
                         }
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(PGColors.brandPurple)
+                            .frame(width: 32, height: 32)
+                            .background(PGColors.brandPurple.opacity(0.1), in: Circle())
+                            .accessibilityHidden(true)
                     }
+                    .contentShape(Rectangle())
                 }
                 .padding(.vertical, 8)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Switch account for \(appState.profile?.displayName ?? "Dealer")")
+                .accessibilityHint("Shows saved accounts")
             }
 
             Section("Dealer info") {

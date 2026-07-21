@@ -3,6 +3,8 @@ import SwiftUI
 enum PGColors {
     static let gold = Color(red: 0.83, green: 0.69, blue: 0.22)
     static let goldDark = Color(red: 0.72, green: 0.55, blue: 0.12)
+    /// App icon / brand purple (CRMPG mark).
+    static let brandPurple = Color(red: 0.455, green: 0.370, blue: 0.900)
     static let background = Color(.systemGroupedBackground)
     static let card = Color(.secondarySystemGroupedBackground)
     static let primaryText = Color.primary

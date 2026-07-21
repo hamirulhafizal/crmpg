@@ -1,5 +1,6 @@
 import SwiftUI
 import SafariServices
+import WebKit
 
 @MainActor
 @Observable
@@ -107,7 +108,7 @@ struct CampaignListView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.campaigns.isEmpty {
-                LoadingView(message: "Loading campaigns…")
+                CampaignListSkeletonView()
             } else if viewModel.filtered.isEmpty {
                 EmptyStateView(
                     icon: "megaphone.fill",
@@ -130,7 +131,9 @@ struct CampaignListView: View {
 
                     Section {
                         ForEach(viewModel.filtered) { campaign in
-                            NavigationLink(value: campaign) {
+                            NavigationLink {
+                                CampaignWebDetailView(campaign: campaign)
+                            } label: {
                                 CampaignRow(campaign: campaign)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -148,9 +151,6 @@ struct CampaignListView: View {
         }
         .background(PGColors.background)
         .navigationTitle("Campaigns")
-        .navigationDestination(for: Campaign.self) { campaign in
-            CampaignDetailView(campaignId: campaign.id, seed: campaign)
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -217,6 +217,273 @@ struct CampaignListView: View {
                 Label("Archive", systemImage: "archivebox")
             }
             .tint(.gray)
+        }
+    }
+}
+
+private struct CampaignListSkeletonView: View {
+    private let rowCount = 7
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                HStack(spacing: 1) {
+                    ForEach(0..<5, id: \.self) { index in
+                        SkeletonBlock(
+                            height: 34,
+                            cornerRadius: index == 0 ? 9 : 4
+                        )
+                    }
+                }
+                .padding(3)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(spacing: 0) {
+                    ForEach(0..<rowCount, id: \.self) { index in
+                        HStack(spacing: 12) {
+                            SkeletonCircle(size: 22)
+
+                            VStack(alignment: .leading, spacing: 7) {
+                                SkeletonBlock(
+                                    height: 17,
+                                    width: index.isMultiple(of: 3) ? 140 : 116,
+                                    cornerRadius: 6
+                                )
+                                SkeletonBlock(
+                                    height: 12,
+                                    width: index.isMultiple(of: 2) ? 102 : 82,
+                                    cornerRadius: 5
+                                )
+                            }
+
+                            Spacer(minLength: 8)
+
+                            SkeletonBlock(
+                                height: 26,
+                                width: 58,
+                                cornerRadius: 13
+                            )
+                        }
+                        .frame(height: 79)
+                        .padding(.horizontal, 20)
+
+                        if index < rowCount - 1 {
+                            Divider()
+                                .padding(.leading, 62)
+                        }
+                    }
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .scrollDisabled(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loading campaigns")
+    }
+}
+
+/// Displays the full responsive web campaign details inside the native navigation stack.
+/// Falls back to the native detail view if the web session can't authenticate the frame.
+private struct CampaignWebDetailView: View {
+    let campaign: Campaign
+
+    @State private var resolvedURL: URL?
+    @State private var isLoading = true
+    @State private var loadError: String?
+    @State private var showNativeFallback = false
+
+    var body: some View {
+        Group {
+            if showNativeFallback {
+                CampaignDetailView(campaignId: campaign.id, seed: campaign)
+            } else {
+                webFrame
+            }
+        }
+        .navigationTitle(campaign.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !showNativeFallback {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            resolvedURL = nil
+                            Task { await resolveAuthenticatedURL() }
+                        } label: {
+                            Label("Reload", systemImage: "arrow.clockwise")
+                        }
+                        Button {
+                            showNativeFallback = true
+                        } label: {
+                            Label("Show summary view", systemImage: "list.bullet.rectangle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
+        .task(id: campaign.id) {
+            await resolveAuthenticatedURL()
+        }
+    }
+
+    private var webFrame: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
+
+            if let resolvedURL {
+                EmbeddedCampaignWebView(
+                    url: resolvedURL,
+                    isLoading: $isLoading,
+                    errorMessage: $loadError,
+                    onAuthBounce: { showNativeFallback = true }
+                )
+                .ignoresSafeArea(edges: .bottom)
+                .opacity(isLoading ? 0 : 1)
+            }
+
+            if isLoading, loadError == nil {
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large)
+                    Text("Loading campaign…")
+                        .font(PGTypography.caption)
+                        .foregroundStyle(PGColors.secondaryText)
+                }
+                .transition(.opacity)
+            }
+
+            if let loadError, !isLoading {
+                ContentUnavailableView {
+                    Label("Couldn’t load campaign", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    Button("Try Again") {
+                        resolvedURL = nil
+                        Task { await resolveAuthenticatedURL() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(PGColors.brandPurple)
+
+                    Button("Show summary view") {
+                        showNativeFallback = true
+                    }
+                }
+            }
+        }
+        .background(PGColors.background)
+        .animation(.easeInOut(duration: 0.25), value: isLoading)
+    }
+
+    private func resolveAuthenticatedURL() async {
+        isLoading = true
+        loadError = nil
+        resolvedURL = await AuthenticatedWebSession.url(
+            opening: "/dashboard/campaigns?view=\(campaign.id.uuidString)&embedded=ios"
+        )
+    }
+}
+
+private struct EmbeddedCampaignWebView: UIViewRepresentable {
+    let url: URL
+    @Binding var isLoading: Bool
+    @Binding var errorMessage: String?
+    var onAuthBounce: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  const hideEmbeddedClose = () => {
+                    const params = new URLSearchParams(window.location.search);
+                    if (params.get('embedded') !== 'ios') return;
+                    document
+                      .querySelectorAll('header button[aria-label="Close"]')
+                      .forEach((button) => { button.style.display = 'none'; });
+                  };
+                  hideEmbeddedClose();
+                  new MutationObserver(hideEmbeddedClose).observe(
+                    document.documentElement,
+                    { childList: true, subtree: true }
+                  );
+                })();
+                """,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        webView.isOpaque = true
+        webView.backgroundColor = .systemBackground
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.parent = self
+        if webView.url == nil, !context.coordinator.hasLoaded {
+            webView.load(URLRequest(url: url))
+        }
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: EmbeddedCampaignWebView
+        var hasLoaded = false
+
+        init(parent: EmbeddedCampaignWebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            hasLoaded = true
+
+            // A redirect to /login means the frame couldn't authenticate — use native details instead.
+            if let path = webView.url?.path, path.hasPrefix("/login") || path.hasPrefix("/auth/login") {
+                parent.isLoading = false
+                parent.onAuthBounce()
+                return
+            }
+
+            parent.isLoading = false
+            parent.errorMessage = nil
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            if (error as NSError).code == NSURLErrorCancelled { return }
+            parent.isLoading = false
+            parent.errorMessage = error.localizedDescription
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFail navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            if (error as NSError).code == NSURLErrorCancelled { return }
+            parent.isLoading = false
+            parent.errorMessage = error.localizedDescription
         }
     }
 }

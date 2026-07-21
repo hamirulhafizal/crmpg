@@ -22,6 +22,7 @@
 		45BC578B02F1CC3F8F4930FB /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95373B13DCE006AD5EB904E7 /* SupabaseManager.swift */; };
 		46AFF2F45B42A3F43645D3A7 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E72282731C2AFCC3A718F3 /* ProfileView.swift */; };
 		51D841DF9CECB182FFBE8F5F /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D34BEA769C42497653F9750 /* DesignSystem.swift */; };
+		59438095A82593CDBCE28566 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3A17ADC97BBF678B9BD37E6F /* Assets.xcassets */; };
 		5AC00AB1307D97FE9A75F05E /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
 		5AE3F64841B366433037BB6E /* KeyboardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84AC867F1D39501B1C19020A /* KeyboardViews.swift */; };
 		5E35C5109486C5A2D9A5DDA8 /* KeyboardSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDA5D641F577D3168D42923F /* KeyboardSetupView.swift */; };
@@ -47,6 +48,7 @@
 		A8EFC18FE469490511B2DADE /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB43098FF1F4D031AA7ABFF /* AppConfig.swift */; };
 		A98DCB6ABAE84BAB64B6E663 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81495714184751CB929143CE /* WidgetShared.swift */; };
 		AD7330C92881DB601F1339F3 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 6C074572DFEF0241810A8CE7 /* Supabase */; };
+		B0E4F08904C8F162BCD249B3 /* BrandSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CA0F19A2ADF360DC7277588 /* BrandSplashView.swift */; };
 		B38AFCFBFAAA2C07746D2FFF /* ChatHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49C008C2B2B04B3E866C583 /* ChatHistoryView.swift */; };
 		BAAA80F3881C480CD120A346 /* KeyboardCacheSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF67F3F56C774BED3D1DAF12 /* KeyboardCacheSync.swift */; };
 		BAE9C41F010BAE33342F27C0 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5830655832146188BF62BC /* NotificationSettingsView.swift */; };
@@ -102,11 +104,13 @@
 		14CAD2DB948A6573F2F4166D /* CampaignListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignListView.swift; sourceTree = "<group>"; };
 		180DE221C317A616D541A775 /* AuthenticatedWebSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedWebSession.swift; sourceTree = "<group>"; };
 		1AF6FACD52A9981DE7AA7F9A /* CRMPGApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CRMPGApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1CA0F19A2ADF360DC7277588 /* BrandSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandSplashView.swift; sourceTree = "<group>"; };
 		1F1E238DEC5026ADD53DE80C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		241611243370280678230BC4 /* CRMPGKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = CRMPGKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2424DBDD710634045DA67F1D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		32E72282731C2AFCC3A718F3 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		382C21C50B62CD046C53E9B6 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		3A17ADC97BBF678B9BD37E6F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3F09BA5F845DA3C573B6D4E7 /* ExcelToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExcelToolsView.swift; sourceTree = "<group>"; };
 		41436209B023EA246AF115CE /* CRMPGWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CRMPGWidgetsBundle.swift; sourceTree = "<group>"; };
 		41CF659B73A922496EC355DE /* CustomerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomerDetailView.swift; sourceTree = "<group>"; };
@@ -262,6 +266,7 @@
 		49CC0CB1ACDA7C3785D79609 /* CRMPGApp */ = {
 			isa = PBXGroup;
 			children = (
+				3A17ADC97BBF678B9BD37E6F /* Assets.xcassets */,
 				3E5175339AF8635D86C6EF36 /* App */,
 				17FE5478B75FDF741037AA95 /* Core */,
 				337E6D4033549E85A6398623 /* Features */,
@@ -384,6 +389,7 @@
 		D7BBC26DE177C51AD444E5E5 /* DesignSystem */ = {
 			isa = PBXGroup;
 			children = (
+				1CA0F19A2ADF360DC7277588 /* BrandSplashView.swift */,
 				0D34BEA769C42497653F9750 /* DesignSystem.swift */,
 			);
 			path = DesignSystem;
@@ -436,6 +442,7 @@
 			buildConfigurationList = B4F76043F6ACA8A84460DB7F /* Build configuration list for PBXNativeTarget "CRMPGApp" */;
 			buildPhases = (
 				7EC060DF698BFB05708A0EB7 /* Sources */,
+				B53EEACEBFC7E943B8055691 /* Resources */,
 				49696AAE884B6D7A089E46AA /* Frameworks */,
 				659ABE39D55B3D44238E4086 /* Embed Foundation Extensions */,
 			);
@@ -534,6 +541,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		B53EEACEBFC7E943B8055691 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				59438095A82593CDBCE28566 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		4D6127CFC84A6ECB057E6E27 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -558,6 +576,7 @@
 				049FDBEE5580D3282A0DAA1E /* AppState.swift in Sources */,
 				2CA114A1939202110265F1D1 /* AuthenticatedWebSession.swift in Sources */,
 				CC5B919D0365876FF26B3E8E /* BillingView.swift in Sources */,
+				B0E4F08904C8F162BCD249B3 /* BrandSplashView.swift in Sources */,
 				30F5EE8F995DC52445AC494A /* CRMPGApp.swift in Sources */,
 				072838C5F91C502C99F00AF4 /* CampaignDetailView.swift in Sources */,
 				CCE3185C203857FDA2648011 /* CampaignListView.swift in Sources */,
@@ -628,12 +647,13 @@
 			baseConfigurationReference = 60A730AC1214117C08B55FAC /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CRMPGApp/CRMPGApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -715,12 +735,13 @@
 			baseConfigurationReference = D166E539B105585AB177AC93 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CRMPGApp/CRMPGApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CRMPGApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (

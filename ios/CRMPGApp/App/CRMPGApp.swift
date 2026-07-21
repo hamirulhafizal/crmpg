@@ -31,18 +31,30 @@ struct CRMPGApp: App {
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    @State private var showBrandSplash = true
 
     var body: some View {
-        Group {
-            switch appState.authStatus {
-            case .loading:
-                LoadingView(message: "Starting Public Gold CRM…")
-            case .signedOut:
-                LoginView()
-            case .signedIn:
-                MainTabView()
+        ZStack {
+            Group {
+                switch appState.authStatus {
+                case .loading:
+                    PGColors.brandPurple
+                        .ignoresSafeArea()
+                case .signedOut:
+                    LoginView()
+                case .signedIn:
+                    MainTabView()
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: appState.authStatus)
+
+            if showBrandSplash {
+                BrandSplashView(isContentReady: appState.authStatus != .loading) {
+                    showBrandSplash = false
+                }
+                .transition(.opacity)
+                .zIndex(1)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: appState.authStatus)
     }
 }
