@@ -118,8 +118,24 @@ export function buildCampaignWorkflowPlan(
   }
 }
 
+function resolveStepOrderNodeId(plan: CampaignWorkflowPlan, stepOrder: number): string | null {
+  const order = Number(stepOrder)
+  if (!Number.isFinite(order)) return null
+
+  const mapOrRecord = plan.stepOrderToNodeId as Map<number, string> | Record<string, string>
+  if (mapOrRecord instanceof Map) {
+    return mapOrRecord.get(order) ?? mapOrRecord.get(Number(order)) ?? null
+  }
+  if (mapOrRecord && typeof mapOrRecord === 'object') {
+    const key = String(order)
+    return mapOrRecord[key as keyof typeof mapOrRecord] ?? mapOrRecord[order as unknown as keyof typeof mapOrRecord] ?? null
+  }
+  return null
+}
+
 export function nodeIdForStep(plan: CampaignWorkflowPlan, stepOrder: number): string {
-  return plan.stepOrderToNodeId.get(stepOrder) ?? WORKFLOW_NODE.step(stepOrder)
+  const resolved = resolveStepOrderNodeId(plan, stepOrder)
+  return resolved ?? WORKFLOW_NODE.step(stepOrder)
 }
 
 /** First WhatsApp node in graph order (used when enrolling). */

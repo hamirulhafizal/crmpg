@@ -21,27 +21,42 @@ export function waitSecondsBeforeNextCustomer(
  * Sum wait-node delays along a path from `fromNodeId` to `toNodeId` (BFS, first path wins).
  * Used after a WhatsApp step to pace the next step.
  */
+function asNodeId(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return ''
+}
+
 export function waitSecondsOnPath(
   definition: WorkflowDefinition,
   fromNodeId: string,
   toNodeId: string
 ): number {
-  if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return 0
+  const fromId = asNodeId(fromNodeId)
+  const toId = asNodeId(toNodeId)
+  if (!fromId || !toId || fromId === toId) return 0
 
-  const nodeById = new Map(definition.nodes.map((n) => [n.id, n]))
+  const nodeById = new Map(
+    definition.nodes
+      .map((n) => [asNodeId(n.id), n] as const)
+      .filter(([id]) => Boolean(id))
+  )
   const edgesBySource = new Map<string, string[]>()
   for (const e of definition.edges ?? []) {
-    const list = edgesBySource.get(e.source) ?? []
-    list.push(e.target)
-    edgesBySource.set(e.source, list)
+    const source = asNodeId(e.source)
+    const target = asNodeId(e.target)
+    if (!source || !target) continue
+    const list = edgesBySource.get(source) ?? []
+    list.push(target)
+    edgesBySource.set(source, list)
   }
 
-  const queue: Array<{ id: string; wait: number }> = [{ id: fromNodeId, wait: 0 }]
+  const queue: Array<{ id: string; wait: number }> = [{ id: fromId, wait: 0 }]
   const visited = new Set<string>()
 
   while (queue.length > 0) {
     const { id, wait } = queue.shift()!
-    if (id === toNodeId) return wait
+    if (id === toId) return wait
     if (visited.has(id)) continue
     visited.add(id)
 

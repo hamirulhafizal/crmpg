@@ -27,6 +27,10 @@ import {
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
+import {
+  findRecentStepLog,
+  shouldSkipPhysicalResend,
+} from '@/app/lib/campaigns/step-send-dedup'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignEmailFallback, type GmailFallbackCustomer } from '@/app/lib/campaigns/gmail-fallback'
 import { CAMPAIGN_IMAGE_SEND_VERSION, sendCampaignImageStep } from '@/app/lib/campaigns/image-step/send'
@@ -143,7 +147,7 @@ function whatsAppSendLogContext(
 const CUSTOMER_PAGE = 250
 const SEND_BATCH = 10
 const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
-const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 3
+const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 1
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
 
 // Keep below Vercel maxDuration (~300s) so a killed run does not block the next cron tick.
@@ -488,6 +492,128 @@ async function advanceEnrollmentPastAbandonedStep(params: {
       new Date(),
       debugLines,
       plan.compiled.audience_filters
+    )
+  }
+}
+
+async function markCampaignLogSent(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  logId: string,
+  sentAt: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('campaign_message_logs')
+    .update({ send_status: 'sent', sent_at: sentAt, error_message: null })
+    .eq('id', logId)
+  if (error) throw new Error(error.message)
+}
+
+async function recordCampaignFollowUpActivity(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  input: {
+    campaign: CampaignRow
+    nextStep: CampaignStepRow
+    row: DueEnrollmentRow
+    customer: CustomerForAudience
+    logId: string
+    deliveryChannel: 'whatsapp' | 'email_fallback'
+    sendOpts: { enable_typing: boolean; randomize_spaces: boolean }
+  }
+): Promise<void> {
+  const { error } = await supabase.from('customer_follow_up_activities').insert({
+    customer_id: input.customer.id,
+    user_id: input.campaign.user_id,
+    created_by: input.campaign.user_id,
+    topic: 'campaign_automation',
+    channel: input.deliveryChannel === 'email_fallback' ? 'email' : 'whatsapp_automation',
+    outcome: 'sent',
+    notes:
+      input.deliveryChannel === 'email_fallback'
+        ? `Campaign “${input.campaign.name}” step ${input.nextStep.step_order} (Gmail fallback)`
+        : `Campaign “${input.campaign.name}” step ${input.nextStep.step_order}`,
+    metadata: {
+      campaign_id: input.campaign.id,
+      campaign_step_id: input.nextStep.id,
+      enrollment_id: input.row.id,
+      campaign_message_log_id: input.logId,
+      delivery_channel: input.deliveryChannel,
+      enable_typing: input.sendOpts.enable_typing,
+      randomize_spaces: input.sendOpts.randomize_spaces,
+    },
+    idempotency_key: `campaign_send:${input.logId}`,
+  })
+  if (error && error.code !== '23505') {
+    throw new Error(error.message)
+  }
+}
+
+async function advanceEnrollmentAfterSuccessfulStep(params: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  row: DueEnrollmentRow
+  campaign: CampaignRow
+  plan: CampaignWorkflowPlan
+  steps: CampaignStepRow[]
+  nextStep: CampaignStepRow
+  sentAt: string
+  stepNodeId: string
+  audienceFilters?: CampaignAudienceFilters
+  debugLines?: string[]
+}): Promise<void> {
+  const { supabase, row, campaign, plan, steps, nextStep, sentAt, stepNodeId, audienceFilters, debugLines } =
+    params
+  const following = steps.find((s) => s.step_order > nextStep.step_order)
+  const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
+  let nextSend: Date | null = null
+
+  if (following) {
+    const fromNodeId = nodeIdForStep(plan, nextStep.step_order)
+    const toNodeId = nodeIdForStep(plan, following.step_order)
+    const waitSec = waitSecondsOnPath(plan.definition, fromNodeId, toNodeId)
+
+    let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
+    const sentMs = new Date(sentAt).getTime()
+    if (isScheduledSendTime(following.send_time) && computed.getTime() <= sentMs) {
+      computed = computeSendAt(new Date(sentAt), following.delay_days + 1, following.send_time, tz)
+    }
+    if (waitSec > 0) {
+      const afterWait = sentMs + waitSec * 1000
+      if (computed.getTime() < afterWait) {
+        computed = new Date(afterWait)
+      }
+      cronLog(
+        debugLines,
+        `wait pacing enrollment=${row.id} step=${nextStep.step_order}→${following.step_order} wait=${waitSec}s next_send_at=${computed.toISOString()}`
+      )
+    }
+    nextSend = computed
+  }
+
+  const workflowMeta = metadataAfterStepSent(plan, nextStep.step_order, stepNodeId)
+  const { error } = await supabase
+    .from('campaign_enrollments')
+    .update({
+      last_step_sent: nextStep.step_order,
+      next_send_at: following ? nextSend!.toISOString() : null,
+      status: following ? 'active' : 'completed',
+      completed_at: following ? null : new Date().toISOString(),
+      metadata: {
+        ...(row.metadata ?? {}),
+        ...workflowMeta,
+      },
+    })
+    .eq('id', row.id)
+
+  if (error) throw new Error(error.message)
+
+  if (!following) {
+    await promoteNextCustomerInQueue(
+      supabase,
+      campaign.id,
+      plan,
+      nextStep.step_order,
+      sentAt,
+      debugLines,
+      audienceFilters
     )
   }
 }
@@ -1261,6 +1387,56 @@ async function processDueEnrollmentRows(
       message: `Sending step ${nextStep.step_order} to ${label} (${sendIndex}/${total})…`,
     })
 
+    const priorStepLog = await findRecentStepLog(supabase, row.id, nextStep.id)
+    if (shouldSkipPhysicalResend(priorStepLog)) {
+      cronLog(
+        debugLines,
+        `dedup skip send ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} prior_log=${priorStepLog!.id} status=${priorStepLog!.send_status}`
+      )
+      onProgress?.({
+        type: 'log',
+        message: `Skipped ${label} step ${nextStep.step_order} — already attempted recently (no duplicate send)`,
+        level: 'info',
+      })
+      onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'idle' })
+
+      if (priorStepLog!.send_status === 'sent' && row.last_step_sent < nextStep.step_order) {
+        const sentAt = priorStepLog!.sent_at ?? priorStepLog!.created_at
+        try {
+          await advanceEnrollmentAfterSuccessfulStep({
+            supabase,
+            row,
+            campaign,
+            plan,
+            steps,
+            nextStep,
+            sentAt,
+            stepNodeId,
+            audienceFilters,
+            debugLines,
+          })
+        } catch (syncErr) {
+          cronLog(
+            debugLines,
+            `dedup enrollment sync failed enrollment=${row.id} step=${nextStep.step_order}: ${syncErr instanceof Error ? syncErr.message : String(syncErr)}`
+          )
+        }
+      } else if (priorStepLog!.send_status === 'failed' && row.last_step_sent < nextStep.step_order) {
+        await advanceEnrollmentPastAbandonedStep({
+          supabase,
+          row,
+          campaign,
+          plan,
+          steps,
+          failedStep: nextStep,
+          reason: 'Prior send attempt failed; skipping duplicate WhatsApp resend',
+          debugLines,
+          onProgress,
+        })
+      }
+      continue
+    }
+
     const { data: logInsert, error: logErr } = await supabase
       .from('campaign_message_logs')
       .insert({
@@ -1312,6 +1488,7 @@ async function processDueEnrollmentRows(
     let deliveryChannel: 'whatsapp' | 'email_fallback' = 'whatsapp'
 
     const sendCtx = whatsAppSendLogContext(campaign, row.id, label, nextStep.step_order)
+    let whatsAppDelivered = false
 
     try {
       try {
@@ -1361,6 +1538,7 @@ async function processDueEnrollmentRows(
           )
           if (emailOk) {
             deliveryChannel = 'email_fallback'
+            whatsAppDelivered = true
             cronLog(
               debugLines,
               `gmail fallback sent ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id}`
@@ -1378,34 +1556,27 @@ async function processDueEnrollmentRows(
         }
       }
 
-      const sentAt = new Date().toISOString()
-      await supabase
-        .from('campaign_message_logs')
-        .update({ send_status: 'sent', sent_at: sentAt })
-        .eq('id', logInsert.id)
+      whatsAppDelivered = true
 
-      await supabase.from('customer_follow_up_activities').insert({
-        customer_id: customer.id,
-        user_id: campaign.user_id,
-        created_by: campaign.user_id,
-        topic: 'campaign_automation',
-        channel: deliveryChannel === 'email_fallback' ? 'email' : 'whatsapp_automation',
-        outcome: 'sent',
-        notes:
-          deliveryChannel === 'email_fallback'
-            ? `Campaign “${campaign.name}” step ${nextStep.step_order} (Gmail fallback)`
-            : `Campaign “${campaign.name}” step ${nextStep.step_order}`,
-        metadata: {
-          campaign_id: campaign.id,
-          campaign_step_id: nextStep.id,
-          enrollment_id: row.id,
-          campaign_message_log_id: logInsert.id,
-          delivery_channel: deliveryChannel,
-          enable_typing: sendOpts.enable_typing,
-          randomize_spaces: sendOpts.randomize_spaces,
-        },
-        idempotency_key: `campaign_send:${logInsert.id}`,
-      })
+      const sentAt = new Date().toISOString()
+      await markCampaignLogSent(supabase, logInsert.id, sentAt)
+
+      try {
+        await recordCampaignFollowUpActivity(supabase, {
+          campaign,
+          nextStep,
+          row,
+          customer,
+          logId: logInsert.id,
+          deliveryChannel,
+          sendOpts,
+        })
+      } catch (followUpErr) {
+        cronLog(
+          debugLines,
+          `follow_up insert non-fatal ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id}: ${followUpErr instanceof Error ? followUpErr.message : String(followUpErr)}`
+        )
+      }
 
       summary.messages_sent++
       onProgress?.({
@@ -1426,69 +1597,57 @@ async function processDueEnrollmentRows(
         `sent ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} log=${logInsert.id}`
       )
 
-      const following = steps.find((s) => s.step_order > nextStep.step_order)
-      const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
-      let nextSend: Date | null = null
-      if (following) {
-        const fromNodeId = nodeIdForStep(plan, nextStep.step_order)
-        const toNodeId = nodeIdForStep(plan, following.step_order)
-        const waitSec = waitSecondsOnPath(plan.definition, fromNodeId, toNodeId)
-
-        // Next step time comes from that step's delay_days + send_time (campaign timezone).
-        // Do not apply campaign.cooldown_days here — it defaulted to 30d and overrode e.g. "delay 1d"
-        // so step 2 was scheduled a month later instead of the next day.
-        let computed = computeSendAt(new Date(sentAt), following.delay_days, following.send_time, tz)
-        const sentMs = new Date(sentAt).getTime()
-        // Same-day step with scheduled send_time already passed (e.g. default 10:00 after an evening send) → next calendar slot.
-        if (isScheduledSendTime(following.send_time) && computed.getTime() <= sentMs) {
-          computed = computeSendAt(new Date(sentAt), following.delay_days + 1, following.send_time, tz)
-        }
-        if (waitSec > 0) {
-          const afterWait = sentMs + waitSec * 1000
-          if (computed.getTime() < afterWait) {
-            computed = new Date(afterWait)
-          }
-          cronLog(
-            debugLines,
-            `wait pacing enrollment=${row.id} step=${nextStep.step_order}→${following.step_order} wait=${waitSec}s next_send_at=${computed.toISOString()}`
-          )
-        }
-        nextSend = computed
-      }
-
-      const workflowMeta = metadataAfterStepSent(plan, nextStep.step_order, stepNodeId)
-
-      await supabase
-        .from('campaign_enrollments')
-        .update({
-          last_step_sent: nextStep.step_order,
-          next_send_at: following ? nextSend!.toISOString() : null,
-          status: following ? 'active' : 'completed',
-          completed_at: following ? null : new Date().toISOString(),
-          metadata: {
-            ...(row.metadata ?? {}),
-            ...workflowMeta,
-          },
-        })
-        .eq('id', row.id)
-
-      if (!following) {
-        await promoteNextCustomerInQueue(
-          supabase,
-          campaign.id,
-          plan,
-          nextStep.step_order,
-          sentAt,
-          debugLines,
-          audienceFilters
-        )
-      }
+      await advanceEnrollmentAfterSuccessfulStep({
+        supabase,
+        row,
+        campaign,
+        plan,
+        steps,
+        nextStep,
+        sentAt,
+        stepNodeId,
+        audienceFilters,
+        debugLines,
+      })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       const stackFirstLine =
         e instanceof Error && typeof e.stack === 'string'
           ? e.stack.split('\n').slice(0, 6).join(' | ')
           : ''
+
+      if (whatsAppDelivered) {
+        const sentAt = new Date().toISOString()
+        cronLog(
+          debugLines,
+          `post-send bookkeeping failed after WhatsApp delivery ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id}: ${msg} — advancing without retry`
+        )
+        try {
+          await markCampaignLogSent(supabase, logInsert.id, sentAt)
+          await advanceEnrollmentAfterSuccessfulStep({
+            supabase,
+            row,
+            campaign,
+            plan,
+            steps,
+            nextStep,
+            sentAt,
+            stepNodeId,
+            audienceFilters,
+            debugLines,
+          })
+          summary.messages_sent++
+          onProgress?.({ type: 'log', message: `Sent to ${label}`, level: 'success' })
+          onProgress?.({ type: 'node', nodeId: stepNodeId, state: 'complete' })
+        } catch (recoverErr) {
+          cronLog(
+            debugLines,
+            `post-send recovery failed enrollment=${row.id}: ${recoverErr instanceof Error ? recoverErr.message : String(recoverErr)}`
+          )
+        }
+        continue
+      }
+
       summary.messages_failed++
       cronLog(
         debugLines,
