@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
 import { PgSyncApiError, pgSyncFetch } from '@/app/lib/pg-sync/server-client'
-import { markPgSyncJobLost, syncPgSyncJobFromView } from '@/app/lib/pg-sync/jobs-db'
+import {
+  markPgSyncJobCancelled,
+  markPgSyncJobLost,
+  syncPgSyncJobFromView,
+} from '@/app/lib/pg-sync/jobs-db'
 import type { PgSyncJobView } from '@/app/lib/pg-sync/types'
 
 export const dynamic = 'force-dynamic'
