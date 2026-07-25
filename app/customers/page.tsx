@@ -1773,6 +1773,7 @@ function CustomersPage() {
               </button>
             )}
 
+            {(pgSyncMonitor.serviceAvailable === true || pgSyncActive) && (
             <button
               type="button"
               onClick={() => setPgSyncOpen(true)}
@@ -1803,6 +1804,7 @@ function CustomersPage() {
                 </span>
               ) : null}
             </button>
+            )}
 
             <button
               onClick={handleExport}

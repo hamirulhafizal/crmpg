@@ -44,6 +44,7 @@ export function usePgSyncQueueMonitor(options: Options) {
   const { enabled, onOpenModal, onActiveChange, onCompleted, autoOpenOnActive = true } = options
   const [queueInfo, setQueueInfo] = useState<PgSyncQueueInfo | null>(null)
   const [activeJob, setActiveJob] = useState<PgSyncJobView | null>(null)
+  const [serviceAvailable, setServiceAvailable] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [notifyPermission, setNotifyPermission] = useState(
     typeof window !== 'undefined' ? pgSyncNotificationPermission() : 'unsupported'
@@ -112,9 +113,14 @@ export function usePgSyncQueueMonitor(options: Options) {
     try {
       const res = await fetch('/api/pg-sync/status', { cache: 'no-store' })
       const json = (await res.json()) as PgSyncStatusPayload
-      if (res.ok) applyStatusPayload(json)
+      if (res.ok && json.status) {
+        setServiceAvailable(true)
+        applyStatusPayload(json)
+      } else {
+        setServiceAvailable(false)
+      }
     } catch {
-      /* ignore transient errors */
+      setServiceAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -184,6 +190,7 @@ export function usePgSyncQueueMonitor(options: Options) {
   return {
     queueInfo,
     activeJob,
+    serviceAvailable,
     loading,
     notifyPermission,
     enableNotifications,
