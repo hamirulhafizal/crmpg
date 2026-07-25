@@ -1,6 +1,8 @@
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
-import { isPgSyncJobActive } from '@/app/lib/pg-sync/active-job'
+import { isJobListedOnWorker, isPgSyncJobActive } from '@/app/lib/pg-sync/active-job'
+import { PgSyncApiError, pgSyncFetch } from '@/app/lib/pg-sync/server-client'
 import type { PgSyncJobStatus, PgSyncJobView, PgSyncProgress } from '@/app/lib/pg-sync/types'
+import type { PgSyncServiceStatus } from '@/app/lib/pg-sync/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type PgSyncJobRecord = {
@@ -334,11 +336,72 @@ export async function markPgSyncJobCancelled(
     .eq('worker_job_id', workerJobId)
 }
 
-export function resolveActiveJobId(
-  workerStatusActiveId: string | null,
-  dbJob: PgSyncJobRecord | null
-): string | null {
-  if (workerStatusActiveId) return workerStatusActiveId
-  if (dbJob && isPgSyncJobActive(dbJob.status)) return dbJob.worker_job_id
-  return null
+export async function markPgSyncJobLost(
+  supabase: SupabaseClient,
+  userId: string,
+  workerJobId: string,
+  reason: string
+): Promise<void> {
+  const now = new Date().toISOString()
+  await supabase
+    .from('pg_sync_jobs')
+    .update({
+      status: 'failed',
+      error_message: reason,
+      completed_at: now,
+    })
+    .eq('user_id', userId)
+    .eq('worker_job_id', workerJobId)
+    .in('status', ACTIVE_STATUSES)
+}
+
+/** Clear Supabase rows that claim to be active but the worker no longer has. */
+export async function reconcileStalePgSyncJob(
+  supabase: SupabaseClient,
+  userId: string,
+  dbJob: PgSyncJobRecord,
+  workerStatus: PgSyncServiceStatus,
+  workerActiveJobId: string | null
+): Promise<{ dbJob: PgSyncJobRecord | null; liveJob: PgSyncJobView | null }> {
+  if (!isPgSyncJobActive(dbJob.status)) {
+    return { dbJob, liveJob: null }
+  }
+  if (workerActiveJobId === dbJob.worker_job_id) {
+    return { dbJob, liveJob: null }
+  }
+  if (isJobListedOnWorker(workerStatus, dbJob.worker_job_id)) {
+    return { dbJob, liveJob: null }
+  }
+
+  try {
+    const remote = await pgSyncFetch<PgSyncJobView>(
+      `/v1/jobs/${encodeURIComponent(dbJob.worker_job_id)}`
+    )
+    const sameDealer =
+      remote.pg_code?.trim().toUpperCase() === dbJob.pg_code.trim().toUpperCase()
+    if (sameDealer && isPgSyncJobActive(remote.status)) {
+      await syncPgSyncJobFromView(userId, remote)
+      return { dbJob, liveJob: remote }
+    }
+    if (sameDealer) {
+      await syncPgSyncJobFromView(userId, remote)
+      return { dbJob: null, liveJob: null }
+    }
+  } catch (e) {
+    if (!(e instanceof PgSyncApiError) || e.status !== 404) {
+      return { dbJob, liveJob: null }
+    }
+  }
+
+  await markPgSyncJobLost(
+    supabase,
+    userId,
+    dbJob.worker_job_id,
+    'Sync session ended on the worker. Start a new sync to continue.'
+  )
+  return { dbJob: null, liveJob: null }
+}
+
+export function resolveActiveJobId(workerStatusActiveId: string | null): string | null {
+  return workerStatusActiveId
 }

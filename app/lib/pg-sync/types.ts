@@ -41,6 +41,10 @@ export type PgSyncJobView = {
   url?: string
   last_goal?: string
   last_action?: string
+  /** Browser Use Cloud / noVNC URL to watch automation live. */
+  browser_live_url?: string | null
+  /** Latest viewport snapshot (`data:image/...;base64,...`). */
+  screenshot_base64?: string | null
   sync_progress?: PgSyncProgress
   log?: PgSyncLogEntry[]
   final?: string | null
@@ -48,6 +52,30 @@ export type PgSyncJobView = {
   created_at?: string
   started_at?: string | null
   finished_at?: string | null
+}
+
+export type PgSyncWebhookEvent = {
+  event: string
+  job_id: string
+  timestamp: string
+  pg_code?: string
+  status?: string
+  step?: number
+  max_steps?: number
+  url?: string
+  last_goal?: string
+  last_action?: string
+  browser_live_url?: string | null
+  screenshot_base64?: string | null
+  sync_progress?: PgSyncProgress | Record<string, unknown> | null
+  final?: string | null
+  error?: string | null
+  message?: string | null
+}
+
+export type PgSyncJobEventsView = {
+  job_id: string
+  events: PgSyncWebhookEvent[]
 }
 
 export type PgSyncServiceStatus = {

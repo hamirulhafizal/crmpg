@@ -100,10 +100,9 @@ export function usePgSyncQueueMonitor(options: Options) {
       }
     } else {
       lastJobStatusRef.current = null
-      const stored = readStoredPgSyncJob()
-      if (!stored || stored.pgCode.toUpperCase() !== json.pg_code.toUpperCase()) {
-        onActiveChangeRef.current?.(false)
-      }
+      clearStoredPgSyncJob()
+      setActiveJob(null)
+      onActiveChangeRef.current?.(false)
     }
   }, [autoOpenOnActive])
 
@@ -136,8 +135,16 @@ export function usePgSyncQueueMonitor(options: Options) {
         const res = await fetch(`/api/pg-sync/jobs/${encodeURIComponent(activeJob.id)}`, {
           cache: 'no-store',
         })
-        const json = (await res.json()) as { ok?: boolean; job?: PgSyncJobView }
-        if (!res.ok || !json.job) return
+        const json = (await res.json()) as { ok?: boolean; job?: PgSyncJobView; stale?: boolean }
+        if (!res.ok || !json.job) {
+          if (res.status === 404 || json.stale) {
+            clearStoredPgSyncJob()
+            setActiveJob(null)
+            onActiveChangeRef.current?.(false)
+            void refresh()
+          }
+          return
+        }
 
         const prev = lastJobStatusRef.current
         if (prev !== json.job.status) {

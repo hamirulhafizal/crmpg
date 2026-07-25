@@ -21,16 +21,15 @@ export function resolveActiveJobIdForPgCode(
     return queued.job_id
   }
 
-  if (
-    status.last_job_pg_code?.trim().toUpperCase() === want &&
-    status.last_job_id &&
-    status.last_job_status &&
-    isPgSyncJobActive(status.last_job_status)
-  ) {
-    return status.last_job_id
-  }
-
   return null
+}
+
+export function isJobListedOnWorker(
+  status: PgSyncServiceStatus,
+  workerJobId: string
+): boolean {
+  if (status.current_job_id === workerJobId) return true
+  return status.queue.some((q) => q.job_id === workerJobId)
 }
 
 export const PG_SYNC_JOB_STORAGE_KEY = 'crmpg_pg_sync_active_job'

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
-import { markPgSyncJobCancelled, syncPgSyncJobFromView } from '@/app/lib/pg-sync/jobs-db'
-import { pgSyncFetch } from '@/app/lib/pg-sync/server-client'
+import { PgSyncApiError, pgSyncFetch } from '@/app/lib/pg-sync/server-client'
+import { markPgSyncJobLost, syncPgSyncJobFromView } from '@/app/lib/pg-sync/jobs-db'
 import type { PgSyncJobView } from '@/app/lib/pg-sync/types'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +28,15 @@ export async function GET(request: Request, ctx: Ctx) {
     await syncPgSyncJobFromView(auth.session.userId, job)
     return NextResponse.json({ ok: true, job })
   } catch (e: unknown) {
+    if (e instanceof PgSyncApiError && e.status === 404) {
+      await markPgSyncJobLost(
+        auth.supabase,
+        auth.session.userId,
+        id,
+        'Sync session ended on the worker. Start a new sync to continue.'
+      )
+      return NextResponse.json({ error: 'Job not found', stale: true }, { status: 404 })
+    }
     const msg = e instanceof Error ? e.message : 'Failed to fetch job'
     return NextResponse.json({ error: msg }, { status: 502 })
   }

@@ -9,7 +9,15 @@ import {
 } from '@/app/lib/pg-sync/active-job'
 import { notifyForJobStatusTransition } from '@/app/lib/pg-sync/notifications'
 import type { PgSyncQueueInfo } from '@/app/lib/pg-sync/queue-info'
+import {
+  buildPgSyncActivityLog,
+  buildPgSyncLiveSnapshot,
+  buildPgSyncUiSteps,
+} from '@/app/lib/pg-sync/step-ui'
 import type { PgSyncJobView, PgSyncJobStatus, PgSyncServiceStatus } from '@/app/lib/pg-sync/types'
+import { PgSyncLiveSnapshotCard, PgSyncStepTimeline } from '@/app/customers/_components/PgSyncStepTimeline'
+import { PgSyncBrowserPreview } from '@/app/customers/_components/PgSyncBrowserPreview'
+import { usePgSyncBrowserSnapshots } from '@/app/customers/_components/usePgSyncBrowserSnapshots'
 
 type Props = {
   open: boolean
@@ -61,23 +69,6 @@ function phaseFromStatus(status: PgSyncJobStatus): Phase {
     default:
       return 'running'
   }
-}
-
-function statusHeadline(status: PgSyncJobStatus, queuePosition?: number | null): string {
-  if (status === 'queued') {
-    if (queuePosition != null && queuePosition > 1) {
-      return `You are in line (position ${queuePosition})`
-    }
-    return 'You are in line'
-  }
-  if (status === 'awaiting_tac') return 'Enter SMS TAC code'
-  if (status === 'awaiting_captcha') return 'Complete CAPTCHA in PG Mall'
-  if (status === 'syncing') return 'Syncing customers…'
-  if (status === 'running') return 'Connecting to PG Business Center…'
-  if (status === 'completed') return 'Sync completed'
-  if (status === 'failed') return 'Sync failed'
-  if (status === 'cancelled') return 'Sync cancelled'
-  return 'Sync in progress'
 }
 
 function isTerminalStatus(status: PgSyncJobStatus): boolean {
@@ -284,9 +275,22 @@ export function PgBusinessCenterSyncModal({
   const pollJob = useCallback(
     async (id: string, code: string) => {
       const res = await fetch(`/api/pg-sync/jobs/${encodeURIComponent(id)}`, { cache: 'no-store' })
-      const json = (await res.json()) as { ok?: boolean; job?: PgSyncJobView; error?: string }
+      const json = (await res.json()) as {
+        ok?: boolean
+        job?: PgSyncJobView
+        error?: string
+        stale?: boolean
+      }
       if (!res.ok || !json.job) {
-        if (res.status === 404) clearStoredPgSyncJob()
+        if (res.status === 404 || json.stale) {
+          clearStoredPgSyncJob()
+          setJob(null)
+          setJobId(null)
+          setPhase('form')
+          onActiveChangeRef.current?.(false)
+          stopPolling()
+          setError('Previous sync ended on the worker. Start a new sync.')
+        }
         throw new Error(json.error || 'Unable to fetch sync progress')
       }
       applyJob(json.job, code)
@@ -310,16 +314,12 @@ export function PgBusinessCenterSyncModal({
   const resumeActiveJob = useCallback(
     async (statusJson: StatusResponse) => {
       const code = statusJson.pg_code ?? ''
-      let resumeId = statusJson.active_job_id ?? null
+      const resumeId = statusJson.active_job_id ?? null
 
       if (!resumeId) {
-        const stored = readStoredPgSyncJob()
-        if (stored && stored.pgCode.toUpperCase() === code.toUpperCase()) {
-          resumeId = stored.jobId
-        }
+        clearStoredPgSyncJob()
+        return false
       }
-
-      if (!resumeId) return false
 
       const nextJob = statusJson.active_job ?? null
       if (nextJob) {
@@ -334,9 +334,17 @@ export function PgBusinessCenterSyncModal({
         const res = await fetch(`/api/pg-sync/jobs/${encodeURIComponent(resumeId)}`, {
           cache: 'no-store',
         })
-        const json = (await res.json()) as { ok?: boolean; job?: PgSyncJobView; error?: string }
+        const json = (await res.json()) as {
+          ok?: boolean
+          job?: PgSyncJobView
+          error?: string
+          stale?: boolean
+        }
         if (!res.ok || !json.job) {
           clearStoredPgSyncJob()
+          if (json.stale) {
+            setError('Previous sync ended on the worker. Start a new sync.')
+          }
           return false
         }
         applyJob(json.job, code)
@@ -463,10 +471,15 @@ export function PgBusinessCenterSyncModal({
 
   const progress = job?.sync_progress
   const pct = Math.min(100, Math.max(0, Number(progress?.pct ?? 0)))
-  const queuePosition = job?.queue_position ?? null
+  const showProgress = phase !== 'form' && (job || loading)
+  const liveSnapshot = job ? buildPgSyncLiveSnapshot(job) : null
+  const uiSteps = job ? buildPgSyncUiSteps(job) : []
+  const activityLog = job ? buildPgSyncActivityLog(job) : []
+  const showLiveSnapshot = Boolean(job && !isTerminalStatus(job.status))
+  const browserSnapshots = usePgSyncBrowserSnapshots(job, jobId, showProgress && Boolean(job))
+  const hasBrowserView = Boolean(browserSnapshots.liveSrc || browserSnapshots.steps.length > 0)
 
   const canStart = Boolean(pgCode && pgPassword && crmpgPassword && !jobId)
-  const showProgress = phase !== 'form' && (job || loading)
   const isMobileSheet = useMobileSheetViewport()
   useBodyScrollLock(open)
 
@@ -493,7 +506,9 @@ export function PgBusinessCenterSyncModal({
             onClick={handleClose}
           />
           <motion.div
-            className="relative w-full max-w-lg overflow-hidden rounded-t-2xl bg-white shadow-2xl ring-1 ring-slate-200 sm:rounded-2xl pb-[env(safe-area-inset-bottom,0px)]"
+            className={`relative w-full overflow-hidden rounded-t-2xl bg-white shadow-2xl ring-1 ring-slate-200 sm:rounded-2xl pb-[env(safe-area-inset-bottom,0px)] ${
+              showProgress && job ? 'max-w-xl' : 'max-w-lg'
+            }`}
             initial={isMobileSheet ? { y: '100%' } : { opacity: 0, y: 24, scale: 0.98 }}
             animate={isMobileSheet ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
             exit={isMobileSheet ? { y: '100%' } : { opacity: 0, y: 16, scale: 0.98 }}
@@ -513,7 +528,7 @@ export function PgBusinessCenterSyncModal({
               </p>
             </div>
 
-            <div className="max-h-[min(70vh,520px)] overflow-y-auto px-5 py-4 space-y-4">
+            <div className="max-h-[min(75vh,580px)] overflow-y-auto px-5 py-4 space-y-4">
               {loading && phase === 'form' && !job ? (
                 <div className="flex items-center gap-2 text-sm text-slate-600">
                   <svg className="h-4 w-4 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">
@@ -579,21 +594,38 @@ export function PgBusinessCenterSyncModal({
               ) : null}
 
               {showProgress && job ? (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {statusHeadline(job.status, queuePosition)}
-                    </p>
-                    {phase === 'queued' ? (
-                      <p className="mt-2 text-sm text-slate-600">
-                        You are in line — we will update this screen when your queue is up. You can
-                        refresh the page; progress will resume here.
-                      </p>
-                    ) : null}
-                    {job.last_goal ? (
-                      <p className="mt-2 text-xs text-slate-500 truncate">{job.last_goal}</p>
-                    ) : null}
-                  </div>
+                <div className="space-y-4">
+                  <PgSyncBrowserPreview
+                    liveSrc={browserSnapshots.liveSrc}
+                    steps={browserSnapshots.steps}
+                    browserLiveUrl={browserSnapshots.browserLiveUrl}
+                    loading={browserSnapshots.loading && !hasBrowserView}
+                    headline={liveSnapshot?.headline ?? null}
+                  />
+
+                  {showLiveSnapshot && liveSnapshot && !hasBrowserView ? (
+                    <PgSyncLiveSnapshotCard
+                      headline={liveSnapshot.headline}
+                      detail={liveSnapshot.detail}
+                      stepLabel={liveSnapshot.stepLabel}
+                    />
+                  ) : null}
+
+                  {showLiveSnapshot && liveSnapshot && hasBrowserView ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                      <p className="text-sm font-semibold text-slate-900">{liveSnapshot.headline}</p>
+                      {liveSnapshot.detail ? (
+                        <p className="mt-1 text-xs text-slate-600">{liveSnapshot.detail}</p>
+                      ) : null}
+                      {liveSnapshot.stepLabel ? (
+                        <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-indigo-600/80">
+                          {liveSnapshot.stepLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <PgSyncStepTimeline steps={uiSteps} activity={activityLog} />
 
                   {(phase === 'running' || phase === 'queued' || job.status === 'syncing') &&
                   progress?.total_rows ? (
@@ -726,12 +758,7 @@ export async function fetchPgSyncActiveJobId(): Promise<string | null> {
     const res = await fetch('/api/pg-sync/status', { cache: 'no-store' })
     const json = (await res.json()) as StatusResponse
     if (!res.ok) return null
-    if (json.active_job_id) return json.active_job_id
-    const stored = readStoredPgSyncJob()
-    if (stored && stored.pgCode.toUpperCase() === (json.pg_code ?? '').toUpperCase()) {
-      return stored.jobId
-    }
-    return null
+    return json.active_job_id ?? null
   } catch {
     return null
   }

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requirePgSyncSession } from '@/app/lib/pg-sync/auth'
-import { resolveActiveJobIdForPgCode } from '@/app/lib/pg-sync/active-job'
+import { isPgSyncJobActive, resolveActiveJobIdForPgCode } from '@/app/lib/pg-sync/active-job'
 import { buildQueueInfo } from '@/app/lib/pg-sync/queue-info'
 import {
   getActivePgSyncJobForUser,
+  reconcileStalePgSyncJob,
   resolveActiveJobId,
   syncPgSyncJobFromView,
 } from '@/app/lib/pg-sync/jobs-db'
@@ -12,6 +13,8 @@ import type { PgSyncJobView, PgSyncServiceStatus } from '@/app/lib/pg-sync/types
 
 export const dynamic = 'force-dynamic'
 
+const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
+
 export async function GET(request: Request) {
   const auth = await requirePgSyncSession(request)
   if (!auth.ok) {
@@ -19,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const dbJob = await getActivePgSyncJobForUser(auth.supabase, auth.session.userId)
+    let dbJob = await getActivePgSyncJobForUser(auth.supabase, auth.session.userId)
 
     const status = await pgSyncFetch<PgSyncServiceStatus>('/v1/status')
     const myQueueEntry = status.queue.find(
@@ -27,10 +30,25 @@ export async function GET(request: Request) {
     )
 
     const workerActiveJobId = resolveActiveJobIdForPgCode(status, auth.session.pgCode)
-    let activeJobId = resolveActiveJobId(workerActiveJobId, dbJob)
-    let activeJob: PgSyncJobView | null = null
+    let reconciledLiveJob: PgSyncJobView | null = null
 
-    if (activeJobId) {
+    if (dbJob) {
+      const reconciled = await reconcileStalePgSyncJob(
+        auth.supabase,
+        auth.session.userId,
+        dbJob,
+        status,
+        workerActiveJobId
+      )
+      dbJob = reconciled.dbJob
+      reconciledLiveJob = reconciled.liveJob
+    }
+
+    let activeJobId = resolveActiveJobId(workerActiveJobId)
+    let activeJob: PgSyncJobView | null = reconciledLiveJob
+    if (activeJob) activeJobId = activeJob.id
+
+    if (activeJobId && !activeJob) {
       try {
         activeJob = await pgSyncFetch<PgSyncJobView>(
           `/v1/jobs/${encodeURIComponent(activeJobId)}`
@@ -40,21 +58,14 @@ export async function GET(request: Request) {
           activeJob = null
         } else {
           await syncPgSyncJobFromView(auth.session.userId, activeJob)
+          if (TERMINAL.has(activeJob.status)) {
+            activeJobId = null
+            activeJob = null
+          }
         }
       } catch {
-        activeJobId = dbJob?.worker_job_id ?? null
+        activeJobId = null
         activeJob = null
-      }
-    }
-
-    if (!activeJob && dbJob && activeJobId === dbJob.worker_job_id) {
-      activeJob = {
-        id: dbJob.worker_job_id,
-        status: dbJob.status,
-        pg_code: dbJob.pg_code,
-        queue_position: dbJob.queue_position,
-        sync_progress: dbJob.progress,
-        error: dbJob.error_message,
       }
     }
 
@@ -75,7 +86,7 @@ export async function GET(request: Request) {
         status.current_pg_code?.toUpperCase() === auth.session.pgCode,
       active_job_id: activeJobId,
       active_job: activeJob,
-      db_job: dbJob,
+      db_job: dbJob && isPgSyncJobActive(dbJob.status) ? dbJob : null,
       queue_info,
     })
   } catch (e: unknown) {
