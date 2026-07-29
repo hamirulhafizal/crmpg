@@ -33,6 +33,7 @@ import {
 } from '@/app/lib/campaigns/step-send-dedup'
 import { campaignTriggerAllowsRunNow, getTriggerRunScheduleFromPlan, triggerScheduleDisplayLabel } from '@/app/lib/campaigns/trigger-schedule'
 import { sendCampaignEmailFallback, type GmailFallbackCustomer } from '@/app/lib/campaigns/gmail-fallback'
+import { shouldUseGmailFallbackAfterWhatsAppError } from '@/app/lib/campaigns/gmail-fallback-policy'
 import { CAMPAIGN_IMAGE_SEND_VERSION, sendCampaignImageStep } from '@/app/lib/campaigns/image-step/send'
 import { sendCampaignWhatsAppText } from '@/app/lib/campaigns/send-waha'
 import {
@@ -213,6 +214,8 @@ type WhatsAppSessionPick = {
   sessionName: string
   provider: 'waha' | 'wasender'
   ready: boolean
+  /** Live provider status was fetched successfully this cron run. */
+  liveStatusVerified?: boolean
   reason?: string
 }
 
@@ -277,9 +280,12 @@ async function pickWhatsAppSession(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       cronLog(debugLines, `wasender live status check failed user=${userId}: ${msg}`)
-      // If we have a session key, attempt send — Wasender will reject if truly disconnected.
-      if (sessionRow.session_api_key?.trim()) {
-        return { sessionName: pick.session_name, provider, ready: true }
+      return {
+        sessionName: pick.session_name,
+        provider,
+        ready: false,
+        liveStatusVerified: false,
+        reason: `WhatsApp service unreachable (${msg}). Check Integration settings.`,
       }
     }
 
@@ -288,6 +294,7 @@ async function pickWhatsAppSession(
         sessionName: pick.session_name,
         provider,
         ready: false,
+        liveStatusVerified: true,
         reason: `WhatsApp session not connected (${liveStatus}). Scan QR in Integration settings.`,
       }
     }
@@ -305,6 +312,13 @@ async function pickWhatsAppSession(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       cronLog(debugLines, `waha live status check failed user=${userId}: ${msg}`)
+      return {
+        sessionName: pick.session_name,
+        provider,
+        ready: false,
+        liveStatusVerified: false,
+        reason: `WhatsApp service unreachable (${msg}). Check Integration settings.`,
+      }
     }
 
     if (!isWorkingWhatsAppSessionStatus(liveStatus)) {
@@ -312,12 +326,13 @@ async function pickWhatsAppSession(
         sessionName: pick.session_name,
         provider,
         ready: false,
+        liveStatusVerified: true,
         reason: `WhatsApp session not connected (${liveStatus || 'unknown'}). Scan QR in Integration settings.`,
       }
     }
   }
 
-  return { sessionName: pick.session_name, provider, ready: true }
+  return { sessionName: pick.session_name, provider, ready: true, liveStatusVerified: true }
 }
 
 function startOfUtcDay(d: Date): Date {
@@ -499,12 +514,19 @@ async function advanceEnrollmentPastAbandonedStep(params: {
 async function markCampaignLogSent(
   supabase: ReturnType<typeof createServiceRoleClient>,
   logId: string,
-  sentAt: string
+  sentAt: string,
+  meta?: { deliveryChannel?: 'whatsapp' | 'email_fallback'; whatsappError?: string | null }
 ): Promise<void> {
-  const { error } = await supabase
-    .from('campaign_message_logs')
-    .update({ send_status: 'sent', sent_at: sentAt, error_message: null })
-    .eq('id', logId)
+  const patch: Record<string, unknown> = { send_status: 'sent', sent_at: sentAt, error_message: null }
+  if (meta?.deliveryChannel === 'email_fallback') {
+    patch.waha_response = {
+      delivery_channel: 'email_fallback',
+      whatsapp_error: meta.whatsappError ?? null,
+    }
+  } else if (meta?.deliveryChannel === 'whatsapp') {
+    patch.waha_response = { delivery_channel: 'whatsapp' }
+  }
+  const { error } = await supabase.from('campaign_message_logs').update(patch).eq('id', logId)
   if (error) throw new Error(error.message)
 }
 
@@ -1489,6 +1511,7 @@ async function processDueEnrollmentRows(
 
     const sendCtx = whatsAppSendLogContext(campaign, row.id, label, nextStep.step_order)
     let whatsAppDelivered = false
+    let lastWhatsAppError: string | null = null
 
     try {
       try {
@@ -1520,6 +1543,7 @@ async function processDueEnrollmentRows(
         }
       } catch (waErr) {
         const waMsg = waErr instanceof Error ? waErr.message : String(waErr)
+        lastWhatsAppError = waMsg
         cronLog(
           debugLines,
           `whatsapp send error ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} provider=${sessionPick.provider} session=${session} error=${waMsg}`
@@ -1530,7 +1554,13 @@ async function processDueEnrollmentRows(
           session,
           error: waMsg,
         })
-        if (!isImageStep && sendOpts.gmail_fallback_enabled && isValidCampaignPhone(customer.phone)) {
+        if (
+          !isImageStep &&
+          sendOpts.gmail_fallback_enabled &&
+          isValidCampaignPhone(customer.phone) &&
+          sessionPick.liveStatusVerified !== false &&
+          shouldUseGmailFallbackAfterWhatsAppError(waErr)
+        ) {
           const emailOk = await sendCampaignEmailFallback(
             campaign.user_id,
             customer as GmailFallbackCustomer,
@@ -1552,6 +1582,18 @@ async function processDueEnrollmentRows(
             throw waErr
           }
         } else {
+          if (!isImageStep && sendOpts.gmail_fallback_enabled) {
+            const reason =
+              sessionPick.liveStatusVerified === false
+                ? 'WhatsApp live status not verified'
+                : !shouldUseGmailFallbackAfterWhatsAppError(waErr)
+                  ? 'WhatsApp connection/session error (not a recipient-only failure)'
+                  : 'Gmail fallback not sent'
+            cronLog(
+              debugLines,
+              `gmail fallback skipped (${reason}) ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} error=${waMsg}`
+            )
+          }
           throw waErr
         }
       }
@@ -1559,7 +1601,10 @@ async function processDueEnrollmentRows(
       whatsAppDelivered = true
 
       const sentAt = new Date().toISOString()
-      await markCampaignLogSent(supabase, logInsert.id, sentAt)
+      await markCampaignLogSent(supabase, logInsert.id, sentAt, {
+        deliveryChannel,
+        whatsappError: deliveryChannel === 'email_fallback' ? lastWhatsAppError : null,
+      })
 
       try {
         await recordCampaignFollowUpActivity(supabase, {
@@ -1623,7 +1668,7 @@ async function processDueEnrollmentRows(
           `post-send bookkeeping failed after WhatsApp delivery ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id}: ${msg} — advancing without retry`
         )
         try {
-          await markCampaignLogSent(supabase, logInsert.id, sentAt)
+          await markCampaignLogSent(supabase, logInsert.id, sentAt, { deliveryChannel: 'whatsapp' })
           await advanceEnrollmentAfterSuccessfulStep({
             supabase,
             row,
