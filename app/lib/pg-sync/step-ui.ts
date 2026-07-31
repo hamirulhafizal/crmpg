@@ -68,6 +68,7 @@ function progressDetailText(
 
   const phase = (progress?.phase ?? '').trim().toLowerCase()
   if (!phase || phase === 'idle') return null
+  if (phase === 'verifying_tac') return 'Verifying SMS code with PG Mall…'
   if (status === 'syncing' || progress?.active) {
     return humanizeWorkerText(progress?.phase)
   }
@@ -110,8 +111,15 @@ export function buildPgSyncLiveSnapshot(job: PgSyncJobView): PgSyncLiveSnapshot 
           : 'Writing customers into CRMPG…')
       break
     case 'running':
-      headline = 'Connecting to PG Business Center'
-      detail = detail ?? 'Logging in and preparing your customer export…'
+      headline =
+        progress?.phase === 'verifying_tac'
+          ? 'Verifying SMS code'
+          : 'Connecting to PG Business Center'
+      detail =
+        detail ??
+        (progress?.phase === 'verifying_tac'
+          ? 'Signing in to PG Mall with your code…'
+          : 'Logging in and preparing your customer export…')
       break
     case 'completed':
       headline = 'Sync completed'

@@ -42,6 +42,18 @@ type StatusResponse = {
   error?: string
 }
 
+function tacResubmitMessage(job: PgSyncJobView): string {
+  const msg =
+    job.sync_progress?.message?.trim() ||
+    job.last_action?.trim() ||
+    job.error?.trim() ||
+    ''
+  if (msg && /tac|resubmit|failed|pengesahan|sahkan|verify/i.test(msg)) {
+    return msg
+  }
+  return 'TAC was not accepted on PG Mall. Enter a fresh code and try again.'
+}
+
 function queuePanelClass(readiness: PgSyncQueueInfo['readiness']): string {
   if (readiness === 'ready') return 'border-green-200 bg-green-50 text-green-900'
   if (readiness === 'my_tac' || readiness === 'my_captcha') {
@@ -213,8 +225,13 @@ export function PgBusinessCenterSyncModal({
   const [loading, setLoading] = useState(false)
   const [submittingTac, setSubmittingTac] = useState(false)
   const [submittingCaptcha, setSubmittingCaptcha] = useState(false)
+  const [tacVerifying, setTacVerifying] = useState(false)
+  const [tacStatusMessage, setTacStatusMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fastPollUntilRef = useRef(0)
+  const tacVerifyingRef = useRef(false)
+  const tacSubmittedRef = useRef(false)
   const completedRef = useRef(false)
   const lastJobStatusRef = useRef<PgSyncJobStatus | null>(null)
   const onActiveChangeRef = useRef(onActiveChange)
@@ -224,9 +241,14 @@ export function PgBusinessCenterSyncModal({
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
-      clearInterval(pollRef.current)
+      clearTimeout(pollRef.current)
       pollRef.current = null
     }
+  }, [])
+
+  const syncTacVerifying = useCallback((value: boolean) => {
+    tacVerifyingRef.current = value
+    setTacVerifying(value)
   }, [])
 
   const refreshStatus = useCallback(async (): Promise<StatusResponse> => {
@@ -254,7 +276,30 @@ export function PgBusinessCenterSyncModal({
 
       setJob(next)
       setJobId(next.id)
-      setPhase(phaseFromStatus(next.status))
+
+      // Worker accepts TAC via TacBridge then verifies async; may return to awaiting_tac on failure.
+      const workerWantsTacAgain =
+        next.status === 'awaiting_tac' &&
+        tacSubmittedRef.current &&
+        prev != null &&
+        prev !== 'awaiting_tac' &&
+        prev !== 'queued'
+
+      if (workerWantsTacAgain) {
+        tacSubmittedRef.current = false
+        syncTacVerifying(false)
+        setTacStatusMessage(null)
+        setPhase('tac')
+        setError(tacResubmitMessage(next))
+      } else if (next.status === 'awaiting_tac') {
+        setPhase(tacVerifyingRef.current ? 'running' : 'tac')
+      } else {
+        tacSubmittedRef.current = false
+        syncTacVerifying(false)
+        setTacStatusMessage(null)
+        setPhase(phaseFromStatus(next.status))
+      }
+
       writeStoredPgSyncJob(next.id, code)
 
       if (isTerminalStatus(next.status)) {
@@ -269,7 +314,7 @@ export function PgBusinessCenterSyncModal({
         onActiveChangeRef.current?.(true)
       }
     },
-    [onCompleted, stopPolling]
+    [onCompleted, stopPolling, syncTacVerifying]
   )
 
   const pollJob = useCallback(
@@ -299,14 +344,28 @@ export function PgBusinessCenterSyncModal({
   )
 
   const startPolling = useCallback(
-    (id: string, code: string) => {
+    (id: string, code: string, opts?: { fast?: boolean }) => {
       stopPolling()
-      void pollJob(id, code)
-      pollRef.current = setInterval(() => {
+      if (opts?.fast) {
+        fastPollUntilRef.current = Date.now() + 90_000
+      }
+
+      const tick = () => {
         void pollJob(id, code).catch((e: unknown) => {
           setError(e instanceof Error ? e.message : 'Sync poll failed')
         })
-      }, 2000)
+      }
+
+      tick()
+
+      const schedule = () => {
+        const delay = Date.now() < fastPollUntilRef.current ? 800 : 2000
+        pollRef.current = setTimeout(() => {
+          tick()
+          schedule()
+        }, delay)
+      }
+      schedule()
     },
     [pollJob, stopPolling]
   )
@@ -370,6 +429,9 @@ export function PgBusinessCenterSyncModal({
     setError(null)
     completedRef.current = false
     lastJobStatusRef.current = null
+    syncTacVerifying(false)
+    setTacStatusMessage(null)
+    tacSubmittedRef.current = false
 
     refreshStatus()
       .then(async (json) => {
@@ -429,18 +491,42 @@ export function PgBusinessCenterSyncModal({
     if (!jobId || !tac.trim()) return
     setSubmittingTac(true)
     setError(null)
+    const code = tac.trim()
     try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 20_000)
       const res = await fetch(`/api/pg-sync/jobs/${encodeURIComponent(jobId)}/tac`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tac: tac.trim() }),
+        body: JSON.stringify({ tac: code }),
+        signal: controller.signal,
       })
-      const json = (await res.json()) as { ok?: boolean; error?: string }
+      clearTimeout(timer)
+      const json = (await res.json()) as { ok?: boolean; error?: string; message?: string; pending?: boolean }
       if (!res.ok) throw new Error(json.error || 'TAC rejected')
+
       setTac('')
-      await pollJob(jobId, pgCode)
+      tacSubmittedRef.current = true
+      syncTacVerifying(true)
+      setPhase('running')
+      setTacStatusMessage(
+        json.message ??
+          (json.pending
+            ? 'TAC received — verifying with PG Mall. This may take a minute.'
+            : 'TAC submitted — signing in to PG Mall…')
+      )
+      startPolling(jobId, pgCode, { fast: true })
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to submit TAC')
+      if (e instanceof Error && e.name === 'AbortError') {
+        setTac('')
+        tacSubmittedRef.current = true
+        syncTacVerifying(true)
+        setPhase('running')
+        setTacStatusMessage('TAC submitted — still verifying with PG Mall…')
+        startPolling(jobId, pgCode, { fast: true })
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to submit TAC')
+      }
     } finally {
       setSubmittingTac(false)
     }
@@ -454,9 +540,11 @@ export function PgBusinessCenterSyncModal({
       const res = await fetch(`/api/pg-sync/jobs/${encodeURIComponent(jobId)}/captcha-done`, {
         method: 'POST',
       })
-      const json = (await res.json()) as { ok?: boolean; error?: string }
+      const json = (await res.json()) as { ok?: boolean; error?: string; message?: string }
       if (!res.ok) throw new Error(json.error || 'Could not confirm CAPTCHA')
-      await pollJob(jobId, pgCode)
+      setPhase('running')
+      if (json.message) setTacStatusMessage(json.message)
+      startPolling(jobId, pgCode, { fast: true })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to confirm CAPTCHA')
     } finally {
@@ -472,9 +560,23 @@ export function PgBusinessCenterSyncModal({
   const progress = job?.sync_progress
   const pct = Math.min(100, Math.max(0, Number(progress?.pct ?? 0)))
   const showProgress = phase !== 'form' && (job || loading)
-  const liveSnapshot = job ? buildPgSyncLiveSnapshot(job) : null
-  const uiSteps = job ? buildPgSyncUiSteps(job) : []
-  const activityLog = job ? buildPgSyncActivityLog(job) : []
+  const displayJob: PgSyncJobView | null =
+    job && tacVerifying && job.status === 'awaiting_tac'
+      ? {
+          ...job,
+          status: 'running',
+          last_action: 'Verifying SMS code with PG Mall',
+          sync_progress: {
+            ...(job.sync_progress ?? {}),
+            active: true,
+            phase: 'verifying_tac',
+            message: tacStatusMessage ?? 'Verifying SMS code…',
+          },
+        }
+      : job
+  const liveSnapshot = displayJob ? buildPgSyncLiveSnapshot(displayJob) : null
+  const uiSteps = displayJob ? buildPgSyncUiSteps(displayJob) : []
+  const activityLog = displayJob ? buildPgSyncActivityLog(displayJob) : []
   const showLiveSnapshot = Boolean(job && !isTerminalStatus(job.status))
   const browserSnapshots = usePgSyncBrowserSnapshots(job, jobId, showProgress && Boolean(job))
   const hasBrowserView = Boolean(browserSnapshots.liveSrc || browserSnapshots.steps.length > 0)
@@ -658,7 +760,7 @@ export function PgBusinessCenterSyncModal({
                     </div>
                   ) : null}
 
-                  {phase === 'tac' ? (
+                  {phase === 'tac' && !tacVerifying ? (
                     <div className="space-y-3">
                       <p className="text-sm text-slate-600">
                         Enter the SMS TAC sent to your registered phone for PG Mall login.
@@ -669,6 +771,11 @@ export function PgBusinessCenterSyncModal({
                         maxLength={12}
                         value={tac}
                         onChange={(e) => setTac(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && tac.trim() && !submittingTac) {
+                            void handleSubmitTac()
+                          }
+                        }}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-lg tracking-widest text-center font-mono focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         placeholder="123456"
                       />
@@ -680,6 +787,26 @@ export function PgBusinessCenterSyncModal({
                       >
                         {submittingTac ? 'Submitting…' : 'Submit TAC'}
                       </button>
+                    </div>
+                  ) : null}
+
+                  {tacVerifying ? (
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+                      <div className="flex items-center gap-2">
+                        <svg className="h-4 w-4 shrink-0 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        <p className="font-medium">Verifying SMS code</p>
+                      </div>
+                      <p className="mt-2 text-indigo-800/90">
+                        {tacStatusMessage ??
+                          'Signing in to PG Mall. This can take up to a minute — you can run in background.'}
+                      </p>
                     </div>
                   ) : null}
 

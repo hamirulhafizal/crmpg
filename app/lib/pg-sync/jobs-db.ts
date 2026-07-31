@@ -222,6 +222,25 @@ export function buildPgSyncJobPatchFromView(job: PgSyncJobView): {
   return patch
 }
 
+/** Optimistic state after TAC POST — worker may still be verifying for minutes. */
+export async function markPgSyncJobTacSubmitted(userId: string, workerJobId: string): Promise<void> {
+  const admin = createServiceRoleClient()
+  await admin
+    .from('pg_sync_jobs')
+    .update({
+      status: 'running',
+      progress: {
+        active: true,
+        phase: 'verifying_tac',
+        message: 'Verifying SMS code…',
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('worker_job_id', workerJobId)
+    .eq('user_id', userId)
+    .in('status', ['awaiting_tac', 'running'])
+}
+
 export async function syncPgSyncJobFromView(
   userId: string,
   job: PgSyncJobView
