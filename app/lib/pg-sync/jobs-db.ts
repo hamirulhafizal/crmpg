@@ -50,6 +50,7 @@ export type PgSyncWebhookPayload = {
   sync_progress?: PgSyncProgress | Record<string, unknown> | null
   error?: string | null
   message?: string | null
+  tac_filled?: boolean
 }
 
 function normalizePg(code: string): string {
@@ -200,10 +201,15 @@ export function buildPgSyncJobPatchFromView(job: PgSyncJobView): {
   started_at?: string | null
   completed_at?: string | null
 } {
+  const progress: PgSyncProgress = { ...(job.sync_progress ?? {}) }
+  if (job.tac_filled != null) {
+    progress.tac_filled = job.tac_filled
+  }
+
   const patch = {
     status: job.status,
     queue_position: job.queue_position ?? null,
-    progress: job.sync_progress ?? {},
+    progress,
     error_message: job.error ?? null,
   }
 
@@ -233,6 +239,7 @@ export async function markPgSyncJobTacSubmitted(userId: string, workerJobId: str
         active: true,
         phase: 'verifying_tac',
         message: 'Verifying SMS code…',
+        tac_filled: true,
       },
       updated_at: new Date().toISOString(),
     })
@@ -320,8 +327,35 @@ export async function applyPgSyncWebhook(payload: PgSyncWebhookPayload): Promise
 
   if (nextStatus) patch.status = nextStatus
   if (payload.pg_code) patch.pg_code = normalizePg(payload.pg_code)
-  if (payload.sync_progress && typeof payload.sync_progress === 'object') {
+  const rowProgress = (row.progress as PgSyncProgress) ?? {}
+
+  if (event === 'job.tac_filled' || payload.tac_filled === true) {
+    patch.progress = {
+      ...rowProgress,
+      ...(payload.sync_progress && typeof payload.sync_progress === 'object'
+        ? (payload.sync_progress as PgSyncProgress)
+        : {}),
+      tac_filled: true,
+      active: true,
+      phase: 'verifying_tac',
+      message:
+        payload.message ??
+        rowProgress.message ??
+        'Verifying SMS code…',
+    }
+  } else if (payload.sync_progress && typeof payload.sync_progress === 'object') {
     patch.progress = payload.sync_progress
+  }
+
+  if (
+    (event === 'job.awaiting_tac' || nextStatus === 'awaiting_tac') &&
+    payload.tac_filled === false
+  ) {
+    patch.progress = {
+      ...rowProgress,
+      ...((patch.progress as PgSyncProgress | undefined) ?? {}),
+      tac_filled: false,
+    }
   }
   if (payload.error) patch.error_message = payload.error
   else if (payload.message && (nextStatus === 'failed' || event === 'job.failed')) {

@@ -52,6 +52,7 @@ export function buildQueueInfo(params: {
   myPgCode: string
   myQueuePosition?: number | null
   myJobStatus?: PgSyncJobStatus | null
+  myJobTacFilled?: boolean | null
 }): PgSyncQueueInfo {
   const myPg = normalizePg(params.myPgCode)
   const currentPg = normalizePg(params.status.current_pg_code)
@@ -63,6 +64,20 @@ export function buildQueueInfo(params: {
   const isMyTurn = workerBusy && currentPg === myPg
 
   if (myJobStatus === 'awaiting_tac') {
+    if (params.myJobTacFilled) {
+      return {
+        readiness: 'my_running',
+        worker_busy: workerBusy,
+        current_pg_code: params.status.current_pg_code ?? null,
+        global_queue_count: globalQueue,
+        my_queue_position: myQueuePosition,
+        positions_ahead: 0,
+        estimated_wait_min: 0,
+        estimated_wait_max: 0,
+        badge_label: 'Verifying TAC',
+        form_hint: 'SMS code submitted — signing in to PG Mall.',
+      }
+    }
     return {
       readiness: 'my_tac',
       worker_busy: workerBusy,

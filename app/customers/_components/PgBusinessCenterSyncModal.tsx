@@ -13,6 +13,8 @@ import {
   buildPgSyncActivityLog,
   buildPgSyncLiveSnapshot,
   buildPgSyncUiSteps,
+  isPgSyncTacInputRequired,
+  isPgSyncTacVerifying,
 } from '@/app/lib/pg-sync/step-ui'
 import type { PgSyncJobView, PgSyncJobStatus, PgSyncServiceStatus } from '@/app/lib/pg-sync/types'
 import { PgSyncLiveSnapshotCard, PgSyncStepTimeline } from '@/app/customers/_components/PgSyncStepTimeline'
@@ -232,6 +234,7 @@ export function PgBusinessCenterSyncModal({
   const fastPollUntilRef = useRef(0)
   const tacVerifyingRef = useRef(false)
   const tacSubmittedRef = useRef(false)
+  const lastTacFilledRef = useRef(false)
   const completedRef = useRef(false)
   const lastJobStatusRef = useRef<PgSyncJobStatus | null>(null)
   const onActiveChangeRef = useRef(onActiveChange)
@@ -265,6 +268,8 @@ export function PgBusinessCenterSyncModal({
   const applyJob = useCallback(
     (next: PgSyncJobView, code: string) => {
       const prev = lastJobStatusRef.current
+      const prevTacFilled = lastTacFilledRef.current || tacVerifyingRef.current
+
       if (prev !== next.status) {
         notifyForJobStatusTransition({
           jobId: next.id,
@@ -276,25 +281,40 @@ export function PgBusinessCenterSyncModal({
 
       setJob(next)
       setJobId(next.id)
+      lastTacFilledRef.current = next.tac_filled === true
 
-      // Worker accepts TAC via TacBridge then verifies async; may return to awaiting_tac on failure.
+      // Resubmit only when worker emits awaiting_tac with tac_filled: false.
       const workerWantsTacAgain =
         next.status === 'awaiting_tac' &&
-        tacSubmittedRef.current &&
-        prev != null &&
-        prev !== 'awaiting_tac' &&
-        prev !== 'queued'
+        next.tac_filled === false &&
+        (tacSubmittedRef.current || prevTacFilled)
 
       if (workerWantsTacAgain) {
         tacSubmittedRef.current = false
+        lastTacFilledRef.current = false
         syncTacVerifying(false)
         setTacStatusMessage(null)
         setPhase('tac')
         setError(tacResubmitMessage(next))
       } else if (next.status === 'awaiting_tac') {
-        setPhase(tacVerifyingRef.current ? 'running' : 'tac')
+        if (next.tac_filled === true) {
+          tacSubmittedRef.current = true
+          lastTacFilledRef.current = true
+          syncTacVerifying(true)
+          setPhase('running')
+          setTacStatusMessage(
+            (current) =>
+              current ??
+              next.sync_progress?.message ??
+              'TAC submitted — signing in to PG Mall…'
+          )
+        } else {
+          syncTacVerifying(false)
+          setPhase('tac')
+        }
       } else {
         tacSubmittedRef.current = false
+        lastTacFilledRef.current = false
         syncTacVerifying(false)
         setTacStatusMessage(null)
         setPhase(phaseFromStatus(next.status))
@@ -432,6 +452,7 @@ export function PgBusinessCenterSyncModal({
     syncTacVerifying(false)
     setTacStatusMessage(null)
     tacSubmittedRef.current = false
+    lastTacFilledRef.current = false
 
     refreshStatus()
       .then(async (json) => {
@@ -502,12 +523,20 @@ export function PgBusinessCenterSyncModal({
         signal: controller.signal,
       })
       clearTimeout(timer)
-      const json = (await res.json()) as { ok?: boolean; error?: string; message?: string; pending?: boolean }
+      const json = (await res.json()) as {
+        ok?: boolean
+        error?: string
+        message?: string
+        pending?: boolean
+        tac_filled?: boolean
+      }
       if (!res.ok) throw new Error(json.error || 'TAC rejected')
 
       setTac('')
       tacSubmittedRef.current = true
+      lastTacFilledRef.current = true
       syncTacVerifying(true)
+      setJob((prev) => (prev ? { ...prev, tac_filled: true } : prev))
       setPhase('running')
       setTacStatusMessage(
         json.message ??
@@ -520,7 +549,9 @@ export function PgBusinessCenterSyncModal({
       if (e instanceof Error && e.name === 'AbortError') {
         setTac('')
         tacSubmittedRef.current = true
+        lastTacFilledRef.current = true
         syncTacVerifying(true)
+        setJob((prev) => (prev ? { ...prev, tac_filled: true } : prev))
         setPhase('running')
         setTacStatusMessage('TAC submitted — still verifying with PG Mall…')
         startPolling(jobId, pgCode, { fast: true })
@@ -560,8 +591,11 @@ export function PgBusinessCenterSyncModal({
   const progress = job?.sync_progress
   const pct = Math.min(100, Math.max(0, Number(progress?.pct ?? 0)))
   const showProgress = phase !== 'form' && (job || loading)
+  const tacVerifyingNow =
+    submittingTac || tacVerifying || Boolean(job && isPgSyncTacVerifying(job))
+  const showTacInput = Boolean(job && isPgSyncTacInputRequired(job) && !submittingTac)
   const displayJob: PgSyncJobView | null =
-    job && tacVerifying && job.status === 'awaiting_tac'
+    job && tacVerifyingNow && (job.status === 'awaiting_tac' || job.sync_progress?.phase === 'verifying_tac')
       ? {
           ...job,
           status: 'running',
@@ -760,7 +794,7 @@ export function PgBusinessCenterSyncModal({
                     </div>
                   ) : null}
 
-                  {phase === 'tac' && !tacVerifying ? (
+                  {showTacInput ? (
                     <div className="space-y-3">
                       <p className="text-sm text-slate-600">
                         Enter the SMS TAC sent to your registered phone for PG Mall login.
@@ -790,7 +824,7 @@ export function PgBusinessCenterSyncModal({
                     </div>
                   ) : null}
 
-                  {tacVerifying ? (
+                  {tacVerifyingNow ? (
                     <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
                       <div className="flex items-center gap-2">
                         <svg className="h-4 w-4 shrink-0 animate-spin text-indigo-600" viewBox="0 0 24 24" fill="none">

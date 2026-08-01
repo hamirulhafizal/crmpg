@@ -95,8 +95,12 @@ export function buildPgSyncLiveSnapshot(job: PgSyncJobView): PgSyncLiveSnapshot 
       detail = detail ?? 'Your sync will begin when the worker is free.'
       break
     case 'awaiting_tac':
-      headline = 'SMS code required'
-      detail = detail ?? 'Enter the TAC sent to your PG Mall registered phone.'
+      headline = job.tac_filled ? 'Verifying SMS code' : 'SMS code required'
+      detail =
+        detail ??
+        (job.tac_filled
+          ? 'Signing in to PG Mall with your code…'
+          : 'Enter the TAC sent to your PG Mall registered phone.')
       break
     case 'awaiting_captcha':
       headline = 'CAPTCHA required'
@@ -193,7 +197,7 @@ function activeStepId(job: PgSyncJobView): PgSyncUiStepId {
     case 'queued':
       return 'queue'
     case 'awaiting_tac':
-      return 'tac'
+      return job.tac_filled ? 'connect' : 'tac'
     case 'awaiting_captcha':
       return 'captcha'
     case 'syncing':
@@ -222,8 +226,21 @@ function workerTextHaystack(job: PgSyncJobView): string {
   return `${job.last_goal ?? ''} ${job.last_action ?? ''} ${logText}`
 }
 
+/** Dealer must enter TAC — not yet submitted or worker asked for a fresh code. */
+export function isPgSyncTacInputRequired(job: PgSyncJobView): boolean {
+  return job.status === 'awaiting_tac' && job.tac_filled !== true
+}
+
+/** TAC was submitted; worker is typing or verifying on PGMall. */
+export function isPgSyncTacVerifying(job: PgSyncJobView): boolean {
+  if (job.tac_filled === true) {
+    return job.status === 'awaiting_tac' || job.sync_progress?.phase === 'verifying_tac'
+  }
+  return job.sync_progress?.phase === 'verifying_tac'
+}
+
 function needsTac(job: PgSyncJobView): boolean {
-  if (job.status === 'awaiting_tac') return true
+  if (job.status === 'awaiting_tac') return job.tac_filled !== true
   return /tac|otp|sms/i.test(workerTextHaystack(job))
 }
 

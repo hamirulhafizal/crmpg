@@ -39,7 +39,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 
   try {
-    const result = await pgSyncFetch<Record<string, string>>(
+    const result = await pgSyncFetch<{ status?: string; tac_filled?: boolean; message?: string }>(
       `/v1/jobs/${encodeURIComponent(id)}/tac`,
       {
         method: 'POST',
@@ -48,7 +48,7 @@ export async function POST(request: Request, ctx: Ctx) {
       }
     )
     await markPgSyncJobTacSubmitted(auth.session.userId, id)
-    return NextResponse.json({ ok: true, accepted: true, ...result })
+    return NextResponse.json({ ok: true, accepted: true, tac_filled: true, ...result })
   } catch (e: unknown) {
     if (e instanceof PgSyncApiError) {
       if (e.status === 408) {
@@ -57,6 +57,7 @@ export async function POST(request: Request, ctx: Ctx) {
           ok: true,
           accepted: true,
           pending: true,
+          tac_filled: true,
           message: 'TAC received — verifying with PG Mall. This may take a minute.',
         })
       }

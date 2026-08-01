@@ -14,6 +14,7 @@ export type PgSyncProgress = {
   phase?: string
   pct?: number
   message?: string
+  tac_filled?: boolean
   current_row?: number
   total_rows?: number
   inserted?: number
@@ -34,6 +35,8 @@ export type PgSyncLogEntry = {
 export type PgSyncJobView = {
   id: string
   status: PgSyncJobStatus
+  /** True after dealer POSTs TAC — worker may still be typing/verifying on PGMall. */
+  tac_filled?: boolean
   pg_code: string
   queue_position?: number | null
   step?: number
@@ -71,6 +74,7 @@ export type PgSyncWebhookEvent = {
   final?: string | null
   error?: string | null
   message?: string | null
+  tac_filled?: boolean
 }
 
 export type PgSyncJobEventsView = {

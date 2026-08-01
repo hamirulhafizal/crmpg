@@ -74,6 +74,7 @@ export async function GET(request: Request) {
       myPgCode: auth.session.pgCode,
       myQueuePosition: activeJob?.queue_position ?? myQueueEntry?.position ?? null,
       myJobStatus: activeJob?.status ?? myQueueEntry?.status ?? null,
+      myJobTacFilled: activeJob?.tac_filled ?? null,
     })
 
     return NextResponse.json({
