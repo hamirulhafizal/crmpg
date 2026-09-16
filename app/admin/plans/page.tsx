@@ -50,8 +50,15 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+const SUB_STATUSES: SaasSubscriptionStatus[] = ['active', 'trialing', 'expired', 'cancelled']
+const TAB_ORDER = ['subscribers', 'plans'] as const
+
+function toggleInList<T extends string>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
+}
+
 export default function AdminSaasPlansPage() {
-  const [tab, setTab] = useState<'plans' | 'subscribers'>('plans')
+  const [tab, setTab] = useState<(typeof TAB_ORDER)[number]>('subscribers')
   const [plans, setPlans] = useState<SaasPlanWithFeatures[]>([])
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([])
   const [users, setUsers] = useState<UserOption[]>([])
@@ -81,6 +88,10 @@ export default function AdminSaasPlansPage() {
   const [assignTrialOverride, setAssignTrialOverride] = useState('')
   const [assignSaving, setAssignSaving] = useState(false)
   const [subSearch, setSubSearch] = useState('')
+  const [filterPlanIds, setFilterPlanIds] = useState<string[]>([])
+  const [filterStatuses, setFilterStatuses] = useState<SaasSubscriptionStatus[]>([])
+  const [filterPrice, setFilterPrice] = useState<Array<'free' | 'paid'>>([])
+  const [filterTrial, setFilterTrial] = useState<Array<'on_trial' | 'no_trial'>>([])
 
   const loadPlans = useCallback(async () => {
     setLoadingPlans(true)
@@ -99,8 +110,7 @@ export default function AdminSaasPlansPage() {
   const loadSubscriptions = useCallback(async () => {
     setLoadingSubs(true)
     try {
-      const q = subSearch.trim()
-      const res = await fetch(`/api/admin/saas/subscriptions${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+      const res = await fetch('/api/admin/saas/subscriptions')
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load subscriptions')
       setSubscriptions(data.subscriptions || [])
@@ -109,7 +119,7 @@ export default function AdminSaasPlansPage() {
     } finally {
       setLoadingSubs(false)
     }
-  }, [subSearch])
+  }, [])
 
   const loadUsers = useCallback(async () => {
     try {
@@ -138,6 +148,47 @@ export default function AdminSaasPlansPage() {
   }, [tab, loadSubscriptions])
 
   const activePlans = useMemo(() => plans.filter((p) => p.is_active), [plans])
+
+  const filteredSubscriptions = useMemo(() => {
+    const q = subSearch.trim().toLowerCase()
+    return subscriptions.filter((sub) => {
+      if (filterPlanIds.length > 0 && !filterPlanIds.includes(sub.plan_id)) return false
+      if (filterStatuses.length > 0 && !filterStatuses.includes(sub.status)) return false
+
+      const isFree = Number(sub.locked_price_amount) === 0
+      if (filterPrice.length > 0) {
+        const matchFree = filterPrice.includes('free') && isFree
+        const matchPaid = filterPrice.includes('paid') && !isFree
+        if (!matchFree && !matchPaid) return false
+      }
+
+      const onTrial =
+        sub.status === 'trialing' ||
+        (Boolean(sub.trial_ends_at) && new Date(sub.trial_ends_at!).getTime() > Date.now())
+      if (filterTrial.length > 0) {
+        const matchOn = filterTrial.includes('on_trial') && onTrial
+        const matchOff = filterTrial.includes('no_trial') && !onTrial
+        if (!matchOn && !matchOff) return false
+      }
+
+      if (!q) return true
+      const name = (sub.profile?.full_name ?? '').toLowerCase()
+      const uid = sub.user_id.toLowerCase()
+      const planName = (sub.plan?.name ?? '').toLowerCase()
+      return name.includes(q) || uid.includes(q) || planName.includes(q)
+    })
+  }, [subscriptions, subSearch, filterPlanIds, filterStatuses, filterPrice, filterTrial])
+
+  const activeFilterCount =
+    filterPlanIds.length + filterStatuses.length + filterPrice.length + filterTrial.length
+
+  function clearSubscriberFilters() {
+    setFilterPlanIds([])
+    setFilterStatuses([])
+    setFilterPrice([])
+    setFilterTrial([])
+    setSubSearch('')
+  }
 
   function openPlanModal(row?: SaasPlanWithFeatures) {
     if (row) {
@@ -327,7 +378,7 @@ export default function AdminSaasPlansPage() {
       ) : null}
 
       <div className="flex gap-1 border-b border-slate-200">
-        {(['plans', 'subscribers'] as const).map((t) => (
+        {TAB_ORDER.map((t) => (
           <button
             key={t}
             type="button"
@@ -429,21 +480,142 @@ export default function AdminSaasPlansPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="search"
-              value={subSearch}
-              onChange={(e) => setSubSearch(e.target.value)}
-              placeholder="Search dealer name or id…"
-              className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => void loadSubscriptions()}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Search
-            </button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={subSearch}
+                onChange={(e) => setSubSearch(e.target.value)}
+                placeholder="Search dealer name, id, or plan…"
+                className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => void loadSubscriptions()}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Refresh
+              </button>
+              {activeFilterCount > 0 || subSearch.trim() ? (
+                <button
+                  type="button"
+                  onClick={clearSubscriberFilters}
+                  className="rounded-xl px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50"
+                >
+                  Clear filters
+                </button>
+              ) : null}
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Plan
+                </span>
+                {plans.map((plan) => {
+                  const on = filterPlanIds.includes(plan.id)
+                  return (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setFilterPlanIds((prev) => toggleInList(prev, plan.id))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        on
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {plan.name}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Status
+                </span>
+                {SUB_STATUSES.map((status) => {
+                  const on = filterStatuses.includes(status)
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setFilterStatuses((prev) => toggleInList(prev, status))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                        on
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {status}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Price
+                </span>
+                {(
+                  [
+                    { id: 'free' as const, label: 'Free' },
+                    { id: 'paid' as const, label: 'Paid' },
+                  ] as const
+                ).map((opt) => {
+                  const on = filterPrice.includes(opt.id)
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFilterPrice((prev) => toggleInList(prev, opt.id))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        on
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Trial
+                </span>
+                {(
+                  [
+                    { id: 'on_trial' as const, label: 'On trial' },
+                    { id: 'no_trial' as const, label: 'No trial' },
+                  ] as const
+                ).map((opt) => {
+                  const on = filterTrial.includes(opt.id)
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFilterTrial((prev) => toggleInList(prev, opt.id))}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        on
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Showing {filteredSubscriptions.length} of {subscriptions.length}
+              {activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active` : ''}
+              {' · '}Multiple filters combine (AND across groups, OR within a group).
+            </p>
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -466,14 +638,16 @@ export default function AdminSaasPlansPage() {
                       Loading…
                     </td>
                   </tr>
-                ) : subscriptions.length === 0 ? (
+                ) : filteredSubscriptions.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                      No subscriptions yet.
+                      {subscriptions.length === 0
+                        ? 'No subscriptions yet.'
+                        : 'No dealers match the selected filters.'}
                     </td>
                   </tr>
                 ) : (
-                  subscriptions.map((sub) => (
+                  filteredSubscriptions.map((sub) => (
                     <tr key={sub.id} className="hover:bg-slate-50/80">
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">

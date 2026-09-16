@@ -7,8 +7,18 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response
 
   const url = new URL(request.url)
-  const planId = url.searchParams.get('plan_id')?.trim()
-  const status = url.searchParams.get('status')?.trim()
+  const planIds = [
+    ...url.searchParams.getAll('plan_id'),
+    ...(url.searchParams.get('plan_ids')?.split(',') ?? []),
+  ]
+    .map((v) => v.trim())
+    .filter(Boolean)
+  const statuses = [
+    ...url.searchParams.getAll('status'),
+    ...(url.searchParams.get('statuses')?.split(',') ?? []),
+  ]
+    .map((v) => v.trim())
+    .filter(Boolean)
   const q = url.searchParams.get('q')?.trim().toLowerCase()
 
   try {
@@ -23,10 +33,13 @@ export async function GET(request: Request) {
       `
       )
       .order('updated_at', { ascending: false })
-      .limit(200)
+      .limit(500)
 
-    if (planId) query = query.eq('plan_id', planId)
-    if (status) query = query.eq('status', status)
+    if (planIds.length === 1) query = query.eq('plan_id', planIds[0])
+    else if (planIds.length > 1) query = query.in('plan_id', planIds)
+
+    if (statuses.length === 1) query = query.eq('status', statuses[0])
+    else if (statuses.length > 1) query = query.in('status', statuses)
 
     const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
