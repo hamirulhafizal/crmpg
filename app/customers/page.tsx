@@ -50,6 +50,59 @@ const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   unknown: 0,
 }
 
+function CopyableCellValue({ value, label }: { value: string | null | undefined; label: string }) {
+  const [copied, setCopied] = useState(false)
+  const text = (value ?? '').trim()
+  const display = text || '-'
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // ignore — clipboard may be blocked
+    }
+  }
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-1.5">
+      <span className="min-w-0 truncate">{display}</span>
+      {text ? (
+        <button
+          type="button"
+          onClick={handleCopy}
+          title={copied ? 'Copied!' : `Copy ${label}`}
+          aria-label={copied ? `${label} copied` : `Copy ${label}`}
+          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
+            copied
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+          }`}
+        >
+          {copied ? (
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+          )}
+        </button>
+      ) : null}
+    </span>
+  )
+}
+
 /** Rank buckets in overview funnel + cards (pipeline order). */
 const RANK_OVERVIEW_BUCKETS: BusinessRankBucket[] = [
   'customer',
@@ -1438,6 +1491,26 @@ function CustomersPage() {
         )}
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
+          {/* Search always visible — no need to open Filters accordion */}
+          <div className="mb-4 flex gap-2">
+            <input
+              type="text"
+              placeholder="Search by name, email, phone, or PG code..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="flex-1 px-4 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              aria-label="Search customers"
+            />
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+            >
+              Search
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setMobileFiltersOpen((prev) => !prev)}
@@ -1482,27 +1555,8 @@ function CustomersPage() {
             <div
               id="customers-filters-grid"
               className={`${mobileFiltersOpen ? 'block' : 'max-md:hidden'} ${filtersAccordionOpen ? 'md:block' : 'md:hidden'}`}
-          >
+            >
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            {/* Search */}
-            <div className="md:col-span-2 flex gap-2">
-              <input
-                type="text"
-                placeholder="Search by name, email, phone, or PG code..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="flex-1 px-4 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <button
-                type="button"
-                onClick={handleSearch}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
-              >
-                Search
-              </button>
-            </div>
-
             {/* Gender Filter */}
             <select
               value={genderFilter}
@@ -2231,11 +2285,17 @@ function CustomersPage() {
 
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.sender_name || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-800 font-medium">{customer.save_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800">{customer.pg_code || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800" onClick={(e) => e.stopPropagation()}>
+                          <CopyableCellValue value={customer.pg_code} label="PG code" />
+                        </td>
 
                         <td className="px-4 py-3 text-sm font-medium text-slate-900">{customer.name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800">{customer.email || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800">{customer.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800" onClick={(e) => e.stopPropagation()}>
+                          <CopyableCellValue value={customer.email} label="email" />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-800" onClick={(e) => e.stopPropagation()}>
+                          <CopyableCellValue value={customer.phone} label="phone" />
+                        </td>
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.gender || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-800">{customer.ethnicity || '-'}</td>
                         <td className="px-4 py-3 text-sm text-slate-800">
