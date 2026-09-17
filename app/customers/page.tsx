@@ -1573,7 +1573,7 @@ function CustomersPage() {
         )}
         {/* Filters & Actions */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
-          {/* Search always visible — no need to open Filters accordion */}
+          {/* Search always visible on mobile, tablet, and desktop */}
           <div className="mb-4 flex gap-2">
             <div className="relative min-w-0 flex-1">
               <input
@@ -1582,7 +1582,7 @@ function CustomersPage() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 pr-10 text-slate-900 placeholder:text-slate-500 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 pr-11 text-base text-slate-900 placeholder:text-slate-500 focus:border-transparent focus:ring-2 focus:ring-blue-500 sm:text-sm"
                 aria-label="Search customers"
               />
               {searchInput ? (
@@ -1591,9 +1591,9 @@ function CustomersPage() {
                   onClick={handleClearSearch}
                   title="Clear search"
                   aria-label="Clear search"
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-slate-700"
+                  className="absolute inset-y-0 right-0 flex min-w-[44px] items-center justify-center px-2 text-slate-400 transition-colors hover:text-slate-700 active:text-slate-900"
                 >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -1602,34 +1602,67 @@ function CustomersPage() {
             <button
               type="button"
               onClick={handleSearch}
-              className="rounded-lg bg-blue-600 px-4 py-2 font-medium whitespace-nowrap text-white transition-colors hover:bg-blue-700"
+              className="rounded-lg bg-blue-600 px-4 py-2.5 font-medium whitespace-nowrap text-white transition-colors hover:bg-blue-700"
             >
               Search
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setMobileFiltersOpen((prev) => !prev)}
-            className="md:hidden w-full mb-4 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium flex items-center justify-between"
-            aria-expanded={mobileFiltersOpen}
-            aria-controls="customers-filters-actions-panel"
-          >
-            <span>Filters & actions</span>
-            <svg
-              className={`h-5 w-5 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {/* Mobile / tablet (< md): Filters toggle + reset without opening panel */}
+          <div className="mb-4 flex items-center gap-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen((prev) => !prev)}
+              className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 font-medium"
+              aria-expanded={mobileFiltersOpen}
+              aria-controls="customers-filters-actions-panel"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <span className="inline-flex items-center gap-2">
+                Filters & actions
+                {hasActiveAdvancedFilters ? (
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                    Active
+                  </span>
+                ) : null}
+              </span>
+              <svg
+                className={`h-5 w-5 shrink-0 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={handleResetAdvancedFilters}
+              disabled={!hasActiveAdvancedFilters}
+              title="Reset filters"
+              aria-label="Reset filters"
+              className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                hasActiveAdvancedFilters
+                  ? 'border-slate-200 bg-white text-slate-600 active:bg-red-50 active:text-red-600'
+                  : 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
+              }`}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </button>
+          </div>
 
           <div
             id="customers-filters-actions-panel"
             className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block`}
           >
+            {/* Desktop / large tablet (md+): Filters accordion + reset */}
             <div className="mb-4 hidden items-center gap-2 md:flex">
               <button
                 type="button"
