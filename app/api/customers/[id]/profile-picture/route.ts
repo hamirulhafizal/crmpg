@@ -23,7 +23,13 @@ export async function GET(
       return NextResponse.json({ error: customerError.message }, { status: 500 })
     }
     if (!customer?.phone) {
-      return NextResponse.json({ error: 'Customer has no phone' }, { status: 400 })
+      return NextResponse.json(
+        { profilePictureURL: null, error: 'Customer has no phone' },
+        {
+          status: 200,
+          headers: { 'Cache-Control': 'private, max-age=300' },
+        }
+      )
     }
 
     const { data: sessionRow } = await supabase
@@ -34,16 +40,31 @@ export async function GET(
       .maybeSingle()
 
     if (!sessionRow?.session_name) {
-      return NextResponse.json({ error: 'No WhatsApp session configured' }, { status: 400 })
+      return NextResponse.json(
+        { profilePictureURL: null, error: 'No WhatsApp session configured' },
+        {
+          status: 200,
+          headers: { 'Cache-Control': 'private, max-age=60' },
+        }
+      )
     }
 
     const result = await fetchWhatsAppProfilePicture(user.id, sessionRow.session_name, customer.phone)
-    return NextResponse.json({
-      profilePictureURL: result.url,
-      provider: result.provider,
-    })
+    return NextResponse.json(
+      {
+        profilePictureURL: result.url,
+        provider: result.provider,
+      },
+      {
+        headers: {
+          'Cache-Control': result.url
+            ? 'private, max-age=3600'
+            : 'private, max-age=300',
+        },
+      }
+    )
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Failed to fetch profile picture'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return NextResponse.json({ profilePictureURL: null, error: msg }, { status: 500 })
   }
 }

@@ -9,6 +9,7 @@ import ViewTransitions from "./components/ViewTransitions";
 import ClientScripts from "./components/ClientScripts";
 import { MotionProvider } from "./components/motion-provider";
 import { PWAInstallPromptBootstrap } from "./components/pwa/PWAInstallPromptBootstrap";
+import { QueryProvider } from "./components/providers/query-provider";
 
 export const metadata: Metadata = {
   title: "Public Gold CRM",
@@ -70,14 +71,16 @@ export default function RootLayout({
         </noscript>
         
         <AuthProvider>
-          <CustomerEditModalProvider>
-            <MotionProvider>
-              <ServiceWorkerRegistration />
-              <ViewTransitions />
-              <ClientScripts />
-              {children}
-            </MotionProvider>
-          </CustomerEditModalProvider>
+          <QueryProvider>
+            <CustomerEditModalProvider>
+              <MotionProvider>
+                <ServiceWorkerRegistration />
+                <ViewTransitions />
+                <ClientScripts />
+                {children}
+              </MotionProvider>
+            </CustomerEditModalProvider>
+          </QueryProvider>
         </AuthProvider>
       </body>
     </html>

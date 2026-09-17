@@ -27,6 +27,7 @@ import {
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
+import { fetchCustomerAvatarUrl } from '@/app/lib/customers/fetch-customers'
 
 /** Above full-screen shells (e.g. schedule calendar z-[60]) and typical z-50 modals. */
 const Z_CUSTOMER_MODAL_OVERLAY = 'z-[1000]'
@@ -507,17 +508,11 @@ export function CustomerEditModalShell({
   async function fetchCustomerProfileImage(cid: string) {
     setProfileImageLoading(true)
     setProfileImageError(null)
-    setProfileImageUrl(null)
     try {
-      const response = await fetch(`/api/customers/${cid}/profile-picture`, {
-        cache: 'no-store',
-      })
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch customer profile image')
-      }
-      setProfileImageUrl(typeof result.profilePictureURL === 'string' ? result.profilePictureURL : null)
+      const url = await fetchCustomerAvatarUrl(cid, user?.id)
+      setProfileImageUrl(url)
     } catch (err: unknown) {
+      setProfileImageUrl(null)
       setProfileImageError(err instanceof Error ? err.message : 'Failed to fetch customer profile image')
     } finally {
       setProfileImageLoading(false)

@@ -3,6 +3,7 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
@@ -33,6 +34,7 @@ import {
   type StoredFollowUpResume,
 } from '@/app/lib/follow-up-resume'
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
+import { CustomerWhatsAppAvatar } from '@/app/customers/_components/CustomerWhatsAppAvatar'
 import { PgBusinessCenterSyncModal } from '@/app/customers/_components/PgBusinessCenterSyncModal'
 import { usePgSyncQueueMonitor } from '@/app/customers/_components/usePgSyncQueueMonitor'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
@@ -41,6 +43,12 @@ import {
   PORTAL_BRAND,
 } from '@/app/lib/customer-portal/brand'
 import { isValidCampaignPhone, normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
+import {
+  fetchCustomerList,
+  fetchCustomerStats,
+} from '@/app/lib/customers/fetch-customers'
+import { invalidateCachedWhatsAppAvatarUrl } from '@/app/lib/customers/avatar-url-cache'
+import { customerKeys, type CustomerListQueryParams } from '@/app/lib/customers/query-keys'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -377,14 +385,13 @@ const formatOriginalDate = (value: unknown): string => {
 
 function CustomersPage() {
   const { user, loading } = useAuth()
+  const queryClient = useQueryClient()
   const router = useRouter()
   const pathname = usePathname() || '/customers'
   const searchParams = useSearchParams()
   const openCustomerParam = searchParams.get('openCustomer')
   const accountStatusParam = searchParams.get('accountStatus')
 
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
@@ -436,8 +443,6 @@ function CustomersPage() {
   // Pagination
   const [page, setPage] = useState(1)
   const [limit] = useState(50)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -462,6 +467,108 @@ function CustomersPage() {
   const [lastPurchaseMonthFilter, setLastPurchaseMonthFilter] = useState('')
   const [sortBy, setSortBy] = useState('updated_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+
+  const listParams = useMemo<CustomerListQueryParams>(
+    () => ({
+      page,
+      limit,
+      sortBy,
+      sortOrder,
+      search,
+      gender: genderFilter,
+      ethnicity: ethnicityFilter,
+      ageMin: ageMinFilter,
+      ageMax: ageMaxFilter,
+      ageFilterMin: AGE_FILTER_MIN,
+      ageFilterMax: AGE_FILTER_MAX,
+      birthday: birthdayFilter,
+      accountStatus: accountStatusFilter,
+      profileVerified: profileVerifiedFilter,
+      directDebit: directDebitFilter,
+      acquisitionSource: acquisitionSourceFilter,
+      registerMonth: registerMonthFilter,
+      lastPurchaseMonth: lastPurchaseMonthFilter,
+      tagIds: tagFilterIds,
+      viewMode,
+    }),
+    [
+      page,
+      limit,
+      sortBy,
+      sortOrder,
+      search,
+      genderFilter,
+      ethnicityFilter,
+      ageMinFilter,
+      ageMaxFilter,
+      birthdayFilter,
+      accountStatusFilter,
+      profileVerifiedFilter,
+      directDebitFilter,
+      acquisitionSourceFilter,
+      registerMonthFilter,
+      lastPurchaseMonthFilter,
+      tagFilterIds,
+      viewMode,
+    ]
+  )
+
+  const customersQuery = useQuery({
+    queryKey: customerKeys.list(user?.id ?? '', listParams),
+    queryFn: () => fetchCustomerList(listParams),
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    placeholderData: keepPreviousData,
+  })
+
+  const statsQuery = useQuery({
+    queryKey: customerKeys.stats(user?.id ?? ''),
+    queryFn: fetchCustomerStats,
+    enabled: Boolean(user?.id),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+  })
+
+  const customers = (customersQuery.data?.data ?? []) as Customer[]
+  const total = customersQuery.data?.total ?? 0
+  const totalPages = customersQuery.data?.totalPages ?? 1
+  const isLoading = customersQuery.isLoading && !customersQuery.data
+  const statusCounts = useMemo(
+    () => ({ ...EMPTY_STATUS_COUNTS, ...(statsQuery.data?.counts ?? {}) }),
+    [statsQuery.data?.counts]
+  )
+  const statsLoading = statsQuery.isFetching
+
+  const invalidateCustomersCache = useCallback(async () => {
+    if (!user?.id) return
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: customerKeys.lists(user.id) }),
+      queryClient.invalidateQueries({ queryKey: customerKeys.stats(user.id) }),
+      queryClient.invalidateQueries({ queryKey: customerKeys.salesJourney(user.id) }),
+    ])
+  }, [queryClient, user?.id])
+
+  const fetchCustomers = useCallback(async () => {
+    await invalidateCustomersCache()
+  }, [invalidateCustomersCache])
+
+  const fetchAccountStats = useCallback(async () => {
+    if (!user?.id) return
+    await queryClient.invalidateQueries({ queryKey: customerKeys.stats(user.id) })
+  }, [queryClient, user?.id])
+
+  useEffect(() => {
+    if (customersQuery.isError) {
+      setError(
+        customersQuery.error instanceof Error
+          ? customersQuery.error.message
+          : 'Failed to load customers'
+      )
+    } else if (customersQuery.isSuccess) {
+      setError(null)
+    }
+  }, [customersQuery.isError, customersQuery.isSuccess, customersQuery.error])
 
   const syncFollowUpBookmarkToServer = useCallback(
     async (
@@ -575,9 +682,6 @@ function CustomersPage() {
     }
   }, [resumeCheckpoint, sortBy, sortOrder])
 
-  const [statusCounts, setStatusCounts] = useState<Record<AccountStatusKey, number>>(EMPTY_STATUS_COUNTS)
-  const [statsLoading, setStatsLoading] = useState(false)
-
   // Malaysia calendar labels for birthday filter (year excluded).
   const malaysiaNow = new Date(Date.now() + 8 * 60 * 60 * 1000)
   const todayDay = String(malaysiaNow.getUTCDate()).padStart(2, '0')
@@ -637,29 +741,6 @@ function CustomersPage() {
     }
   }, [user, loading, router])
 
-  const fetchAccountStats = useCallback(async () => {
-    if (!user) return
-    setStatsLoading(true)
-    try {
-      const response = await fetch('/api/customers/stats', {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Failed to load stats')
-      if (!isMountedRef.current) return
-      if (result.counts && typeof result.counts === 'object') {
-        setStatusCounts({ ...EMPTY_STATUS_COUNTS, ...result.counts })
-      }
-    } catch (e) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[customers] stats fetch failed:', e)
-      }
-    } finally {
-      if (isMountedRef.current) setStatsLoading(false)
-    }
-  }, [user])
-
   useEffect(() => {
     if (!user) return
     let cancelled = false
@@ -682,12 +763,6 @@ function CustomersPage() {
       cancelled = true
     }
   }, [user])
-
-  useEffect(() => {
-    if (user) {
-      fetchCustomers()
-    }
-  }, [user, page, search, genderFilter, ethnicityFilter, ageMinFilter, ageMaxFilter, birthdayFilter, accountStatusFilter, profileVerifiedFilter, directDebitFilter, acquisitionSourceFilter, registerMonthFilter, lastPurchaseMonthFilter, tagFilterIds, sortBy, sortOrder, viewMode])
 
   const handleSearch = () => {
     setSearch(searchInput)
@@ -903,63 +978,6 @@ function CustomersPage() {
       setError(err instanceof Error ? err.message : 'Import to Google failed')
     } finally {
       setIsImporting(false)
-    }
-  }
-
-  const fetchCustomers = async () => {
-    setIsLoading(true)
-    setError(null)
-    // Do not clear `customers` here — empty list + isLoading triggers the full-page spinner.
-
-    try {
-      // Birthday filtering must evaluate against the full customer list, not only
-      // the current paginated slice.
-      const shouldFetchAllForBirthday = birthdayFilter === 'today' || birthdayFilter === 'month'
-      const effectiveLimit =
-        viewMode === 'all' || shouldFetchAllForBirthday ? '100000' : limit.toString()
-      const effectivePage = viewMode === 'all' || shouldFetchAllForBirthday ? '1' : page.toString()
-
-      const params = new URLSearchParams({
-        page: effectivePage,
-        limit: effectiveLimit,
-        sortBy,
-        sortOrder,
-      })
-
-      if (search) params.append('search', search)
-      if (genderFilter) params.append('gender', genderFilter)
-      if (ethnicityFilter) params.append('ethnicity', ethnicityFilter)
-      if (ageMinFilter > AGE_FILTER_MIN) params.append('ageMin', ageMinFilter.toString())
-      if (ageMaxFilter < AGE_FILTER_MAX) params.append('ageMax', ageMaxFilter.toString())
-      if (birthdayFilter) params.append('birthday', birthdayFilter)
-      if (accountStatusFilter) params.append('accountStatus', accountStatusFilter)
-      if (profileVerifiedFilter) params.append('profileVerified', profileVerifiedFilter)
-      if (directDebitFilter) params.append('directDebit', directDebitFilter)
-      if (acquisitionSourceFilter) params.append('acquisitionSource', acquisitionSourceFilter)
-      if (registerMonthFilter) params.append('registerMonth', registerMonthFilter)
-      if (lastPurchaseMonthFilter) params.append('lastPurchaseMonth', lastPurchaseMonthFilter)
-      if (tagFilterIds.length > 0) params.set('tagIds', tagFilterIds.join(','))
-
-      const response = await fetch(`/api/customers?${params}`, {
-        cache: 'no-store',
-      })
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch customers')
-      }
-
-      if (!isMountedRef.current) return
-      setCustomers(result.data || [])
-      setTotal(result.pagination?.total || 0)
-      setTotalPages(result.pagination?.totalPages || 1)
-      void fetchAccountStats()
-    } catch (err: any) {
-      if (!isMountedRef.current) return
-      setError(err.message || 'Failed to load customers')
-    } finally {
-      if (!isMountedRef.current) return
-      setIsLoading(false)
     }
   }
 
@@ -2168,7 +2186,13 @@ function CustomersPage() {
             setEditModalInitialTab('details')
           }}
           onSaved={() => {
-            void fetchCustomers()
+            void invalidateCustomersCache()
+            if (isEditing && user?.id) {
+              invalidateCachedWhatsAppAvatarUrl(user.id, isEditing)
+              void queryClient.invalidateQueries({
+                queryKey: customerKeys.avatar(user.id, isEditing),
+              })
+            }
           }}
         />
 
@@ -2447,7 +2471,12 @@ function CustomersPage() {
                           className="px-4 py-3 text-sm text-slate-800"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="inline-flex max-w-full items-center gap-1.5">
+                          <span className="inline-flex max-w-full items-center gap-2">
+                            <CustomerWhatsAppAvatar
+                              customerId={customer.id}
+                              phone={customer.phone}
+                              displayName={customer.sender_name || customer.name}
+                            />
                             <span className="min-w-0 truncate">{customer.sender_name || '-'}</span>
                             <WhatsAppOpenButton phone={customer.phone} />
                           </span>
