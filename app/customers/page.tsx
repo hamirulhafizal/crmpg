@@ -694,6 +694,12 @@ function CustomersPage() {
     setPage(1)
   }
 
+  const handleClearSearch = () => {
+    setSearchInput('')
+    setSearch('')
+    setPage(1)
+  }
+
   const commitAgeRangeWithPreset = (minAge: number, maxAge: number) => {
     const min = Math.min(minAge, maxAge)
     const max = Math.max(minAge, maxAge)
@@ -724,6 +730,59 @@ function CustomersPage() {
     setTagFilterIds([])
     setPage(1)
   }
+
+  const handleResetAdvancedFilters = () => {
+    setGenderFilter('')
+    setEthnicityFilter('')
+    setAgeMinFilter(AGE_FILTER_MIN)
+    setAgeMaxFilter(AGE_FILTER_MAX)
+    setAgeMinDraft(AGE_FILTER_MIN)
+    setAgeMaxDraft(AGE_FILTER_MAX)
+    setAgePresetFilter('')
+    setBirthdayFilter('')
+    setAccountStatusFilter('')
+    setProfileVerifiedFilter('')
+    setDirectDebitFilter('')
+    setAcquisitionSourceFilter('')
+    setRegisterMonthFilter('')
+    setLastPurchaseMonthFilter('')
+    setTagFilterIds([])
+    setPage(1)
+  }
+
+  const hasActiveAdvancedFilters = useMemo(
+    () =>
+      Boolean(
+        genderFilter ||
+          ethnicityFilter ||
+          agePresetFilter ||
+          birthdayFilter ||
+          accountStatusFilter ||
+          profileVerifiedFilter ||
+          directDebitFilter ||
+          acquisitionSourceFilter ||
+          registerMonthFilter ||
+          lastPurchaseMonthFilter ||
+          tagFilterIds.length > 0 ||
+          ageMinFilter !== AGE_FILTER_MIN ||
+          ageMaxFilter !== AGE_FILTER_MAX
+      ),
+    [
+      genderFilter,
+      ethnicityFilter,
+      agePresetFilter,
+      birthdayFilter,
+      accountStatusFilter,
+      profileVerifiedFilter,
+      directDebitFilter,
+      acquisitionSourceFilter,
+      registerMonthFilter,
+      lastPurchaseMonthFilter,
+      tagFilterIds,
+      ageMinFilter,
+      ageMaxFilter,
+    ]
+  )
 
   // Check Google Contacts connection status
   useEffect(() => {
@@ -1516,19 +1575,34 @@ function CustomersPage() {
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           {/* Search always visible — no need to open Filters accordion */}
           <div className="mb-4 flex gap-2">
-            <input
-              type="text"
-              placeholder="Search by name, email, phone, or PG code..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1 px-4 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              aria-label="Search customers"
-            />
+            <div className="relative min-w-0 flex-1">
+              <input
+                type="text"
+                placeholder="Search by name, email, phone, or PG code..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 pr-10 text-slate-900 placeholder:text-slate-500 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                aria-label="Search customers"
+              />
+              {searchInput ? (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  title="Clear search"
+                  aria-label="Clear search"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-slate-700"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={handleSearch}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+              className="rounded-lg bg-blue-600 px-4 py-2 font-medium whitespace-nowrap text-white transition-colors hover:bg-blue-700"
             >
               Search
             </button>
@@ -1556,24 +1630,54 @@ function CustomersPage() {
             id="customers-filters-actions-panel"
             className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block`}
           >
-            <button
-              type="button"
-              onClick={() => setFiltersAccordionOpen((prev) => !prev)}
-              className="mb-4 hidden w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 md:flex"
-              aria-expanded={filtersAccordionOpen}
-              aria-controls="customers-filters-grid"
-            >
-              <span>Filters</span>
-              <svg
-                className={`h-5 w-5 shrink-0 text-slate-600 transition-transform ${filtersAccordionOpen ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
+            <div className="mb-4 hidden items-center gap-2 md:flex">
+              <button
+                type="button"
+                onClick={() => setFiltersAccordionOpen((prev) => !prev)}
+                className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+                aria-expanded={filtersAccordionOpen}
+                aria-controls="customers-filters-grid"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+                <span className="inline-flex items-center gap-2">
+                  Filters
+                  {hasActiveAdvancedFilters ? (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                      Active
+                    </span>
+                  ) : null}
+                </span>
+                <svg
+                  className={`h-5 w-5 shrink-0 text-slate-600 transition-transform ${filtersAccordionOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetAdvancedFilters}
+                disabled={!hasActiveAdvancedFilters}
+                title="Reset filters"
+                aria-label="Reset filters"
+                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                  hasActiveAdvancedFilters
+                    ? 'border-slate-200 bg-white text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600'
+                    : 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
+                }`}
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            </div>
 
             <div
               id="customers-filters-grid"
