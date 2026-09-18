@@ -7,7 +7,11 @@ import {
   normalizeCustomerOriginalData,
   getRegistrationUtcMonthDate,
   getRegistrationUtcYmd,
+  isDealerBusinessRank,
+  matchesNetworkSizeBucket,
   parseDirectDebitSubscriptionFromOriginalData,
+  parseNetworkSizeBucket,
+  parseOriginalDataCount,
   parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
@@ -65,6 +69,10 @@ export async function GET(request: Request) {
     const acquisitionSource = searchParams.get('acquisitionSource') || '' // '', google_ads|referral|social_media|offline|import|other|unknown
     const registerMonth = searchParams.get('registerMonth') || '' // '1'..'12'
     const lastPurchaseMonth = searchParams.get('lastPurchaseMonth') || '' // '1'..'12'
+    const totalFrontline = parseNetworkSizeBucket(searchParams.get('totalFrontline'))
+    const empireSize = parseNetworkSizeBucket(searchParams.get('empireSize'))
+    const businessRankRaw = (searchParams.get('businessRank') || '').trim().toLowerCase()
+    const dealersOnly = businessRankRaw === 'dealers'
     const parseOptionalInt = (raw: string | null): number | null => {
       if (raw == null) return null
       const s = raw.trim()
@@ -101,6 +109,8 @@ export async function GET(request: Request) {
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const isComputedDateSort =
       sortBy === 'register_date' || sortBy === 'last_purchase_date' || sortBy === 'dob'
+    const isComputedNetworkSort = sortBy === 'total_frontline' || sortBy === 'empire_size'
+    const isComputedSort = isComputedDateSort || isComputedNetworkSort
     const hasAnyFilter =
       !!search ||
       !!gender ||
@@ -112,6 +122,8 @@ export async function GET(request: Request) {
       !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
+      !!totalFrontline ||
+      !!empireSize ||
       tagIds.length > 0 ||
       ageMin != null ||
       ageMax != null
@@ -119,11 +131,19 @@ export async function GET(request: Request) {
     const selectColumns =
       tagIds.length > 0 ? '*, customer_tags!inner(tag_id)' : '*'
 
+    const applyDealersRankDbFilter = <T extends { or: (filters: string) => T }>(q: T): T => {
+      if (!dealersOnly) return q
+      // Rank lives in original_data JSON — narrow at DB before JS filters / pagination.
+      return q.or('original_data->>Rank.ilike.%dealer%')
+    }
+
     // Build query
     let query = supabase
       .from('customers')
       .select(selectColumns, { count: 'exact' })
       .eq('user_id', user.id)
+
+    query = applyDealersRankDbFilter(query)
 
     if (tagIds.length === 1) {
       query = query.eq('customer_tags.tag_id', tagIds[0])
@@ -154,10 +174,10 @@ export async function GET(request: Request) {
     }
 
     // Apply sorting
-    if (!isComputedDateSort) {
+    if (!isComputedSort) {
       query = query.order(sortBy, { ascending: sortOrder === 'asc' })
     } else {
-      // Stable default ordering before JS computed-date sort.
+      // Stable default ordering before JS computed sort.
       query = query.order('created_at', { ascending: false })
     }
 
@@ -170,7 +190,9 @@ export async function GET(request: Request) {
       !!acquisitionSource ||
       !!registerMonth ||
       !!lastPurchaseMonth ||
-      isComputedDateSort ||
+      !!totalFrontline ||
+      !!empireSize ||
+      isComputedSort ||
       hasAnyFilter
 
     if (shouldUseJsFiltering) {
@@ -189,6 +211,8 @@ export async function GET(request: Request) {
           .from('customers')
           .select(selectColumns)
           .eq('user_id', user.id)
+
+        batchQuery = applyDealersRankDbFilter(batchQuery)
 
         if (tagIds.length === 1) {
           batchQuery = batchQuery.eq('customer_tags.tag_id', tagIds[0])
@@ -221,7 +245,7 @@ export async function GET(request: Request) {
         }
 
         // Keep deterministic order across pages while accumulating.
-        if (!isComputedDateSort) {
+        if (!isComputedSort) {
           batchQuery = batchQuery.order(sortBy, { ascending: sortOrder === 'asc' })
         } else {
           batchQuery = batchQuery.order('created_at', { ascending: false })
@@ -352,6 +376,24 @@ export async function GET(request: Request) {
         })
       }
 
+      if (dealersOnly) {
+        filtered = filtered.filter((c: any) => isDealerBusinessRank(c?.original_data))
+      }
+
+      if (totalFrontline) {
+        filtered = filtered.filter((c: any) => {
+          const n = parseOriginalDataCount(c?.original_data, 'Total Frontline')
+          return matchesNetworkSizeBucket(n, totalFrontline)
+        })
+      }
+
+      if (empireSize) {
+        filtered = filtered.filter((c: any) => {
+          const n = parseOriginalDataCount(c?.original_data, 'Empire Size')
+          return matchesNetworkSizeBucket(n, empireSize)
+        })
+      }
+
       if (acquisitionSource) {
         filtered = filtered.filter((c: any) => {
           return deriveCustomerSource(c?.original_data, c?.segment_attributes) === acquisitionSource
@@ -432,6 +474,19 @@ export async function GET(request: Request) {
           if (!bv) return -1
           const cmp = av.localeCompare(bv)
           return asc ? cmp : -cmp
+        })
+      }
+
+      if (isComputedNetworkSort) {
+        const asc = sortOrder === 'asc'
+        const key = sortBy === 'empire_size' ? 'Empire Size' : 'Total Frontline'
+        filtered = [...filtered].sort((a: any, b: any) => {
+          const av = parseOriginalDataCount(a?.original_data, key)
+          const bv = parseOriginalDataCount(b?.original_data, key)
+          if (av == null && bv == null) return 0
+          if (av == null) return 1
+          if (bv == null) return -1
+          return asc ? av - bv : bv - av
         })
       }
 

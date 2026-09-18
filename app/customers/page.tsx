@@ -36,6 +36,7 @@ import {
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
 import { CustomerWhatsAppAvatar } from '@/app/customers/_components/CustomerWhatsAppAvatar'
 import { PgBusinessCenterSyncModal } from '@/app/customers/_components/PgBusinessCenterSyncModal'
+import { TeamManagementPanel } from '@/app/customers/_components/TeamManagementPanel'
 import { usePgSyncQueueMonitor } from '@/app/customers/_components/usePgSyncQueueMonitor'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
 import {
@@ -431,8 +432,8 @@ function CustomersPage() {
   // View mode: paginated or show all
   const [viewMode, setViewMode] = useState<'paginated' | 'all'>('paginated')
 
-  /** Top-level page: daily workspace vs sales-journey reporting. */
-  const [managementTab, setManagementTab] = useState<'workspace' | 'sales-journey'>('workspace')
+  /** Top-level page: daily workspace vs team vs sales-journey reporting. */
+  const [managementTab, setManagementTab] = useState<'workspace' | 'team' | 'sales-journey'>('workspace')
   const [salesJourneySubTab, setSalesJourneySubTab] = useState<'overview' | 'directory'>('overview')
   const [salesJourneyRows, setSalesJourneyRows] = useState<Customer[]>([])
   const [salesJourneyLoading, setSalesJourneyLoading] = useState(false)
@@ -546,6 +547,7 @@ function CustomersPage() {
       queryClient.invalidateQueries({ queryKey: customerKeys.lists(user.id) }),
       queryClient.invalidateQueries({ queryKey: customerKeys.stats(user.id) }),
       queryClient.invalidateQueries({ queryKey: customerKeys.salesJourney(user.id) }),
+      queryClient.invalidateQueries({ queryKey: customerKeys.team(user.id) }),
     ])
   }, [queryClient, user?.id])
 
@@ -1491,6 +1493,19 @@ function CustomersPage() {
               }`}
             >
               Workspace
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={managementTab === 'team'}
+              onClick={() => setManagementTab('team')}
+              className={`min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition-colors sm:flex-none sm:min-h-0 ${
+                managementTab === 'team'
+                  ? 'bg-slate-900 text-white shadow'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              Team management
             </button>
             <button
               type="button"
@@ -2691,6 +2706,23 @@ function CustomersPage() {
           ) : null}
         </div>
         </motion.div>
+        )}
+
+        {managementTab === 'team' && (
+          <motion.div
+            key="customer-mgmt-team"
+            role="tabpanel"
+            aria-label="Team management"
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }}
+            transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <TeamManagementPanel
+              active={managementTab === 'team'}
+              onOpenCustomer={(customer) => handleEdit(customer as Customer)}
+            />
+          </motion.div>
         )}
 
         {managementTab === 'sales-journey' && (

@@ -19,6 +19,10 @@ export type CustomerListQueryParams = {
   lastPurchaseMonth: string
   tagIds: string[]
   viewMode: 'paginated' | 'all'
+  /** When `dealers`, only Rank containing dealer (not plain customer). */
+  businessRank?: '' | 'dealers'
+  totalFrontline?: string
+  empireSize?: string
 }
 
 export const customerKeys = {
@@ -28,6 +32,9 @@ export const customerKeys = {
     [...customerKeys.lists(userId), params] as const,
   stats: (userId: string) => [...customerKeys.all(userId), 'stats'] as const,
   salesJourney: (userId: string) => [...customerKeys.all(userId), 'salesJourney'] as const,
+  team: (userId: string) => [...customerKeys.all(userId), 'team'] as const,
+  teamList: (userId: string, params: CustomerListQueryParams) =>
+    [...customerKeys.team(userId), params] as const,
   detail: (userId: string, customerId: string) =>
     [...customerKeys.all(userId), 'detail', customerId] as const,
   avatar: (userId: string, customerId: string) =>

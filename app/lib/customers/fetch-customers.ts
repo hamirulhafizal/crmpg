@@ -67,6 +67,9 @@ function buildListSearchParams(params: CustomerListQueryParams): URLSearchParams
   if (params.registerMonth) qs.append('registerMonth', params.registerMonth)
   if (params.lastPurchaseMonth) qs.append('lastPurchaseMonth', params.lastPurchaseMonth)
   if (params.tagIds.length > 0) qs.set('tagIds', params.tagIds.join(','))
+  if (params.businessRank) qs.append('businessRank', params.businessRank)
+  if (params.totalFrontline) qs.append('totalFrontline', params.totalFrontline)
+  if (params.empireSize) qs.append('empireSize', params.empireSize)
 
   return qs
 }

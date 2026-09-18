@@ -559,3 +559,80 @@ export function getBusinessRankBucketLabel(bucket: BusinessRankBucket): string {
       return 'Other / unset'
   }
 }
+
+/** Frontline / empire size qualification bands (Public Gold style thresholds). */
+export type NetworkSizeBucket = 'pre-md' | 'md' | 'fmd' | 'sfmd'
+
+export const NETWORK_SIZE_BUCKETS: NetworkSizeBucket[] = ['pre-md', 'md', 'fmd', 'sfmd']
+
+export function parseNetworkSizeBucket(raw: string | null | undefined): NetworkSizeBucket | '' {
+  const v = (raw || '').trim().toLowerCase()
+  if (v === 'pre-md' || v === 'md' || v === 'fmd' || v === 'sfmd') return v
+  return ''
+}
+
+/** Parse `Total Frontline` / `Empire Size` style counts from original_data. */
+export function parseOriginalDataCount(
+  originalData: unknown,
+  key: 'Total Frontline' | 'Empire Size'
+): number | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data[key]
+  if (raw === undefined || raw === null || raw === '') return null
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? Math.trunc(raw) : null
+  }
+  const cleaned = String(raw)
+    .trim()
+    .replace(/,/g, '')
+    .replace(/[^\d.-]/g, '')
+  if (!cleaned) return null
+  const n = Number(cleaned)
+  if (!Number.isFinite(n)) return null
+  return Math.trunc(n)
+}
+
+/**
+ * Exclusive bands:
+ * - pre-md: ≤ 50
+ * - md: ≥ 300 and < 500
+ * - fmd: ≥ 500 and < 1000
+ * - sfmd: ≥ 1000
+ */
+export function matchesNetworkSizeBucket(count: number | null, bucket: NetworkSizeBucket): boolean {
+  if (count == null || !Number.isFinite(count)) return false
+  switch (bucket) {
+    case 'pre-md':
+      return count <= 50
+    case 'md':
+      return count >= 300 && count < 500
+    case 'fmd':
+      return count >= 500 && count < 1000
+    case 'sfmd':
+      return count >= 1000
+    default:
+      return false
+  }
+}
+
+export function getNetworkSizeBucketLabel(bucket: NetworkSizeBucket): string {
+  switch (bucket) {
+    case 'pre-md':
+      return 'Pre-MD (≤50)'
+    case 'md':
+      return 'MD (300+)'
+    case 'fmd':
+      return 'FMD (500+)'
+    case 'sfmd':
+      return 'SFMD (1000+)'
+    default:
+      return bucket
+  }
+}
+
+/** Dealer network ranks (excludes plain customer / unset). */
+export function isDealerBusinessRank(originalData: unknown): boolean {
+  const bucket = getBusinessRankBucket(originalData)
+  return bucket === 'dealer' || bucket === 'priority_dealer' || bucket === 'master_dealer'
+}
