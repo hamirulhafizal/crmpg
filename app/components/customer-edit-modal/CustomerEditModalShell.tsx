@@ -28,6 +28,7 @@ import {
 } from '@/app/lib/follow-up-resume'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { fetchCustomerAvatarUrl } from '@/app/lib/customers/fetch-customers'
+import { CustomerChecklistPanel } from '@/app/components/customer-edit-modal/CustomerChecklistPanel'
 
 /** Above full-screen shells (e.g. schedule calendar z-[60]) and typical z-50 modals. */
 const Z_CUSTOMER_MODAL_OVERLAY = 'z-[1000]'
@@ -154,7 +155,7 @@ interface ChatHistoryMessage {
   fromMe: boolean
 }
 
-export type CustomerEditModalTab = 'details' | 'follow_up' | 'tags'
+export type CustomerEditModalTab = 'details' | 'follow_up' | 'checklist' | 'tags'
 
 export type CustomerEditModalShellProps = {
   open: boolean
@@ -281,7 +282,7 @@ export function CustomerEditModalShell({
   }, [open, initialTab])
 
   useEffect(() => {
-    if (isCreating && customerModalTab === 'follow_up') {
+    if (isCreating && (customerModalTab === 'follow_up' || customerModalTab === 'checklist')) {
       setCustomerModalTab('details')
     }
   }, [isCreating, customerModalTab])
@@ -920,7 +921,9 @@ export function CustomerEditModalShell({
                 <div
                   role="tablist"
                   aria-label="Customer sections"
-                  className={`mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${isCreating ? 'grid-cols-2' : 'grid-cols-3'}`}
+                  className={`mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${
+                    isCreating ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
+                  }`}
                 >
                   <button
                     type="button"
@@ -948,6 +951,21 @@ export function CustomerEditModalShell({
                       }`}
                     >
                       Follow-up
+                    </button>
+                  )}
+                  {!isCreating && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={customerModalTab === 'checklist'}
+                      onClick={() => setCustomerModalTab('checklist')}
+                      className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
+                        customerModalTab === 'checklist'
+                          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Checklist
                     </button>
                   )}
                   <button
@@ -1548,6 +1566,21 @@ export function CustomerEditModalShell({
                         )}
                       </button>
                     </div>
+                  </motion.div>
+                )}
+
+                {customerModalTab === 'checklist' && !isCreating && customerId && (
+                  <motion.div
+                    key="customer-tab-checklist"
+                    role="tabpanel"
+                    aria-label="Checklist"
+                    className="min-h-[200px]"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ type: 'tween', duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
+                  >
+                    <CustomerChecklistPanel customerId={customerId} />
                   </motion.div>
                 )}
 

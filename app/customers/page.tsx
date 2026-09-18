@@ -711,7 +711,7 @@ function CustomersPage() {
     },
   })
   const isMountedRef = useRef(true)
-  const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: 'details' | 'follow_up' | 'tags' }) => void>(
+  const handleEditRef = useRef<(customer: Customer, opts?: { initialTab?: CustomerEditModalTab }) => void>(
     () => {}
   )
   const urlOpenDoneRef = useRef<string | null>(null)
