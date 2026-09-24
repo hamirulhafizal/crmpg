@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { buildDefaultGmailMessage } from '@/app/lib/profile/gmail-template'
 
 interface WahaSession {
@@ -511,33 +512,27 @@ export default function WahaIntegrationPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard"
-                className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
-                aria-label="Back to dashboard"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-
-              <h1 className="text-xl font-semibold text-slate-900">WhatsApp Integration</h1>
-              <p className="text-sm text-slate-600">
-                Provider:{' '}
-                <span className="font-medium">
-                  {whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}
-                  {assignedServerName ? ` · ${assignedServerName}` : ''}
-                </span>
-              </p>
-            </div>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <PageBackTitle
+          title="WhatsApp Integration"
+          subtitle={
+            <>
+              Provider:{' '}
+              <span className="font-medium">
+                {whatsappProvider === 'wasender' ? 'WasenderAPI' : 'WAHA'}
+                {assignedServerName ? ` · ${assignedServerName}` : ''}
+              </span>
+            </>
+          }
+          className="mb-0"
+        />
+
         {!wasenderAvailable && !isProActive ? (
           <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
             WasenderAPI is included with Pro. Your account uses WAHA on the Free plan.{' '}

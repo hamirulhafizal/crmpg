@@ -153,7 +153,7 @@ export async function computeEligibleAudiencePreview(
     const { data: batch, error } = await supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', userId)

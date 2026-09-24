@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
@@ -884,21 +885,7 @@ export default function ExcelProcessorPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
-              <Link
-                href="/dashboard"
-                className="text-slate-600 hover:text-slate-900 transition-colors text-sm sm:text-base"
-              >
-                <div className="flex flex-row items-center justify-start gap-3">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Dashboard
-                </div>
-              </Link>
-              {/* <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Excel Processor</h1> */}
-            </div>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
@@ -913,6 +900,7 @@ export default function ExcelProcessorPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <PageBackTitle title="Excel Processor" />
         {/* Prompt Editor Section */}
         <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 border border-slate-200/50">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4">

@@ -26,6 +26,7 @@ import {
   customerMatchesFilters,
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
+import { isWhatsAppSendAllowed, getPhoneContactStatusFromRow } from '@/app/lib/customer-phone-contact-status'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import {
   findRecentStepLog,
@@ -1219,6 +1220,20 @@ async function processDueEnrollmentRows(
         debugLines,
         `skip enrollment=${row.id}: campaign=${campaign?.id ?? 'null'} status=${campaign?.status ?? 'n/a'} inWindow=${campaign ? campaignInWindow(campaign, now) : false} phone=${Boolean(customer?.phone)}`
       )
+      continue
+    }
+
+    if (!isWhatsAppSendAllowed(customer)) {
+      const phoneStatus = getPhoneContactStatusFromRow(customer)
+      cronLog(
+        debugLines,
+        `skip enrollment=${row.id}: phone_contact_status=${phoneStatus} (WhatsApp blocked)`
+      )
+      onProgress?.({
+        type: 'log',
+        message: `Skipped ${customerWorkflowLabel(customer)} — phone status: ${phoneStatus}`,
+        level: 'info',
+      })
       continue
     }
 

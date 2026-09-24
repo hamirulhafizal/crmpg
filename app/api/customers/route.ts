@@ -14,6 +14,10 @@ import {
   parseOriginalDataCount,
   parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
+import {
+  isKnownPhoneContactStatusInput,
+  parsePhoneContactStatus,
+} from '@/app/lib/customer-phone-contact-status'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
@@ -73,6 +77,10 @@ export async function GET(request: Request) {
     const empireSize = parseNetworkSizeBucket(searchParams.get('empireSize'))
     const businessRankRaw = (searchParams.get('businessRank') || '').trim().toLowerCase()
     const dealersOnly = businessRankRaw === 'dealers'
+    const phoneContactStatusRaw = searchParams.get('phoneContactStatus')
+    const phoneContactStatus = isKnownPhoneContactStatusInput(phoneContactStatusRaw)
+      ? parsePhoneContactStatus(phoneContactStatusRaw)
+      : ''
     const parseOptionalInt = (raw: string | null): number | null => {
       if (raw == null) return null
       const s = raw.trim()
@@ -137,6 +145,13 @@ export async function GET(request: Request) {
       return q.or('original_data->>Rank.ilike.%dealer%')
     }
 
+    const applyPhoneContactStatusDbFilter = <T extends { eq: (col: string, val: string) => T }>(
+      q: T
+    ): T => {
+      if (!phoneContactStatus) return q
+      return q.eq('phone_contact_status', phoneContactStatus)
+    }
+
     // Build query
     let query = supabase
       .from('customers')
@@ -144,6 +159,7 @@ export async function GET(request: Request) {
       .eq('user_id', user.id)
 
     query = applyDealersRankDbFilter(query)
+    query = applyPhoneContactStatusDbFilter(query)
 
     if (tagIds.length === 1) {
       query = query.eq('customer_tags.tag_id', tagIds[0])
@@ -213,6 +229,7 @@ export async function GET(request: Request) {
           .eq('user_id', user.id)
 
         batchQuery = applyDealersRankDbFilter(batchQuery)
+        batchQuery = applyPhoneContactStatusDbFilter(batchQuery)
 
         if (tagIds.length === 1) {
           batchQuery = batchQuery.eq('customer_tags.tag_id', tagIds[0])
@@ -572,6 +589,7 @@ export async function POST(request: Request) {
         'sender_name', 'save_name', 'pg_code', 'row_number',
         'is_married',
         'is_friend',
+        'phone_contact_status',
         'sales_journey_stage',
         'sales_journey_updated_at',
         // legacy (column removed): we normalize into original_data["Profile Verified"]
@@ -628,6 +646,12 @@ export async function POST(request: Request) {
         row_number: customer.row_number || customer.rowNumber || customer['row_number'] || null,
         is_married: customer.is_married === true || customer.is_married === 'true',
         is_friend: customer.is_friend === true || customer.is_friend === 'true',
+        phone_contact_status:
+          customer.phone_contact_status == null || customer.phone_contact_status === ''
+            ? 'valid'
+            : isKnownPhoneContactStatusInput(customer.phone_contact_status)
+              ? parsePhoneContactStatus(customer.phone_contact_status)
+              : 'valid',
         original_data: Object.keys(originalData).length > 0 ? originalData : null,
         segment_attributes:
           customer.segment_attributes &&

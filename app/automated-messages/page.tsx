@@ -4,8 +4,8 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   isBroadcastScheduledTitle,
@@ -979,16 +979,7 @@ export default function AutomatedMessagesPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/dashboard"
-              className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all flex items-center gap-3"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Dashboard
-            </Link>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
@@ -996,44 +987,47 @@ export default function AutomatedMessagesPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h1 className="text-xl font-semibold text-slate-900">Automated WhatsApp Messages</h1>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                aria-label="View schedule on calendar"
-                onClick={() => {
-                  const d = new Date()
-                  d.setDate(1)
-                  d.setHours(12, 0, 0, 0)
-                  setScheduleCalendarMonth(d)
-                  setScheduleViewMode('month')
-                  setScheduleCalendarSelectedKey(todayLocalDateKey())
-                  setScheduleCalendarWideLayout(window.matchMedia('(min-width: 768px)').matches)
-                  setScheduleCalendarOpen(true)
-                }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                {activeTab === 'group' ? 'Schedule poster' : 'Schedule message'}
-              </button>
-            </div>
-          </div>
+          <PageBackTitle
+            title="Automated WhatsApp Messages"
+            className="mb-4"
+            actions={
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="View schedule on calendar"
+                  onClick={() => {
+                    const d = new Date()
+                    d.setDate(1)
+                    d.setHours(12, 0, 0, 0)
+                    setScheduleCalendarMonth(d)
+                    setScheduleViewMode('month')
+                    setScheduleCalendarSelectedKey(todayLocalDateKey())
+                    setScheduleCalendarWideLayout(window.matchMedia('(min-width: 768px)').matches)
+                    setScheduleCalendarOpen(true)
+                  }}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={activeTab === 'group' ? openCreateGoldPoster : openCreate}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  {activeTab === 'group' ? 'Schedule poster' : 'Schedule message'}
+                </button>
+              </div>
+            }
+          />
           <div className="mb-4 inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50">
             <button
               onClick={() => setActiveTab('personal')}

@@ -17,6 +17,7 @@ import {
   getRegistrationUtcMonthDate,
   isProfileVerifiedNo,
 } from '@/app/lib/customer-account-status'
+import { isWhatsAppSendAllowed } from '@/app/lib/customer-phone-contact-status'
 import {
   SCHEDULED_TITLE_ACTIVE_PROFILE_UNVERIFIED_FOLLOWUP,
   SCHEDULED_TITLE_ACTIVE_VERIFIED_NO_AUTODEBIT_FOLLOWUP,
@@ -977,6 +978,14 @@ export async function GET(request: Request) {
                   for (let i = 0; i < todaysCustomers.length; i++) {
                     const customer = todaysCustomers[i]
                     try {
+                      if (!isWhatsAppSendAllowed(customer)) {
+                        log.info(
+                          '[birthday] skip customer (phone_contact_status):',
+                          customer.id,
+                          (customer as { phone_contact_status?: string }).phone_contact_status
+                        )
+                        continue
+                      }
                       if (i > 0) {
                         await randomDelayBetween(CUSTOMER_SEND_GAP_MIN_MS, CUSTOMER_SEND_GAP_MAX_MS)
                       }
@@ -1115,6 +1124,7 @@ export async function GET(request: Request) {
                 }
 
                 const candidates = (allCustomers || []).filter((c: Customer) => {
+                  if (!isWhatsAppSendAllowed(c)) return false
                   if (kind === 'free') {
                     if (alreadySent.has(c.id) || freeActivityTouched.has(c.id)) return false
                   } else if (kind === 'active_profile_unverified') {

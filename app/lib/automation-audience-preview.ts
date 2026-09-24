@@ -8,6 +8,7 @@ import {
   isProfileVerifiedNo,
   isProfileVerifiedYes,
 } from '@/app/lib/customer-account-status'
+import { isWhatsAppSendAllowed } from '@/app/lib/customer-phone-contact-status'
 
 const FOLLOWUP_ACTIVITY_TOPICS = ['profile_update', 'reactivate_from_free', 'direct_debit_education'] as const
 const FOLLOWUP_ACTIVITY_CHANNELS = ['whatsapp_manual', 'whatsapp_automation'] as const
@@ -122,7 +123,7 @@ export async function buildAutomationAudiencePreview(
 
   const { data: allCustomers, error: custErr } = await supabase
     .from('customers')
-    .select('id, save_name, name, phone, pg_code, original_data, created_at, last_purchase_at, is_monthly_buyer')
+    .select('id, save_name, name, phone, pg_code, original_data, created_at, last_purchase_at, is_monthly_buyer, phone_contact_status')
     .eq('user_id', userId)
     .not('phone', 'is', null)
 
@@ -180,6 +181,7 @@ export async function buildAutomationAudiencePreview(
   }
 
   const freeCandidates = customers.filter((c) => {
+    if (!isWhatsAppSendAllowed(c)) return false
     if (freeSent.has(c.id) || freeActivityTouched.has(c.id)) return false
     if (getAccountStatusKey(c) !== 'free') return false
     const regParts = getRegistrationUtcMonthDate(c.original_data, c.created_at)
@@ -188,6 +190,7 @@ export async function buildAutomationAudiencePreview(
   })
 
   const profileUnverified = customers.filter((c) => {
+    if (!isWhatsAppSendAllowed(c)) return false
     if (puSent.has(c.id) || puActivityTouched.has(c.id)) return false
     if (getAccountStatusKey(c) !== 'active') return false
     const purchaseParts = getLastPurchaseUtcMonthDate(c.original_data)
@@ -197,6 +200,7 @@ export async function buildAutomationAudiencePreview(
   })
 
   const noAutodebit = customers.filter((c) => {
+    if (!isWhatsAppSendAllowed(c)) return false
     if (adSent.has(c.id) || adActivityTouched.has(c.id)) return false
     if (getAccountStatusKey(c) !== 'active') return false
     const purchaseParts = getLastPurchaseUtcMonthDate(c.original_data)

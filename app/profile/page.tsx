@@ -6,6 +6,7 @@ import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 
 type ProfileRow = {
   id: string
@@ -251,28 +252,7 @@ export default function ProfilePage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/dashboard"
-                className="text-slate-600 hover:text-slate-900 transition-colors"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </Link>
-              <h1 className="text-2xl font-semibold text-slate-900">Edit Profile</h1>
-            </div>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
@@ -280,6 +260,7 @@ export default function ProfilePage() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PageBackTitle title="Edit Profile" />
         <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-200">
           {/* Profile Form */}
           <form onSubmit={handleUpdateProfile} className="space-y-6">

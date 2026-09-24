@@ -3,8 +3,8 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 
 /** Replace with your user guide video ID (e.g. from YouTube) or set to empty to hide. */
 const USER_GUIDE_VIDEO_ID = ''
@@ -82,28 +82,24 @@ export default function ExtensionDownloadPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/dashboard" className="text-slate-600 hover:text-slate-900 flex items-center gap-2 text-sm font-medium">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Dashboard
-            </Link>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50 mb-8">
-          <div className="flex items-start justify-between gap-4 mb-2">
-            <h1 className="text-2xl font-semibold text-slate-900">Chrome Extension (CRMPG by KEM)</h1>
-            {versionInfo?.latestVersion && (
+        <PageBackTitle
+          title="Chrome Extension (CRMPG by KEM)"
+          actions={
+            versionInfo?.latestVersion ? (
               <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
                 Latest v{versionInfo.latestVersion}
               </span>
-            )}
-          </div>
+            ) : null
+          }
+        />
+        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50 mb-8">
           <p className="text-slate-600 mb-6">
             Install the extension from the Chrome Web Store to sync customer data from the PG Mall business center page into CRMPG. Updates are delivered automatically by Chrome.
           </p>

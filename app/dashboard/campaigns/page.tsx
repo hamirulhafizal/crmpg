@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/contexts/auth-context'
@@ -423,16 +424,7 @@ function CampaignsListInner() {
 
       <header className="border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-3 rounded-xl px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Dashboard
-            </Link>
+          <div className="flex items-center justify-end">
             <UserProfileMenu />
           </div>
         </div>
@@ -440,206 +432,208 @@ function CampaignsListInner() {
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-6 rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Workflow</h1>
-              <p className="mt-1 text-sm text-slate-600">Multi-step automation</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={importInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  e.target.value = ''
-                  void (async () => {
-                    setImportBusy(true)
-                    setErr(null)
-                    try {
-                      const text = await file.text()
-                      const payload = JSON.parse(text)
-                      const res = await fetch('/api/campaigns/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                      })
-                      const json = await res.json()
-                      if (!res.ok) throw new Error(json.error || 'Import failed')
-                      const summary = json.data as {
-                        imported: number
-                        failed: number
-                        total: number
-                        warnings?: Array<{ warning: string }>
+          <PageBackTitle
+            title="Workflow"
+            subtitle="Multi-step automation"
+            className="mb-4"
+            titleClassName="sm:text-2xl"
+            actions={
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    e.target.value = ''
+                    void (async () => {
+                      setImportBusy(true)
+                      setErr(null)
+                      try {
+                        const text = await file.text()
+                        const payload = JSON.parse(text)
+                        const res = await fetch('/api/campaigns/import', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(payload),
+                        })
+                        const json = await res.json()
+                        if (!res.ok) throw new Error(json.error || 'Import failed')
+                        const summary = json.data as {
+                          imported: number
+                          failed: number
+                          total: number
+                          warnings?: Array<{ warning: string }>
+                        }
+                        pushToast(
+                          'success',
+                          `Imported ${summary.imported}/${summary.total} campaigns` +
+                            (summary.failed > 0 ? ` (${summary.failed} failed)` : '') +
+                            ((summary.warnings?.length ?? 0) > 0
+                              ? ` (${summary.warnings?.length} warning${(summary.warnings?.length ?? 0) === 1 ? '' : 's'})`
+                              : '')
+                        )
+                        refetchList()
+                      } catch (e: unknown) {
+                        const msg = e instanceof Error ? e.message : 'Import failed'
+                        setErr(msg)
+                        pushToast('error', msg)
+                      } finally {
+                        setImportBusy(false)
                       }
-                      pushToast(
-                        'success',
-                        `Imported ${summary.imported}/${summary.total} campaigns` +
-                          (summary.failed > 0 ? ` (${summary.failed} failed)` : '') +
-                          ((summary.warnings?.length ?? 0) > 0
-                            ? ` (${summary.warnings?.length} warning${(summary.warnings?.length ?? 0) === 1 ? '' : 's'})`
-                            : '')
-                      )
-                      refetchList()
-                    } catch (e: unknown) {
-                      const msg = e instanceof Error ? e.message : 'Import failed'
-                      setErr(msg)
-                      pushToast('error', msg)
-                    } finally {
-                      setImportBusy(false)
-                    }
-                  })()
-                }}
-              />
-              <button
-                type="button"
-                disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
-                onClick={() => void activateAllDrafts()}
-                title="Activate all draft workflows you are allowed to run"
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"
-              >
-                Activate all drafts
-              </button>
-              <button
-                type="button"
-                disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
-                onClick={() => void refetchList()}
-                title="Refresh list"
-                aria-label="Refresh workflow list"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                <svg
-                  className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
+                    })()
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                  onClick={() => void activateAllDrafts()}
+                  title="Activate all draft workflows you are allowed to run"
+                  className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                </svg>
-                {refreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
-                onClick={() => {
-                  void (async () => {
-                    setBulkBusy(true)
-                    setErr(null)
-                    try {
-                      const res = await fetch('/api/campaigns/export', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ include_all: true }),
-                      })
-                      const json = await res.json()
-                      if (!res.ok) throw new Error(json.error || 'Export failed')
-                      const blob = new Blob([JSON.stringify(json.data, null, 2)], {
-                        type: 'application/json',
-                      })
-                      const a = document.createElement('a')
-                      a.href = URL.createObjectURL(blob)
-                      a.download = String(json.file_name || 'campaigns-export.json')
-                      document.body.appendChild(a)
-                      a.click()
-                      a.remove()
-                      URL.revokeObjectURL(a.href)
-                      pushToast('success', `Exported ${Number(json.count ?? 0)} campaigns`)
-                    } catch (e: unknown) {
-                      const msg = e instanceof Error ? e.message : 'Export failed'
-                      setErr(msg)
-                      pushToast('error', msg)
-                    } finally {
-                      setBulkBusy(false)
-                    }
-                  })()
-                }}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                Export all
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
-                onClick={() => {
-                  void (async () => {
-                    setBulkBusy(true)
-                    setErr(null)
-                    try {
-                      const res = await fetch('/api/campaigns/export', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ids: Array.from(selectedIds) }),
-                      })
-                      const json = await res.json()
-                      if (!res.ok) throw new Error(json.error || 'Export failed')
-                      const blob = new Blob([JSON.stringify(json.data, null, 2)], {
-                        type: 'application/json',
-                      })
-                      const a = document.createElement('a')
-                      a.href = URL.createObjectURL(blob)
-                      a.download = String(json.file_name || 'campaigns-selected-export.json')
-                      document.body.appendChild(a)
-                      a.click()
-                      a.remove()
-                      URL.revokeObjectURL(a.href)
-                      pushToast('success', `Exported ${Number(json.count ?? 0)} selected campaigns`)
-                    } catch (e: unknown) {
-                      const msg = e instanceof Error ? e.message : 'Export failed'
-                      setErr(msg)
-                      pushToast('error', msg)
-                    } finally {
-                      setBulkBusy(false)
-                    }
-                  })()
-                }}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                Export selected ({selectedIds.size})
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
-                onClick={() => void bulkRemove()}
-                className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  />
-                </svg>
-                {bulkDeleting ? 'Deleting…' : `Delete selected (${selectedIds.size})`}
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
-                onClick={() => importInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                {importBusy ? 'Importing…' : 'Import JSON'}
-              </button>
-              <button
-                type="button"
-                onClick={() => replacePanel('create')}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                New workflow
-              </button>
-            </div>
-          </div>
+                  Activate all drafts
+                </button>
+                <button
+                  type="button"
+                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                  onClick={() => void refetchList()}
+                  title="Refresh list"
+                  aria-label="Refresh workflow list"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  <svg
+                    className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                  {refreshing ? 'Refreshing…' : 'Refresh'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
+                  onClick={() => {
+                    void (async () => {
+                      setBulkBusy(true)
+                      setErr(null)
+                      try {
+                        const res = await fetch('/api/campaigns/export', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ include_all: true }),
+                        })
+                        const json = await res.json()
+                        if (!res.ok) throw new Error(json.error || 'Export failed')
+                        const blob = new Blob([JSON.stringify(json.data, null, 2)], {
+                          type: 'application/json',
+                        })
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(blob)
+                        a.download = String(json.file_name || 'campaigns-export.json')
+                        document.body.appendChild(a)
+                        a.click()
+                        a.remove()
+                        URL.revokeObjectURL(a.href)
+                        pushToast('success', `Exported ${Number(json.count ?? 0)} campaigns`)
+                      } catch (e: unknown) {
+                        const msg = e instanceof Error ? e.message : 'Export failed'
+                        setErr(msg)
+                        pushToast('error', msg)
+                      } finally {
+                        setBulkBusy(false)
+                      }
+                    })()
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Export all
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
+                  onClick={() => {
+                    void (async () => {
+                      setBulkBusy(true)
+                      setErr(null)
+                      try {
+                        const res = await fetch('/api/campaigns/export', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ ids: Array.from(selectedIds) }),
+                        })
+                        const json = await res.json()
+                        if (!res.ok) throw new Error(json.error || 'Export failed')
+                        const blob = new Blob([JSON.stringify(json.data, null, 2)], {
+                          type: 'application/json',
+                        })
+                        const a = document.createElement('a')
+                        a.href = URL.createObjectURL(blob)
+                        a.download = String(json.file_name || 'campaigns-selected-export.json')
+                        document.body.appendChild(a)
+                        a.click()
+                        a.remove()
+                        URL.revokeObjectURL(a.href)
+                        pushToast('success', `Exported ${Number(json.count ?? 0)} selected campaigns`)
+                      } catch (e: unknown) {
+                        const msg = e instanceof Error ? e.message : 'Export failed'
+                        setErr(msg)
+                        pushToast('error', msg)
+                      } finally {
+                        setBulkBusy(false)
+                      }
+                    })()
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Export selected ({selectedIds.size})
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || bulkDeleting || importBusy || refreshing || selectedIds.size === 0}
+                  onClick={() => void bulkRemove()}
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-60"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  {bulkDeleting ? 'Deleting…' : `Delete selected (${selectedIds.size})`}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy || bulkDeleting || importBusy || refreshing}
+                  onClick={() => importInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {importBusy ? 'Importing…' : 'Import JSON'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => replacePanel('create')}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New workflow
+                </button>
+              </>
+            }
+          />
 
           {err ? (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
@@ -886,7 +880,9 @@ function CampaignsSuspenseFallback() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="h-10 w-32 animate-pulse rounded-xl bg-slate-200/80" />
+          <div className="flex items-center justify-end">
+            <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200/80" />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

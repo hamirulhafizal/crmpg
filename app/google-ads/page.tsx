@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { canRequestRenewal, effectivePackageStatus } from '@/app/lib/google-ads/billing'
@@ -243,15 +244,14 @@ export default function GoogleAdsParticipantPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 lg:px-8 py-4">
-          <Link href="/dashboard" className="text-sm font-medium text-slate-600 transition hover:text-slate-900">
-            ← Dashboard
-          </Link>
+        <div className="max-w-7xl mx-auto flex items-center justify-end px-4 sm:px-6 lg:px-8 py-4">
           <UserProfileMenu />
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+        <PageBackTitle title="Google Ads" />
+
         <div className="mb-6">
           <GoogleAdsRotationPanel />
         </div>

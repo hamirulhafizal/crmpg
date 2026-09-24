@@ -11,6 +11,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
 import { getAccountStatusLabel } from '@/app/lib/customer-account-status'
 import {
+  getPhoneContactStatusLabel,
+  parsePhoneContactStatus,
+  type PhoneContactStatus,
+} from '@/app/lib/customer-phone-contact-status'
+import {
   FOLLOW_UP_CHANNELS,
   FOLLOW_UP_OUTCOMES,
   FOLLOW_UP_TOPICS,
@@ -124,6 +129,7 @@ export interface Customer {
   last_purchase_at?: string | null
   is_monthly_buyer?: boolean | null
   segment_attributes?: Record<string, unknown> | null
+  phone_contact_status?: PhoneContactStatus | string | null
 }
 
 interface TagCategoryDto {
@@ -352,6 +358,7 @@ export function CustomerEditModalShell({
     const base = initialCustomer && typeof initialCustomer === 'object' ? initialCustomer : {}
     setDraft({
       ...base,
+      phone_contact_status: parsePhoneContactStatus(base.phone_contact_status),
       segment_attributes:
         base.segment_attributes && typeof base.segment_attributes === 'object'
           ? { ...base.segment_attributes }
@@ -375,6 +382,7 @@ export function CustomerEditModalShell({
         if (!cancelled) {
           setDraft({
             ...data,
+            phone_contact_status: parsePhoneContactStatus(data.phone_contact_status),
             original_data:
               normalizeCustomerOriginalData(data.original_data) ??
               (data.original_data as Record<string, unknown> | null),
@@ -1174,6 +1182,31 @@ export function CustomerEditModalShell({
                       onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
                       className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Phone / WhatsApp status
+                    </label>
+                    <select
+                      value={parsePhoneContactStatus(draft.phone_contact_status)}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          phone_contact_status: e.target.value as PhoneContactStatus,
+                        })
+                      }
+                      className="w-full px-3 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="valid">{getPhoneContactStatusLabel('valid')}</option>
+                      <option value="invalid">{getPhoneContactStatusLabel('invalid')}</option>
+                      <option value="changed">{getPhoneContactStatusLabel('changed')}</option>
+                      <option value="passed_away">{getPhoneContactStatusLabel('passed_away')}</option>
+                    </select>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Workflows only send WhatsApp when status is Valid. Changed number = reaches WhatsApp but wrong
+                      person.
+                    </p>
                   </div>
 
                   <div>

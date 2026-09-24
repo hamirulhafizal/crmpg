@@ -29,6 +29,7 @@ export type CustomerListRow = {
   last_purchase_at?: string | null
   is_monthly_buyer?: boolean | null
   segment_attributes?: Record<string, unknown> | null
+  phone_contact_status?: string | null
 }
 
 export type CustomerListResult = {
@@ -67,6 +68,7 @@ function buildListSearchParams(params: CustomerListQueryParams): URLSearchParams
   if (params.registerMonth) qs.append('registerMonth', params.registerMonth)
   if (params.lastPurchaseMonth) qs.append('lastPurchaseMonth', params.lastPurchaseMonth)
   if (params.tagIds.length > 0) qs.set('tagIds', params.tagIds.join(','))
+  if (params.phoneContactStatus) qs.append('phoneContactStatus', params.phoneContactStatus)
   if (params.businessRank) qs.append('businessRank', params.businessRank)
   if (params.totalFrontline) qs.append('totalFrontline', params.totalFrontline)
   if (params.empireSize) qs.append('empireSize', params.empireSize)

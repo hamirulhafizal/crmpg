@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutEffect, type ReactNode } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
@@ -25,6 +25,10 @@ import {
   getBusinessRankBucketLabel,
   type BusinessRankBucket,
 } from '@/app/lib/customer-account-status'
+import {
+  getPhoneContactStatusLabel,
+  type PhoneContactStatus,
+} from '@/app/lib/customer-phone-contact-status'
 import {
   loadFollowUpResume,
   saveFollowUpResume,
@@ -188,6 +192,28 @@ function accountStatusQueueTitle(status: AccountStatusKey): string {
   }
 }
 
+const FILTER_SELECT_CLASS =
+  'w-full appearance-none rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5'
+
+function FilterField({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string
+  htmlFor?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-slate-600">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
 const runConfetti = () => {
   if (typeof window === 'undefined') return
   import('canvas-confetti').then(({ default: confetti }) => {
@@ -224,6 +250,7 @@ interface Customer {
   last_purchase_at?: string | null
   is_monthly_buyer?: boolean | null
   segment_attributes?: Record<string, unknown> | null
+  phone_contact_status?: string | null
 }
 
 interface TagCategoryDto {
@@ -461,6 +488,9 @@ function CustomersPage() {
   const [accountStatusFilter, setAccountStatusFilter] = useState<AccountStatusKey | ''>('')
   const [profileVerifiedFilter, setProfileVerifiedFilter] = useState<'' | 'yes' | 'no'>('')
   const [directDebitFilter, setDirectDebitFilter] = useState<'' | 'yes' | 'no'>('')
+  const [phoneContactStatusFilter, setPhoneContactStatusFilter] = useState<PhoneContactStatus | ''>(
+    ''
+  )
   const [acquisitionSourceFilter, setAcquisitionSourceFilter] = useState<
     '' | 'google_ads' | 'referral' | 'social_media' | 'offline' | 'import' | 'other' | 'unknown'
   >('')
@@ -486,6 +516,7 @@ function CustomersPage() {
       accountStatus: accountStatusFilter,
       profileVerified: profileVerifiedFilter,
       directDebit: directDebitFilter,
+      phoneContactStatus: phoneContactStatusFilter,
       acquisitionSource: acquisitionSourceFilter,
       registerMonth: registerMonthFilter,
       lastPurchaseMonth: lastPurchaseMonthFilter,
@@ -506,6 +537,7 @@ function CustomersPage() {
       accountStatusFilter,
       profileVerifiedFilter,
       directDebitFilter,
+      phoneContactStatusFilter,
       acquisitionSourceFilter,
       registerMonthFilter,
       lastPurchaseMonthFilter,
@@ -801,6 +833,7 @@ function CustomersPage() {
     setAccountStatusFilter('')
     setProfileVerifiedFilter('')
     setDirectDebitFilter('')
+    setPhoneContactStatusFilter('')
     setAcquisitionSourceFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
@@ -820,6 +853,7 @@ function CustomersPage() {
     setAccountStatusFilter('')
     setProfileVerifiedFilter('')
     setDirectDebitFilter('')
+    setPhoneContactStatusFilter('')
     setAcquisitionSourceFilter('')
     setRegisterMonthFilter('')
     setLastPurchaseMonthFilter('')
@@ -837,6 +871,7 @@ function CustomersPage() {
           accountStatusFilter ||
           profileVerifiedFilter ||
           directDebitFilter ||
+          phoneContactStatusFilter ||
           acquisitionSourceFilter ||
           registerMonthFilter ||
           lastPurchaseMonthFilter ||
@@ -852,6 +887,7 @@ function CustomersPage() {
       accountStatusFilter,
       profileVerifiedFilter,
       directDebitFilter,
+      phoneContactStatusFilter,
       acquisitionSourceFilter,
       registerMonthFilter,
       lastPurchaseMonthFilter,
@@ -860,6 +896,114 @@ function CustomersPage() {
       ageMaxFilter,
     ]
   )
+
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ key: string; label: string; onClear: () => void }> = []
+    if (genderFilter) {
+      chips.push({ key: 'gender', label: `Gender: ${genderFilter}`, onClear: () => setGenderFilter('') })
+    }
+    if (ethnicityFilter) {
+      chips.push({
+        key: 'ethnicity',
+        label: `Ethnicity: ${ethnicityFilter}`,
+        onClear: () => setEthnicityFilter(''),
+      })
+    }
+    if (agePresetFilter || ageMinFilter !== AGE_FILTER_MIN || ageMaxFilter !== AGE_FILTER_MAX) {
+      chips.push({
+        key: 'age',
+        label: agePresetFilter
+          ? `Age: ${agePresetFilter}`
+          : `Age: ${ageMinFilter}–${ageMaxFilter}`,
+        onClear: () => {
+          setAgePresetFilter('')
+          setAgeMinFilter(AGE_FILTER_MIN)
+          setAgeMaxFilter(AGE_FILTER_MAX)
+          setAgeMinDraft(AGE_FILTER_MIN)
+          setAgeMaxDraft(AGE_FILTER_MAX)
+        },
+      })
+    }
+    if (birthdayFilter) {
+      chips.push({
+        key: 'birthday',
+        label: birthdayFilter === 'today' ? 'Birthday: today' : 'Birthday: this month',
+        onClear: () => setBirthdayFilter(''),
+      })
+    }
+    if (accountStatusFilter) {
+      chips.push({
+        key: 'account',
+        label: `Account: ${accountStatusQueueTitle(accountStatusFilter)}`,
+        onClear: () => setAccountStatusFilter(''),
+      })
+    }
+    if (profileVerifiedFilter) {
+      chips.push({
+        key: 'verified',
+        label: `Verified: ${profileVerifiedFilter === 'yes' ? 'Yes' : 'No'}`,
+        onClear: () => setProfileVerifiedFilter(''),
+      })
+    }
+    if (directDebitFilter) {
+      chips.push({
+        key: 'dd',
+        label: `Direct Debit: ${directDebitFilter === 'yes' ? 'Yes' : 'No'}`,
+        onClear: () => setDirectDebitFilter(''),
+      })
+    }
+    if (phoneContactStatusFilter) {
+      chips.push({
+        key: 'wa',
+        label: `WhatsApp: ${getPhoneContactStatusLabel(phoneContactStatusFilter)}`,
+        onClear: () => setPhoneContactStatusFilter(''),
+      })
+    }
+    if (acquisitionSourceFilter) {
+      chips.push({
+        key: 'source',
+        label: `Source: ${acquisitionSourceFilter}`,
+        onClear: () => setAcquisitionSourceFilter(''),
+      })
+    }
+    if (registerMonthFilter) {
+      chips.push({
+        key: 'reg',
+        label: `Register: ${registerMonthFilter}`,
+        onClear: () => setRegisterMonthFilter(''),
+      })
+    }
+    if (lastPurchaseMonthFilter) {
+      chips.push({
+        key: 'lp',
+        label: `Last purchase: ${lastPurchaseMonthFilter}`,
+        onClear: () => setLastPurchaseMonthFilter(''),
+      })
+    }
+    if (tagFilterIds.length > 0) {
+      chips.push({
+        key: 'tags',
+        label: `Tags: ${tagFilterIds.length}`,
+        onClear: () => setTagFilterIds([]),
+      })
+    }
+    return chips
+  }, [
+    genderFilter,
+    ethnicityFilter,
+    agePresetFilter,
+    ageMinFilter,
+    ageMaxFilter,
+    birthdayFilter,
+    accountStatusFilter,
+    profileVerifiedFilter,
+    directDebitFilter,
+    phoneContactStatusFilter,
+    acquisitionSourceFilter,
+    registerMonthFilter,
+    lastPurchaseMonthFilter,
+    tagFilterIds,
+  ])
 
   // Check Google Contacts connection status
   useEffect(() => {
@@ -1646,20 +1790,20 @@ function CustomersPage() {
             <button
               type="button"
               onClick={() => setMobileFiltersOpen((prev) => !prev)}
-              className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 font-medium"
+              className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200/80 bg-white px-4 py-3 text-sm font-medium text-slate-800"
               aria-expanded={mobileFiltersOpen}
               aria-controls="customers-filters-actions-panel"
             >
               <span className="inline-flex items-center gap-2">
                 Filters & actions
                 {hasActiveAdvancedFilters ? (
-                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-                    Active
+                  <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                    {activeFilterChips.length} on
                   </span>
                 ) : null}
               </span>
               <svg
-                className={`h-5 w-5 shrink-0 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`}
+                className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -1700,20 +1844,20 @@ function CustomersPage() {
               <button
                 type="button"
                 onClick={() => setFiltersAccordionOpen((prev) => !prev)}
-                className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100"
+                className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-slate-200/80 bg-white px-4 py-3 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
                 aria-expanded={filtersAccordionOpen}
                 aria-controls="customers-filters-grid"
               >
                 <span className="inline-flex items-center gap-2">
                   Filters
                   {hasActiveAdvancedFilters ? (
-                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-                      Active
+                    <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                      {activeFilterChips.length} on
                     </span>
                   ) : null}
                 </span>
                 <svg
-                  className={`h-5 w-5 shrink-0 text-slate-600 transition-transform ${filtersAccordionOpen ? 'rotate-180' : ''}`}
+                  className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${filtersAccordionOpen ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1749,230 +1893,305 @@ function CustomersPage() {
               id="customers-filters-grid"
               className={`${mobileFiltersOpen ? 'block' : 'max-md:hidden'} ${filtersAccordionOpen ? 'md:block' : 'md:hidden'}`}
             >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            {/* Gender Filter */}
-            <select
-              value={genderFilter}
-              onChange={(e) => {
-                setGenderFilter(e.target.value)
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Genders</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-            </select>
+              {activeFilterChips.length > 0 ? (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  {activeFilterChips.map((chip) => (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      onClick={() => {
+                        chip.onClear()
+                        setPage(1)
+                      }}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
+                      title={`Clear ${chip.label}`}
+                    >
+                      <span className="min-w-0 truncate">{chip.label}</span>
+                      <span className="text-slate-400" aria-hidden>
+                        ×
+                      </span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleResetAdvancedFilters}
+                    className="text-xs font-medium text-slate-500 transition hover:text-slate-800"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              ) : null}
 
-            {/* Ethnicity Filter */}
-            <select
-              value={ethnicityFilter}
-              onChange={(e) => {
-                setEthnicityFilter(e.target.value)
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Ethnicities</option>
-              <option value="Malay">Malay</option>
-              <option value="Chinese">Chinese</option>
-              <option value="Indian">Indian</option>
-              <option value="Other">Other</option>
-            </select>
+              <div className="mb-4 space-y-5">
+                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <FilterField label="Gender" htmlFor="filter-gender">
+                    <select
+                      id="filter-gender"
+                      value={genderFilter}
+                      onChange={(e) => {
+                        setGenderFilter(e.target.value)
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </FilterField>
 
-            {/* Age Filter */}
-            <select
-              value={agePresetFilter}
-                  onChange={(e) => {
-                const v = e.target.value as '' | '0-18' | '19-26' | '27-45' | '46-above'
-                setAgePresetFilter(v)
-                if (v === '') {
-                  commitAgeRangeWithPreset(AGE_FILTER_MIN, AGE_FILTER_MAX)
-                  return
-                }
-                if (v === '0-18') commitAgeRangeWithPreset(0, 18)
-                else if (v === '19-26') commitAgeRangeWithPreset(19, 26)
-                else if (v === '27-45') commitAgeRangeWithPreset(27, 45)
-                else if (v === '46-above') commitAgeRangeWithPreset(46, AGE_FILTER_MAX)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Ages</option>
-              <option value="0-18">0-18 (junior account)</option>
-              <option value="19-26">19-26 (anak muda)</option>
-              <option value="27-45">27-45</option>
-              <option value="46-above">46-above (vetren)</option>
-            </select>
+                  <FilterField label="Ethnicity" htmlFor="filter-ethnicity">
+                    <select
+                      id="filter-ethnicity"
+                      value={ethnicityFilter}
+                      onChange={(e) => {
+                        setEthnicityFilter(e.target.value)
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="Malay">Malay</option>
+                      <option value="Chinese">Chinese</option>
+                      <option value="Indian">Indian</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </FilterField>
 
-            {/* Birthday Filter */}
-            <select
-              value={birthdayFilter}
-              onChange={(e) => {
-                setBirthdayFilter(e.target.value as 'today' | 'month' | '')
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Birthdays</option>
-              <option value="today">Born Today ({todayDay}/{todayMonth})</option>
-              <option value="month">Born This Month ({thisMonthName})</option>
-            </select>
+                  <FilterField label="Age" htmlFor="filter-age">
+                    <select
+                      id="filter-age"
+                      value={agePresetFilter}
+                      onChange={(e) => {
+                        const v = e.target.value as '' | '0-18' | '19-26' | '27-45' | '46-above'
+                        setAgePresetFilter(v)
+                        if (v === '') {
+                          commitAgeRangeWithPreset(AGE_FILTER_MIN, AGE_FILTER_MAX)
+                          return
+                        }
+                        if (v === '0-18') commitAgeRangeWithPreset(0, 18)
+                        else if (v === '19-26') commitAgeRangeWithPreset(19, 26)
+                        else if (v === '27-45') commitAgeRangeWithPreset(27, 45)
+                        else if (v === '46-above') commitAgeRangeWithPreset(46, AGE_FILTER_MAX)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All ages</option>
+                      <option value="0-18">0–18</option>
+                      <option value="19-26">19–26</option>
+                      <option value="27-45">27–45</option>
+                      <option value="46-above">46+</option>
+                    </select>
+                  </FilterField>
 
-            {/* Account Status Filter */}
-            <select
-              value={accountStatusFilter}
-              onChange={(e) => {
-                setAccountStatusFilter((e.target.value || '') as AccountStatusKey | '')
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Account Status</option>
-              <option value="free">Free account (daftar, tak beli lebih 12 mo, ada PG)</option>
-              <option value="freeze">Freeze account (daftar, tak beli 3–12 mo, ada PG)</option>
-              <option value="inactive">Inactive account (daftar, belian terakhir bulan lepas)</option>
-              <option value="temporary">Temporary account (daftar, tiada PG code, tak beli)</option>
-              <option value="active">Active account (monthly buyer dalam bulan semasa)</option>
-              <option value="unknown">Unknown</option>
-            </select>
+                  <FilterField label="Birthday" htmlFor="filter-birthday">
+                    <select
+                      id="filter-birthday"
+                      value={birthdayFilter}
+                      onChange={(e) => {
+                        setBirthdayFilter(e.target.value as 'today' | 'month' | '')
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="today">Today</option>
+                      <option value="month">This month</option>
+                    </select>
+                  </FilterField>
 
-            <select
-              value={profileVerifiedFilter}
-              onChange={(e) => {
-                setProfileVerifiedFilter((e.target.value || '') as '' | 'yes' | 'no')
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Verified</option>
-              <option value="yes">Verified: Yes</option>
-              <option value="no">Verified: No</option>
-            </select>
+                  <FilterField label="Account status" htmlFor="filter-account-status">
+                    <select
+                      id="filter-account-status"
+                      value={accountStatusFilter}
+                      onChange={(e) => {
+                        setAccountStatusFilter((e.target.value || '') as AccountStatusKey | '')
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="freeze">Freeze</option>
+                      <option value="free">Free</option>
+                      <option value="temporary">Temporary</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </FilterField>
 
-            <select
-              value={directDebitFilter}
-              onChange={(e) => {
-                setDirectDebitFilter((e.target.value || '') as '' | 'yes' | 'no')
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Direct Debit (all)</option>
-              <option value="yes">Direct Debit: Yes</option>
-              <option value="no">Direct Debit: No</option>
-            </select>
+                  <FilterField label="Verified" htmlFor="filter-verified">
+                    <select
+                      id="filter-verified"
+                      value={profileVerifiedFilter}
+                      onChange={(e) => {
+                        setProfileVerifiedFilter((e.target.value || '') as '' | 'yes' | 'no')
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </FilterField>
 
-            <select
-              value={acquisitionSourceFilter}
-              onChange={(e) => {
-                setAcquisitionSourceFilter(
-                  (e.target.value || '') as
-                    | ''
-                    | 'google_ads'
-                    | 'referral'
-                    | 'social_media'
-                    | 'offline'
-                    | 'import'
-                    | 'other'
-                    | 'unknown'
-                )
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Source (all)</option>
-              <option value="google_ads">Google Ads</option>
-              <option value="referral">Referral / Network</option>
-              <option value="social_media">Social Media</option>
-              <option value="offline">Offline / Event</option>
-              <option value="import">Import / Sync</option>
-              <option value="other">Other</option>
-              <option value="unknown">Unknown</option>
-            </select>
+                  <FilterField label="Direct Debit" htmlFor="filter-dd">
+                    <select
+                      id="filter-dd"
+                      value={directDebitFilter}
+                      onChange={(e) => {
+                        setDirectDebitFilter((e.target.value || '') as '' | 'yes' | 'no')
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </FilterField>
 
-            <select
-              value={registerMonthFilter}
-              onChange={(e) => {
-                setRegisterMonthFilter(e.target.value)
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Register month (all)</option>
-              <option value="1">Jan</option>
-              <option value="2">Feb</option>
-              <option value="3">Mar</option>
-              <option value="4">Apr</option>
-              <option value="5">May</option>
-              <option value="6">Jun</option>
-              <option value="7">Jul</option>
-              <option value="8">Aug</option>
-              <option value="9">Sep</option>
-              <option value="10">Oct</option>
-              <option value="11">Nov</option>
-              <option value="12">Dec</option>
-            </select>
+                  <FilterField label="WhatsApp status" htmlFor="filter-wa-status">
+                    <select
+                      id="filter-wa-status"
+                      value={phoneContactStatusFilter}
+                      onChange={(e) => {
+                        setPhoneContactStatusFilter((e.target.value || '') as PhoneContactStatus | '')
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                      aria-label="WhatsApp phone status filter"
+                    >
+                      <option value="">All</option>
+                      <option value="valid">Valid</option>
+                      <option value="invalid">Invalid</option>
+                      <option value="changed">Changed number</option>
+                      <option value="passed_away">Passed away</option>
+                    </select>
+                  </FilterField>
 
-            <select
-              value={lastPurchaseMonthFilter}
-              onChange={(e) => {
-                setLastPurchaseMonthFilter(e.target.value)
-                setPage(1)
-              }}
-              className="px-4 py-2 text-slate-900 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Last purchase month (all)</option>
-              <option value="1">Jan</option>
-              <option value="2">Feb</option>
-              <option value="3">Mar</option>
-              <option value="4">Apr</option>
-              <option value="5">May</option>
-              <option value="6">Jun</option>
-              <option value="7">Jul</option>
-              <option value="8">Aug</option>
-              <option value="9">Sep</option>
-              <option value="10">Oct</option>
-              <option value="11">Nov</option>
-              <option value="12">Dec</option>
-            </select>
+                  <FilterField label="Source" htmlFor="filter-source">
+                    <select
+                      id="filter-source"
+                      value={acquisitionSourceFilter}
+                      onChange={(e) => {
+                        setAcquisitionSourceFilter(
+                          (e.target.value || '') as
+                            | ''
+                            | 'google_ads'
+                            | 'referral'
+                            | 'social_media'
+                            | 'offline'
+                            | 'import'
+                            | 'other'
+                            | 'unknown'
+                        )
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="google_ads">Google Ads</option>
+                      <option value="referral">Referral</option>
+                      <option value="social_media">Social media</option>
+                      <option value="offline">Offline</option>
+                      <option value="import">Import</option>
+                      <option value="other">Other</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                  </FilterField>
 
-            <div className="md:col-span-2">
-              <CrmTagMultiSelect
-                categories={tagCatalog?.categories ?? []}
-                tags={tagCatalog?.tags ?? []}
-                selectedIds={tagFilterIds}
-                onChange={(ids) => {
-                  setTagFilterIds(ids)
-                  setPage(1)
-                }}
-                disabled={!tagCatalog || tagCatalog.tags.length === 0 || tagCatalogLoading}
-              />
+                  <FilterField label="Registered" htmlFor="filter-reg-month">
+                    <select
+                      id="filter-reg-month"
+                      value={registerMonthFilter}
+                      onChange={(e) => {
+                        setRegisterMonthFilter(e.target.value)
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">Any month</option>
+                      <option value="1">January</option>
+                      <option value="2">February</option>
+                      <option value="3">March</option>
+                      <option value="4">April</option>
+                      <option value="5">May</option>
+                      <option value="6">June</option>
+                      <option value="7">July</option>
+                      <option value="8">August</option>
+                      <option value="9">September</option>
+                      <option value="10">October</option>
+                      <option value="11">November</option>
+                      <option value="12">December</option>
+                    </select>
+                  </FilterField>
+
+                  <FilterField label="Last purchase" htmlFor="filter-lp-month">
+                    <select
+                      id="filter-lp-month"
+                      value={lastPurchaseMonthFilter}
+                      onChange={(e) => {
+                        setLastPurchaseMonthFilter(e.target.value)
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">Any month</option>
+                      <option value="1">January</option>
+                      <option value="2">February</option>
+                      <option value="3">March</option>
+                      <option value="4">April</option>
+                      <option value="5">May</option>
+                      <option value="6">June</option>
+                      <option value="7">July</option>
+                      <option value="8">August</option>
+                      <option value="9">September</option>
+                      <option value="10">October</option>
+                      <option value="11">November</option>
+                      <option value="12">December</option>
+                    </select>
+                  </FilterField>
+
+                  <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-600">Tags</span>
+                    <CrmTagMultiSelect
+                      categories={tagCatalog?.categories ?? []}
+                      tags={tagCatalog?.tags ?? []}
+                      selectedIds={tagFilterIds}
+                      onChange={(ids) => {
+                        setTagFilterIds(ids)
+                        setPage(1)
+                      }}
+                      disabled={!tagCatalog || tagCatalog.tags.length === 0 || tagCatalogLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={viewMode === 'all'}
+                      onChange={(e) => {
+                        setViewMode(e.target.checked ? 'all' : 'paginated')
+                        setPage(1)
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-400"
+                    />
+                    Show all results
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    className="text-sm font-medium text-slate-500 transition hover:text-slate-900"
+                  >
+                    Clear search & filters
+                  </button>
+                </div>
+              </div>
             </div>
-
-            {/* View mode: paginated vs all */}
-            <label className="flex items-center gap-2 px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
-              <input
-                type="checkbox"
-                checked={viewMode === 'all'}
-                onChange={(e) => {
-                  setViewMode(e.target.checked ? 'all' : 'paginated')
-                  setPage(1)
-                }}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-400 rounded"
-              />
-              <span className="text-sm font-medium whitespace-nowrap">Show all (no pagination)</span>
-            </label>
-
-            {/* Clear filters */}
-            <button
-              type="button"
-              onClick={handleClearFilters}
-              className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium whitespace-nowrap"
-            >
-              Clear
-            </button>
-          </div>
-          </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { requireUserApi } from '@/app/lib/auth/require-user'
 import { computeAgeFromDob } from '@/app/lib/customer-dob'
+import {
+  isKnownPhoneContactStatusInput,
+  parsePhoneContactStatus,
+} from '@/app/lib/customer-phone-contact-status'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 // GET /api/customers/[id] - Get single customer
@@ -85,6 +89,15 @@ export async function PUT(
     if (body.is_friend !== undefined) updateData.is_friend = body.is_friend
     if (body.last_purchase_at !== undefined) updateData.last_purchase_at = body.last_purchase_at
     if (body.is_monthly_buyer !== undefined) updateData.is_monthly_buyer = body.is_monthly_buyer
+    if (body.phone_contact_status !== undefined) {
+      if (!isKnownPhoneContactStatusInput(body.phone_contact_status)) {
+        return NextResponse.json(
+          { error: 'Invalid phone_contact_status. Use valid, invalid, changed, or passed_away.' },
+          { status: 400 }
+        )
+      }
+      updateData.phone_contact_status = parsePhoneContactStatus(body.phone_contact_status)
+    }
     if (body.segment_attributes !== undefined) {
       if (body.segment_attributes !== null && typeof body.segment_attributes !== 'object') {
         return NextResponse.json({ error: 'segment_attributes must be an object or null' }, { status: 400 })

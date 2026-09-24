@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type PlanRow = {
@@ -198,15 +199,11 @@ export default function DashboardBillingPage() {
         <UserProfileMenu />
       </div>
       <div className="space-y-8 pb-8">
-      <div>
-        <Link href="/dashboard" className="text-sm font-medium text-slate-500 hover:text-slate-800">
-          ← Dashboard
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-slate-900">Billing & plans</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Manage your CRM subscription. Google Ads remains a separate add-on.
-        </p>
-      </div>
+      <PageBackTitle
+        title="Billing & plans"
+        subtitle="Manage your CRM subscription. Google Ads remains a separate add-on."
+        className="mb-0"
+      />
 
       {actionMessage ? (
         <p className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-900" role="status">

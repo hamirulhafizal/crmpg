@@ -19,6 +19,8 @@ export type CustomerListQueryParams = {
   lastPurchaseMonth: string
   tagIds: string[]
   viewMode: 'paginated' | 'all'
+  /** Phone / WhatsApp reachability: valid | invalid | changed | passed_away */
+  phoneContactStatus?: string
   /** When `dealers`, only Rank containing dealer (not plain customer). */
   businessRank?: '' | 'dealers'
   totalFrontline?: string

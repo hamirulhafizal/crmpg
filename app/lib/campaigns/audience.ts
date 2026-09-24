@@ -5,6 +5,7 @@ import {
   parseDirectDebitSubscriptionFromOriginalData,
   parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
+import { isWhatsAppSendAllowed } from '@/app/lib/customer-phone-contact-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { isValidCampaignPhone } from '@/app/lib/phone-msisdn'
@@ -29,6 +30,7 @@ export type CustomerForAudience = {
   is_friend: boolean | null
   original_data: unknown
   segment_attributes: Record<string, unknown> | null
+  phone_contact_status?: string | null
   /** PostgREST may return `tags` as an object or a one-element array depending on embed shape. */
   customer_tags?: Array<{ tag_id?: string; tags?: TagEmbed } | null> | null
 }
@@ -83,6 +85,7 @@ export function customerTagIds(c: CustomerForAudience): Set<string> {
 
 export function customerMatchesFilters(c: CustomerForAudience, filters: CampaignAudienceFilters): boolean {
   if (!isValidCampaignPhone(c.phone)) return false
+  if (!isWhatsAppSendAllowed(c)) return false
 
   const wantSlugs = (filters.tag_slugs ?? []).map((t) => String(t).toLowerCase().trim()).filter(Boolean)
   const wantIds = (filters.tag_ids ?? []).map((id) => String(id).trim()).filter(Boolean)
@@ -224,6 +227,6 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
 
 /** PostgREST embed for audience matching (tags + fields used by {@link customerMatchesFilters}). */
 export const CUSTOMER_EMBED_FOR_AUDIENCE_MATCH = `
-  id, phone, email, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, prefix, age, sender_name,
+  id, phone, email, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status, prefix, age, sender_name,
   customer_tags ( tag_id, tags ( slug ) )
 `
