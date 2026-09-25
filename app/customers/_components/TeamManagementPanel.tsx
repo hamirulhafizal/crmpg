@@ -275,7 +275,7 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200/50 bg-white shadow-xl">
+      <div className="rounded-2xl border border-slate-200/50 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <p className="text-sm text-slate-600">
             {isLoading ? 'Loading dealers…' : `${total.toLocaleString()} dealer${total === 1 ? '' : 's'}`}
@@ -285,18 +285,18 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
           </p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="border-b-2 border-slate-300 bg-slate-100">
+        <div className="max-h-[min(65vh,640px)] overflow-auto overscroll-contain rounded-b-2xl">
+          <table className="min-w-full border-separate border-spacing-0">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900">
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   Sender Name
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900">
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   <button
                     type="button"
                     onClick={() => toggleSort('total_frontline')}
-                    className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                    className="inline-flex items-center gap-1 rounded uppercase tracking-wider hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     title={
                       sortOrder === 'desc'
                         ? 'Highest frontline first (click for lowest)'
@@ -309,11 +309,11 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
                     ) : null}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900">
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   <button
                     type="button"
                     onClick={() => toggleSort('empire_size')}
-                    className="inline-flex items-center gap-1 uppercase tracking-wider hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                    className="inline-flex items-center gap-1 rounded uppercase tracking-wider hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     title={
                       sortOrder === 'desc'
                         ? 'Highest empire first (click for lowest)'
@@ -326,10 +326,10 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
                     ) : null}
                   </button>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900">
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   Rank
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900">
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   Location
                 </th>
               </tr>

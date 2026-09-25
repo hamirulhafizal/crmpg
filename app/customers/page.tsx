@@ -2170,18 +2170,40 @@ function CustomersPage() {
                 </div>
 
                 <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <label className="inline-flex cursor-pointer items-center gap-2.5 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={viewMode === 'all'}
-                      onChange={(e) => {
-                        setViewMode(e.target.checked ? 'all' : 'paginated')
-                        setPage(1)
-                      }}
-                      className="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-400"
-                    />
-                    Show all results
-                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode((prev) => (prev === 'all' ? 'paginated' : 'all'))
+                      setPage(1)
+                    }}
+                    aria-pressed={viewMode === 'all'}
+                    title={
+                      viewMode === 'all'
+                        ? 'Switch back to paginated list (50 per page)'
+                        : 'Load every matching customer in one list (no pages)'
+                    }
+                    className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${
+                      viewMode === 'all'
+                        ? 'bg-slate-800 text-white hover:bg-slate-900'
+                        : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    {viewMode === 'all' ? (
+                      <>
+                        <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
+                        </svg>
+                        Use pagination
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                        Show all (off pagination)
+                      </>
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={handleClearFilters}
@@ -2530,13 +2552,13 @@ function CustomersPage() {
           </p>
         </div>
 
-        {/* Customers Table */}
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-100 border-b-2 border-slate-300">
+        {/* Customers Table — sticky headers need the scrollport (not a parent overflow-hidden) */}
+        <div className="rounded-2xl border border-slate-200/50 bg-white shadow-xl">
+          <div className="max-h-[min(70vh,720px)] overflow-auto overscroll-contain rounded-2xl">
+            <table className="min-w-full border-separate border-spacing-0">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left w-12">
+                  <th className="sticky top-0 z-30 w-12 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <input
                       type="checkbox"
                       checked={selectedIds.size > 0 && selectedIds.size === customers.length}
@@ -2545,13 +2567,17 @@ function CustomersPage() {
                     />
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Sender Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Save Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Sender Name
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Save Name
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('pg_code')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded uppercase tracking-wider"
+                      className="inline-flex items-center gap-1 rounded uppercase tracking-wider hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title={sortOrder === 'desc' ? 'Z–A / high–low (click for A–Z)' : 'A–Z / low–high (click for Z–A)'}
                     >
                       PG Code
@@ -2568,16 +2594,26 @@ function CustomersPage() {
                     </button>
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Phone</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Gender</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Ethnicity</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Name
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Email
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Phone
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Gender
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Ethnicity
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('age')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      className="inline-flex items-center gap-1 rounded hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title={
                         sortOrder === 'desc' ? 'Oldest age first (click for youngest)' : 'Youngest age first (click for oldest)'
                       }
@@ -2596,11 +2632,11 @@ function CustomersPage() {
                       )}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('dob')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      className="inline-flex items-center gap-1 rounded hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title={sortOrder === 'desc' ? 'Newest DOB first (click for oldest)' : 'Oldest DOB first (click for newest)'}
                     >
                       Date of Birth
@@ -2613,19 +2649,31 @@ function CustomersPage() {
                       )}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Married</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Friend</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Verified</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Direct Debit</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Source</th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Married
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Friend
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Verified
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Direct Debit
+                  </th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Source
+                  </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Status</th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Status
+                  </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('register_date')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      className="inline-flex items-center gap-1 rounded hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       Register Date
                       {sortBy === 'register_date' && (
@@ -2638,11 +2686,11 @@ function CustomersPage() {
                     </button>
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('last_purchase_date')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      className="inline-flex items-center gap-1 rounded hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       Last Purchase
                       {sortBy === 'last_purchase_date' && (
@@ -2655,11 +2703,11 @@ function CustomersPage() {
                     </button>
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                     <button
                       type="button"
                       onClick={() => toggleSort('updated_at')}
-                      className="inline-flex items-center gap-1 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      className="inline-flex items-center gap-1 rounded hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       title={sortOrder === 'desc' ? 'Newest first (click for oldest)' : 'Oldest first (click for newest)'}
                     >
                       Imported at
@@ -2673,7 +2721,9 @@ function CustomersPage() {
                     </button>
                   </th>
 
-                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-900 uppercase tracking-wider">Actions</th>
+                  <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
@@ -2899,30 +2949,68 @@ function CustomersPage() {
 
           {/* Pagination or "Showing all" */}
           {viewMode === 'all' ? (
-            <div className="px-4 py-3 border-t border-slate-200 text-sm text-slate-600">
-              Showing all {total} customer{total !== 1 ? 's' : ''}
-            </div>
-          ) : totalPages > 1 ? (
-            <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+            <div className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-600">
+                Showing all <strong className="font-semibold text-slate-800">{total}</strong> customer
+                {total !== 1 ? 's' : ''}
+                {customersQuery.isFetching ? (
+                  <span className="ml-2 text-xs text-slate-400">Updating…</span>
+                ) : null}
+              </p>
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
+                onClick={() => {
+                  setViewMode('paginated')
+                  setPage(1)
+                }}
+                className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Previous
-              </button>
-              <span className="text-sm text-slate-700">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
+                Use pagination
               </button>
             </div>
-          ) : null}
+          ) : (
+            <div className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                {totalPages > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-1 text-sm text-slate-700">
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-sm text-slate-600">
+                    {total} customer{total !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('all')
+                  setPage(1)
+                }}
+                className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Show all (off pagination)
+              </button>
+            </div>
+          )}
         </div>
         </motion.div>
         )}
