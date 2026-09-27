@@ -34,6 +34,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
+import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter';
 
 interface DealerInfo {
   username: string;
@@ -1597,12 +1598,7 @@ export default function NewPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 text-white py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p>&copy; 2025 PublicGoldMarketing</p>
-        </div>
-      </footer>
+      <CompanyLegalFooter variant="dark" />
 
       {/* Registration Drawer */}
       {isDrawerOpen && (

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
 import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
 
@@ -983,6 +984,7 @@ export default function DashboardPage() {
         </div>
 
       </main>
+      <CompanyLegalFooter />
     </div>
   )
 }

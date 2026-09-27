@@ -13,6 +13,7 @@ import {
   switchToSavedAccount,
   type SavedAccount,
 } from '@/app/lib/auth/saved-accounts'
+import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
 
 type LoginView = 'picker' | 'form'
 
@@ -494,6 +495,7 @@ export default function LoginPage() {
         <p className="mt-8 text-center text-sm text-slate-500">
           By signing in, you agree to our Terms of Service and Privacy Policy
         </p>
+        <CompanyLegalFooter className="mt-6 border-0 bg-transparent py-0 text-slate-500" />
       </div>
     </div>
   )

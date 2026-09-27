@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -300,6 +301,7 @@ export default function RegisterPage() {
         <p className="text-center text-sm text-slate-500 mt-8">
           By creating an account, you agree to our Terms of Service and Privacy Policy
         </p>
+        <CompanyLegalFooter className="mt-6 border-0 bg-transparent py-0 text-slate-500" />
       </div>
     </div>
   )
