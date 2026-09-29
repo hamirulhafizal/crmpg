@@ -80,14 +80,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: listErr.message }, { status: 500 })
     }
 
-    const targets = (rows ?? []).filter(
-      (r) =>
-        Number(r.last_step_sent) >= priorOrder &&
-        (r.status === 'completed' ||
-          (r.metadata &&
-            typeof r.metadata === 'object' &&
-            (r.metadata as Record<string, unknown>).step_send_abandoned))
-    )
+    const targets = (rows ?? []).filter((r) => {
+      const last = Number(r.last_step_sent) || 0
+      const meta =
+        r.metadata && typeof r.metadata === 'object'
+          ? (r.metadata as Record<string, unknown>)
+          : null
+      const abandoned = Boolean(meta?.step_send_abandoned || meta?.image_step_retry)
+      // Completed after skipping/failing the image, or still active with abandon/retry markers.
+      if (r.status === 'completed' && last >= priorOrder) return true
+      if (abandoned && last >= priorOrder) return true
+      return false
+    })
 
     if (targets.length === 0) {
       return NextResponse.json({
@@ -101,6 +105,7 @@ export async function POST(request: Request) {
     for (const row of targets) {
       const meta = { ...((row.metadata as Record<string, unknown>) ?? {}) }
       delete meta.step_send_abandoned
+      delete meta.image_step_retry
 
       const { error: uErr } = await admin
         .from('campaign_enrollments')

@@ -62,7 +62,11 @@ function isRetryableSendChatError(error: unknown): boolean {
     m.includes('unknown chat') ||
     m.includes('no lid for user') ||
     m.includes('no lid') ||
-    m.includes('invalid whatsapp number')
+    m.includes('invalid whatsapp number') ||
+    // WAHA / WhatsApp Web LID memoize crash — often recovers on @c.us / @s.whatsapp.net
+    m.includes('must include an id property') ||
+    m.includes('how we memoize') ||
+    (m.includes('memoize') && m.includes('undefined'))
   )
 }
 
@@ -87,12 +91,27 @@ async function resolveWahaLidChatId(userId: string, session: string, digits: str
   return null
 }
 
-async function resolveChatCandidates(userId: string, session: string, phone: string): Promise<string[]> {
+type ResolveChatCandidatesOptions = {
+  /**
+   * Prefer phone JIDs before @lid. Image sends often crash on LID with
+   * "must include an id property" while @c.us still works.
+   */
+  preferPhoneJidFirst?: boolean
+}
+
+async function resolveChatCandidates(
+  userId: string,
+  session: string,
+  phone: string,
+  opts?: ResolveChatCandidatesOptions
+): Promise<string[]> {
   const digits = normalizePhoneToMsisdn(phone)
   const lidChatId = await resolveWahaLidChatId(userId, session, digits)
-  return Array.from(
-    new Set([...(lidChatId ? [lidChatId] : []), `${digits}@c.us`, `${digits}@s.whatsapp.net`])
-  )
+  const phoneJids = [`${digits}@c.us`, `${digits}@s.whatsapp.net`]
+  if (opts?.preferPhoneJidFirst) {
+    return Array.from(new Set([...phoneJids, ...(lidChatId ? [lidChatId] : [])]))
+  }
+  return Array.from(new Set([...(lidChatId ? [lidChatId] : []), ...phoneJids]))
 }
 
 async function runWahaTypingIndicator(
@@ -183,11 +202,17 @@ async function sendWahaImageToChatCandidates(
   session: string,
   chatCandidates: string[],
   file: { mimetype: string; filename: string; data: string },
-  caption?: string
+  caption?: string,
+  logContext?: WhatsAppSendLogContext
 ): Promise<void> {
   let lastErr: unknown = null
-  for (const chatId of chatCandidates) {
+  for (let i = 0; i < chatCandidates.length; i++) {
+    const chatId = chatCandidates[i]!
     try {
+      logWhatsAppSend(
+        'sendImage:waha:try',
+        sendLogPayload(logContext, { ownerUserId: userId, session, chatId, attempt: i + 1 })
+      )
       await wahaFetch(
         '/api/sendImage',
         {
@@ -196,9 +221,25 @@ async function sendWahaImageToChatCandidates(
         },
         { userId }
       )
+      logWhatsAppSend(
+        'sendImage:waha:chat-ok',
+        sendLogPayload(logContext, { ownerUserId: userId, session, chatId, attempt: i + 1 })
+      )
       return
     } catch (e) {
       lastErr = e
+      const errMsg = e instanceof Error ? e.message : String(e)
+      logWhatsAppSend(
+        'sendImage:waha:chat-fail',
+        sendLogPayload(logContext, {
+          ownerUserId: userId,
+          session,
+          chatId,
+          attempt: i + 1,
+          retryable: isRetryableSendChatError(e),
+          error: errMsg.slice(0, 240),
+        })
+      )
       if (isRetryableSendChatError(e)) continue
       throw e
     }
@@ -315,7 +356,14 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
   }
 
   logWhatsAppSend('sendImage:waha', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
-  const chatCandidates = await resolveChatCandidates(userId, session, phone)
+  // Phone JIDs first: LID often throws WAHA memoize/"id property" on sendImage while @c.us works.
+  const chatCandidates = await resolveChatCandidates(userId, session, phone, {
+    preferPhoneJidFirst: true,
+  })
+  logWhatsAppSend(
+    'sendImage:waha:chat-candidates',
+    sendLogPayload(logContext, { ownerUserId: userId, session, candidates: chatCandidates })
+  )
   if (enableTyping && caption && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], caption.length)
   }
@@ -324,7 +372,8 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
     session,
     chatCandidates,
     { mimetype, filename, data: imageBytes.toString('base64') },
-    caption
+    caption,
+    logContext
   )
   logWhatsAppSend('sendImage:waha:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
 }

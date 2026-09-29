@@ -15,7 +15,10 @@ export function isRecipientLevelWhatsAppError(error: unknown): boolean {
     m.includes('invalid whatsapp number') ||
     m.includes('not registered on whatsapp') ||
     m.includes('not a whatsapp user') ||
-    m.includes('phone number is not registered')
+    m.includes('phone number is not registered') ||
+    m.includes('must include an id property') ||
+    m.includes('how we memoize') ||
+    (m.includes('memoize') && m.includes('undefined'))
   )
 }
 

@@ -3,6 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 /** Do not physically resend the same enrollment step within this window. */
 export const CAMPAIGN_STEP_SEND_DEDUP_MS = 24 * 60 * 60 * 1000
 
+/** Failed image steps may retry after this cooldown (matches abandon reschedule). */
+export const CAMPAIGN_IMAGE_FAILED_RETRY_COOLDOWN_MS = 25 * 60 * 1000
+
 export type RecentStepLogRow = {
   id: string
   send_status: 'pending' | 'sent' | 'failed' | 'skipped'
@@ -36,8 +39,24 @@ export async function findRecentStepLog(
   return (data as RecentStepLogRow | null) ?? null
 }
 
+type SkipPhysicalResendOptions = {
+  /** When true, a recent `failed` log only blocks until IMAGE retry cooldown elapses. */
+  allowFailedImageRetry?: boolean
+}
+
 /** True when a prior attempt exists — caller must not send WhatsApp again. */
-export function shouldSkipPhysicalResend(prior: RecentStepLogRow | null): boolean {
+export function shouldSkipPhysicalResend(
+  prior: RecentStepLogRow | null,
+  opts?: SkipPhysicalResendOptions
+): boolean {
   if (!prior) return false
-  return prior.send_status === 'pending' || prior.send_status === 'sent' || prior.send_status === 'failed'
+  if (prior.send_status === 'pending' || prior.send_status === 'sent') return true
+  if (prior.send_status === 'failed') {
+    if (opts?.allowFailedImageRetry) {
+      const ageMs = Date.now() - new Date(prior.created_at).getTime()
+      return ageMs < CAMPAIGN_IMAGE_FAILED_RETRY_COOLDOWN_MS
+    }
+    return true
+  }
+  return false
 }

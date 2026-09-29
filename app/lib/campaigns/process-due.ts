@@ -29,6 +29,7 @@ import {
 import { isWhatsAppSendAllowed, getPhoneContactStatusFromRow } from '@/app/lib/customer-phone-contact-status'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import {
+  CAMPAIGN_IMAGE_FAILED_RETRY_COOLDOWN_MS,
   findRecentStepLog,
   shouldSkipPhysicalResend,
 } from '@/app/lib/campaigns/step-send-dedup'
@@ -453,6 +454,59 @@ async function advanceEnrollmentPastAbandonedStep(params: {
   onProgress?: CampaignWorkflowProgressHandler
 }): Promise<void> {
   const { supabase, row, campaign, plan, steps, failedStep, reason, debugLines, onProgress } = params
+  const failedNode = whatsAppNodeForStep(plan, failedStep.step_order)
+  const failedIsImage = isImageStepNode(failedNode)
+
+  // Image steps: keep enrollment on the same step and reschedule — never mark completed
+  // after a failed birthday card (that was skipping the customer forever).
+  if (failedIsImage) {
+    const prevMeta =
+      row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {}
+    const prevRetry =
+      prevMeta.image_step_retry && typeof prevMeta.image_step_retry === 'object'
+        ? (prevMeta.image_step_retry as Record<string, unknown>)
+        : {}
+    const retryCount = (typeof prevRetry.count === 'number' ? prevRetry.count : 0) + 1
+    const backoffMs =
+      retryCount >= 8
+        ? 24 * 60 * 60 * 1000
+        : CAMPAIGN_IMAGE_FAILED_RETRY_COOLDOWN_MS + 5 * 60 * 1000
+    const retryAt = new Date(Date.now() + backoffMs)
+
+    await supabase
+      .from('campaign_enrollments')
+      .update({
+        next_send_at: retryAt.toISOString(),
+        status: 'active',
+        completed_at: null,
+        metadata: {
+          ...prevMeta,
+          image_step_retry: {
+            at: new Date().toISOString(),
+            step_order: failedStep.step_order,
+            step_id: failedStep.id,
+            reason,
+            count: retryCount,
+            next_send_at: retryAt.toISOString(),
+          },
+        },
+      })
+      .eq('id', row.id)
+
+    cronLog(
+      debugLines,
+      `reschedule failed image step enrollment=${row.id} campaign=${campaign.id} failed_step=${failedStep.step_order} retry_at=${retryAt.toISOString()} retry_count=${retryCount}`
+    )
+    onProgress?.({
+      type: 'log',
+      message: `Image step ${failedStep.step_order} failed — will retry (attempt ${retryCount})`,
+      level: 'info',
+    })
+    return
+  }
+
   const following = steps.find((s) => s.step_order > failedStep.step_order)
   const tz = campaign.timezone?.trim() || 'Asia/Kuala_Lumpur'
   const stepNodeId = nodeIdForStep(plan, failedStep.step_order)
@@ -1425,7 +1479,7 @@ async function processDueEnrollmentRows(
     })
 
     const priorStepLog = await findRecentStepLog(supabase, row.id, nextStep.id)
-    if (shouldSkipPhysicalResend(priorStepLog)) {
+    if (shouldSkipPhysicalResend(priorStepLog, { allowFailedImageRetry: isImageStep })) {
       cronLog(
         debugLines,
         `dedup skip send ${sendLogTag(campaign, label, nextStep.step_order)} enrollment=${row.id} prior_log=${priorStepLog!.id} status=${priorStepLog!.send_status}`
@@ -1459,17 +1513,25 @@ async function processDueEnrollmentRows(
           )
         }
       } else if (priorStepLog!.send_status === 'failed' && row.last_step_sent < nextStep.step_order) {
-        await advanceEnrollmentPastAbandonedStep({
-          supabase,
-          row,
-          campaign,
-          plan,
-          steps,
-          failedStep: nextStep,
-          reason: 'Prior send attempt failed; skipping duplicate WhatsApp resend',
-          debugLines,
-          onProgress,
-        })
+        if (isImageStep) {
+          // Stay on the image step; next_send_at / cooldown gates the real retry.
+          cronLog(
+            debugLines,
+            `dedup hold image step enrollment=${row.id} step=${nextStep.step_order} prior_failed_log=${priorStepLog!.id}`
+          )
+        } else {
+          await advanceEnrollmentPastAbandonedStep({
+            supabase,
+            row,
+            campaign,
+            plan,
+            steps,
+            failedStep: nextStep,
+            reason: 'Prior send attempt failed; skipping duplicate WhatsApp resend',
+            debugLines,
+            onProgress,
+          })
+        }
       }
       continue
     }
