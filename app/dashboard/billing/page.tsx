@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -194,10 +194,8 @@ export default function DashboardBillingPage() {
     data.flags.can_checkout && !data.flags.can_start_trial && (data.flags.can_upgrade_from_trial || !data.flags.is_pro_active || sub.status === 'active')
 
   return (
-    <div className="mx-auto max-w-4xl px-4 sm:px-6">
-      <div className="flex justify-end py-4">
-        <UserProfileMenu />
-      </div>
+    <AppShell title="Billing & plans">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
       <div className="space-y-8 pb-8">
       <PageBackTitle
         title="Billing & plans"
@@ -406,5 +404,6 @@ export default function DashboardBillingPage() {
       ) : null}
       </div>
     </div>
+    </AppShell>
   )
 }

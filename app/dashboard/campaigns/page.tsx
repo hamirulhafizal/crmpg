@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -49,53 +49,192 @@ function ActionIcon({
   )
 }
 
+type CampaignRowActionsProps = {
+  row: Row
+  busy: string | null
+  saasUsage: { atCampaignLimit: boolean; isProActive: boolean } | null
+  onView: () => void
+  onActivate: () => void
+  onPause: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+}
+
+function CampaignRowActions({
+  row,
+  busy,
+  saasUsage,
+  onView,
+  onActivate,
+  onPause,
+  onDuplicate,
+  onDelete,
+}: CampaignRowActionsProps) {
+  const idBusy = busy === row.id
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        disabled={idBusy}
+        onClick={onView}
+        title="View campaign"
+        aria-label="View campaign"
+        className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+      >
+        <ActionIcon>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </ActionIcon>
+      </button>
+      {row.status !== 'active' ? (
+        <button
+          type="button"
+          disabled={
+            idBusy ||
+            (saasUsage?.atCampaignLimit === true && row.status !== 'active') ||
+            (row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true)
+          }
+          onClick={onActivate}
+          title={
+            row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true
+              ? 'Pro workflows require an active Pro subscription'
+              : saasUsage?.atCampaignLimit
+                ? 'Active campaign limit reached — upgrade to Pro'
+                : row.status === 'paused'
+                  ? 'Resume campaign'
+                  : 'Activate campaign'
+          }
+          aria-label={row.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
+          className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+        >
+          <ActionIcon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"
+              />
+            </svg>
+          </ActionIcon>
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={idBusy}
+          onClick={onPause}
+          title="Pause campaign"
+          aria-label="Pause campaign"
+          className="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+        >
+          <ActionIcon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h3v15H6v-15zm9 0h3v15h-3v-15z" />
+            </svg>
+          </ActionIcon>
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={idBusy}
+        onClick={onDuplicate}
+        title="Duplicate campaign"
+        aria-label="Duplicate campaign"
+        className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+      >
+        <ActionIcon>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden>
+            <rect x="8" y="8" width="14" height="14" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+          </svg>
+        </ActionIcon>
+      </button>
+      <button
+        type="button"
+        disabled={idBusy}
+        onClick={onDelete}
+        title="Delete campaign"
+        aria-label="Delete campaign"
+        className="inline-flex items-center justify-center rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-50"
+      >
+        <ActionIcon>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+            />
+          </svg>
+        </ActionIcon>
+      </button>
+    </div>
+  )
+}
+
 function TableSkeleton() {
   return (
-    <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-[720px] w-full text-left text-sm">
-        <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-4 py-3">Name</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Trigger</th>
-            <th className="px-4 py-3 text-right">Enrolled</th>
-            <th className="px-4 py-3 text-right">Sent</th>
-            <th className="px-4 py-3">Created</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <tr key={i}>
-              <td className="px-4 py-3">
-                <div className="h-4 w-40 rounded bg-slate-200/80 animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-6 w-16 rounded-full bg-slate-200/80 animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-20 rounded bg-slate-200/70 animate-pulse" />
-              </td>
-              <td className="px-4 py-3 text-right">
-                <div className="ml-auto h-4 w-8 rounded bg-slate-200/70 animate-pulse" />
-              </td>
-              <td className="px-4 py-3 text-right">
-                <div className="ml-auto h-4 w-8 rounded bg-slate-200/70 animate-pulse" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-24 rounded bg-slate-200/70 animate-pulse" />
-              </td>
-              <td className="px-4 py-3 text-right">
-                <div className="ml-auto flex justify-end gap-2">
-                  <div className="h-7 w-14 rounded-lg bg-slate-200/70 animate-pulse" />
-                  <div className="h-7 w-14 rounded-lg bg-slate-200/70 animate-pulse" />
-                </div>
-              </td>
+    <>
+      <div className="grid grid-cols-1 gap-3 md:hidden">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 h-4 w-3/4 animate-pulse rounded bg-slate-200/80" />
+            <div className="mb-3 h-6 w-16 animate-pulse rounded-full bg-slate-200/80" />
+            <div className="mb-2 h-3 w-1/2 animate-pulse rounded bg-slate-200/70" />
+            <div className="h-3 w-2/3 animate-pulse rounded bg-slate-200/70" />
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
+        <table className="min-w-[720px] w-full text-left text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Trigger</th>
+              <th className="px-4 py-3 text-right">Enrolled</th>
+              <th className="px-4 py-3 text-right">Sent</th>
+              <th className="px-4 py-3">Created</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <tr key={i}>
+                <td className="px-4 py-3">
+                  <div className="h-4 w-40 animate-pulse rounded bg-slate-200/80" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-6 w-16 animate-pulse rounded-full bg-slate-200/80" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-4 w-20 animate-pulse rounded bg-slate-200/70" />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="ml-auto h-4 w-8 animate-pulse rounded bg-slate-200/70" />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="ml-auto h-4 w-8 animate-pulse rounded bg-slate-200/70" />
+                </td>
+                <td className="px-4 py-3">
+                  <div className="h-4 w-24 animate-pulse rounded bg-slate-200/70" />
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="ml-auto flex justify-end gap-2">
+                    <div className="h-7 w-14 animate-pulse rounded-lg bg-slate-200/70" />
+                    <div className="h-7 w-14 animate-pulse rounded-lg bg-slate-200/70" />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -398,7 +537,7 @@ function CampaignsListInner() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <AppShell title="Workflows">
       {toasts.map((t, i) => (
         <div
           key={t.id}
@@ -421,14 +560,6 @@ function CampaignsListInner() {
           refetchList()
         }}
       />
-
-      <header className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-end">
-            <UserProfileMenu />
-          </div>
-        </div>
-      </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-6 rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
@@ -653,40 +784,151 @@ function CampaignsListInner() {
 
           {listLoading ? (
             <TableSkeleton />
+          ) : rows.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
+              No campaigns yet. Create one to start enrolling customers.
+            </div>
           ) : (
-            <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <table className="min-w-[720px] w-full text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-3 py-3">
-                      <input
-                        type="checkbox"
-                        checked={rows.length > 0 && selectedIds.size === rows.length}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedIds(new Set(rows.map((r) => r.id)))
-                          else setSelectedIds(new Set())
-                        }}
-                        aria-label="Select all campaigns"
-                      />
-                    </th>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Trigger</th>
-                    <th className="px-4 py-3 text-right">Enrolled</th>
-                    <th className="px-4 py-3 text-right">Sent</th>
-                    <th className="px-4 py-3">Created</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.length === 0 ? (
+            <>
+              {/* Mobile: card grid */}
+              <div className="md:hidden">
+                <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={rows.length > 0 && selectedIds.size === rows.length}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIds(new Set(rows.map((r) => r.id)))
+                        else setSelectedIds(new Set())
+                      }}
+                      aria-label="Select all campaigns"
+                    />
+                    Select all
+                  </label>
+                  <span className="text-xs text-slate-500">{rows.length} workflow{rows.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  {rows.map((r) => (
+                    <article
+                      key={r.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={selectedIds.has(r.id)}
+                          onChange={(e) =>
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.add(r.id)
+                              else next.delete(r.id)
+                              return next
+                            })
+                          }
+                          aria-label={`Select campaign ${r.name}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => replacePanel({ view: r.id })}
+                              className="min-w-0 text-left"
+                            >
+                              <span className="text-base font-semibold leading-snug text-blue-700">
+                                {r.name}
+                              </span>
+                              {r.description?.trim() ? (
+                                <p className="mt-1 text-xs leading-snug text-slate-500 line-clamp-2">
+                                  {r.description}
+                                </p>
+                              ) : null}
+                            </button>
+                            <CampaignStatusBadge status={r.status as never} />
+                          </div>
+
+                          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Trigger
+                            </p>
+                            <div className="mt-1 text-sm text-slate-800">
+                              <CampaignListTriggerCell campaign={r} />
+                            </div>
+                          </div>
+
+                          <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded-xl border border-slate-100 bg-white px-2 py-2">
+                              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                Enrolled
+                              </dt>
+                              <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">
+                                {r.enrolled_count ?? 0}
+                              </dd>
+                            </div>
+                            <div className="rounded-xl border border-slate-100 bg-white px-2 py-2">
+                              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                Sent
+                              </dt>
+                              <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">
+                                {r.sent_count ?? 0}
+                              </dd>
+                            </div>
+                            <div className="rounded-xl border border-slate-100 bg-white px-2 py-2">
+                              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                Created
+                              </dt>
+                              <dd className="mt-0.5 text-xs font-medium text-slate-800">
+                                {new Date(r.created_at).toLocaleDateString()}
+                              </dd>
+                            </div>
+                          </dl>
+
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <CampaignRowActions
+                              row={r}
+                              busy={busy}
+                              saasUsage={saasUsage}
+                              onView={() => replacePanel({ view: r.id })}
+                              onActivate={() => void patchStatus(r.id, 'active')}
+                              onPause={() => void patchStatus(r.id, 'paused')}
+                              onDuplicate={() => void duplicate(r.id)}
+                              onDelete={() => void remove(r.id)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
+                <table className="min-w-[720px] w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
-                        No campaigns yet. Create one to start enrolling customers.
-                      </td>
+                      <th className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={rows.length > 0 && selectedIds.size === rows.length}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedIds(new Set(rows.map((r) => r.id)))
+                            else setSelectedIds(new Set())
+                          }}
+                          aria-label="Select all campaigns"
+                        />
+                      </th>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Trigger</th>
+                      <th className="px-4 py-3 text-right">Enrolled</th>
+                      <th className="px-4 py-3 text-right">Sent</th>
+                      <th className="px-4 py-3">Created</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
-                  ) : (
-                    rows.map((r) => (
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rows.map((r) => (
                       <tr key={r.id} className="hover:bg-slate-50/80">
                         <td className="px-3 py-3 align-top">
                           <input
@@ -723,175 +965,52 @@ function CampaignsListInner() {
                         <td className="px-4 py-3 align-top">
                           <CampaignListTriggerCell campaign={r} />
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-slate-600">{r.enrolled_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-slate-600">{r.sent_count ?? 0}</td>
-                        <td className="px-4 py-3 text-slate-600">{new Date(r.created_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          {r.enrolled_count ?? 0}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          {r.sent_count ?? 0}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {new Date(r.created_at).toLocaleDateString()}
+                        </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            <button
-                              type="button"
-                              disabled={busy === r.id}
-                              onClick={() => replacePanel({ view: r.id })}
-                              title="View campaign"
-                              aria-label="View campaign"
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              <ActionIcon>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                              </ActionIcon>
-                            </button>
-                            {/* <button
-                              type="button"
-                              disabled={busy === r.id}
-                              onClick={() => replacePanel({ edit: r.id })}
-                              title="Edit campaign"
-                              aria-label="Edit campaign"
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              <ActionIcon>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-                                  />
-                                </svg>
-                              </ActionIcon>
-                            </button> */}
-                            {r.status !== 'active' ? (
-                              <button
-                                type="button"
-                                disabled={
-                                  busy === r.id ||
-                                  (saasUsage?.atCampaignLimit === true && r.status !== 'active') ||
-                                  (r.platform_default_tier === 'pro' && saasUsage?.isProActive !== true)
-                                }
-                                onClick={() => void patchStatus(r.id, 'active')}
-                                title={
-                                  r.platform_default_tier === 'pro' && saasUsage?.isProActive !== true
-                                    ? 'Pro workflows require an active Pro subscription'
-                                    : saasUsage?.atCampaignLimit
-                                    ? 'Active campaign limit reached — upgrade to Pro'
-                                    : r.status === 'paused'
-                                      ? 'Resume campaign'
-                                      : 'Activate campaign'
-                                }
-                                aria-label={r.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
-                                className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
-                              >
-                                <ActionIcon>
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"
-                                    />
-                                  </svg>
-                                </ActionIcon>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={busy === r.id}
-                                onClick={() => void patchStatus(r.id, 'paused')}
-                                title="Pause campaign"
-                                aria-label="Pause campaign"
-                                className="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                              >
-                                <ActionIcon>
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 4.5h3v15H6v-15zm9 0h3v15h-3v-15z" />
-                                  </svg>
-                                </ActionIcon>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={busy === r.id}
-                              onClick={() => void duplicate(r.id)}
-                              title="Duplicate campaign"
-                              aria-label="Duplicate campaign"
-                              className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              <ActionIcon>
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  strokeWidth={2}
-                                  stroke="currentColor"
-                                  aria-hidden
-                                >
-                                  <rect
-                                    x="8"
-                                    y="8"
-                                    width="14"
-                                    height="14"
-                                    rx="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  />
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"
-                                  />
-                                </svg>
-                              </ActionIcon>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy === r.id}
-                              onClick={() => void remove(r.id)}
-                              title="Delete campaign"
-                              aria-label="Delete campaign"
-                              className="inline-flex items-center justify-center rounded-lg border border-red-200 p-2 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                            >
-                              <ActionIcon>
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                                  />
-                                </svg>
-                              </ActionIcon>
-                            </button>
+                          <div className="flex justify-end">
+                            <CampaignRowActions
+                              row={r}
+                              busy={busy}
+                              saasUsage={saasUsage}
+                              onView={() => replacePanel({ view: r.id })}
+                              onActivate={() => void patchStatus(r.id, 'active')}
+                              onPause={() => void patchStatus(r.id, 'paused')}
+                              onDuplicate={() => void duplicate(r.id)}
+                              onDelete={() => void remove(r.id)}
+                            />
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </main>
-    </div>
+    </AppShell>
   )
 }
 
 function CampaignsSuspenseFallback() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-end">
-            <div className="h-10 w-10 animate-pulse rounded-full bg-slate-200/80" />
-          </div>
-        </div>
-      </header>
+    <AppShell title="Workflows">
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
           <div className="mb-6 h-8 w-48 animate-pulse rounded-lg bg-slate-200/80" />
           <TableSkeleton />
         </div>
       </main>
-    </div>
+    </AppShell>
   )
 }
 

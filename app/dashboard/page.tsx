@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
 import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
@@ -43,16 +43,6 @@ function ServiceTile({
       <h4 className="text-sm font-semibold leading-tight text-slate-900">{title}</h4>
       <p className="mt-1 text-xs text-slate-500">{description}</p>
     </Link>
-  )
-}
-
-function ServiceTileSkeleton() {
-  return (
-    <div aria-hidden="true" className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
-      <div className="mb-3 h-12 w-12 animate-pulse rounded-full bg-violet-200/70" />
-      <div className="h-3 w-24 animate-pulse rounded bg-violet-200/70" />
-      <div className="mt-2 h-2.5 w-20 animate-pulse rounded bg-violet-100/90" />
-    </div>
   )
 }
 
@@ -458,7 +448,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 relative">
+    <AppShell
+      title="Dashboard"
+      showGoogleAds={!checkingGoogleAds && googleAdsEnrolled}
+      headerExtra={
+        <div className="flex items-center gap-2 sm:gap-3">
+          <WahaStatusBadge checking={checkingWahaSession} connected={hasActiveWahaSession} />
+          <PWADashboardInstallButton />
+        </div>
+      }
+    >
       {showPasswordGate && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
@@ -533,30 +532,9 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
-            <div className="flex items-center gap-3">
-              <PWADashboardInstallButton />
-              <Link
-                href="/excel-processor"
-                className="hidden px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Excel Processor
-              </Link>
-              <UserProfileMenu />
-            </div>
-          </div>
-        </div>
-      </header>
 
       {/* Main Content */}
-      <main className="flex flex-col gap-5 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 lg:px-8">
         {/* Welcome Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
           <h2 className="text-3xl font-semibold text-slate-900 mb-2">
@@ -741,196 +719,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Dealer / user tools */}
-        <div className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl md:p-8">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900">All Services</h3>
-              <p className="mt-1 text-xs text-slate-500">Quick access tools</p>
-            </div>
-            <WahaStatusBadge checking={checkingWahaSession} connected={hasActiveWahaSession} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-            {!checkingGoogleAds && googleAdsEnrolled && (
-              <ServiceTile
-                href="/google-ads"
-                title="Google Ads"
-                description="Subscription"
-                borderClassName="border-amber-200"
-                gradientClassName="from-amber-50 to-white"
-                iconClassName="bg-amber-500"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                }
-              />
-            )}
-
-            <ServiceTile
-              href="/dashboard/billing"
-              title="Billing & plans"
-              description="Free / Pro subscription"
-              borderClassName="border-violet-200"
-              gradientClassName="from-violet-50 to-white"
-              iconClassName="bg-violet-600"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                  />
-                </svg>
-              }
-            />
-
-            <ServiceTile
-              href="/test-pwa"
-              title="PWA test"
-              description="Push & install diagnostics"
-              borderClassName="border-sky-200"
-              gradientClassName="from-sky-50 to-white"
-              iconClassName="bg-sky-600"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                  />
-                </svg>
-              }
-            />
-
-            <ServiceTile
-              href="/customers"
-              title="Customers"
-              description="Customer management"
-              borderClassName="border-emerald-200"
-              gradientClassName="from-emerald-50 to-white"
-              iconClassName="bg-emerald-500"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
-              }
-            />
-
-            <ServiceTile
-              href="/waha-integration"
-              title="WhatsApp Provider"
-              description="WhatsApp integration"
-              borderClassName="border-teal-200"
-              gradientClassName="from-teal-50 to-white"
-              iconClassName="bg-teal-500"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-              }
-            />
-
-            {checkingWahaSession && !wahaStatusLoaded && <ServiceTileSkeleton />}
-
-            {!checkingWahaSession && hasActiveWahaSession && (
-              <>
-                <ServiceTile
-                  href="/dashboard/campaigns"
-                  title="Workflows"
-                  description="Multi-step Automation"
-                  borderClassName="border-rose-200"
-                  gradientClassName="from-rose-50 to-white"
-                  iconClassName="bg-rose-500"
-                  icon={
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                      <circle cx="5.5" cy="5.5" r="2" strokeWidth={1.75} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M7.5 5.5h6.5c.9 0 1.6.7 1.6 1.6V8.5" />
-                      <rect x="13" y="3" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 5.5H8.2c-.9 0-1.6.7-1.6 1.6v2.4" />
-                      <rect x="3" y="10" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M10 12.5h4.3c.9 0 1.6.7 1.6 1.6v1.4" />
-                      <rect x="14" y="15" width="7" height="5" rx="1.25" strokeWidth={1.75} />
-                      <circle cx="19.5" cy="19.5" r="2.25" strokeWidth={1.75} />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M18.6 19.5l.65.65 1.5-1.5" />
-                    </svg>
-                  }
-                />
-
-                {/* <ServiceTile
-                  href="/automated-messages"
-                  title="Automated Messages"
-                  description="WAHA templates"
-                  borderClassName="border-violet-200"
-                  gradientClassName="from-violet-50 to-white"
-                  iconClassName="bg-violet-500"
-                  icon={
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
-                  }
-                /> */}
-              </>
-            )}
-
-            <ServiceTile
-              href="/dashboard/lucky-draw"
-              title="Lucky Draw"
-              description="Public draw pages"
-              borderClassName="border-amber-200"
-              gradientClassName="from-amber-50 to-white"
-              iconClassName="bg-amber-500"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-                  />
-                </svg>
-              }
-            />
-
-            <ServiceTile
-              href="/extension-download"
-              title="Chrome Extension"
-              description="Download tools"
-              borderClassName="border-orange-200"
-              gradientClassName="from-orange-50 to-white"
-              iconClassName="bg-orange-500"
-              icon={
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
-                  />
-                </svg>
-              }
-            />
-          </div>
-        </div>
-
         {/* User Info Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200/50">
           <div className="flex items-center justify-between mb-6">
@@ -985,7 +773,7 @@ export default function DashboardPage() {
 
       </main>
       <CompanyLegalFooter />
-    </div>
+    </AppShell>
   )
 }
 

@@ -41,6 +41,7 @@ type PageBackTitleProps = {
 /**
  * Page heading with a visible Dashboard back button beside the title.
  * Put this at the top of main content; keep headers to UserProfileMenu only.
+ * Actions always sit on a second row so long button groups never overlap the title.
  */
 export function PageBackTitle({
   title,
@@ -53,8 +54,8 @@ export function PageBackTitle({
 }: PageBackTitleProps) {
   return (
     <div className={`mb-6 ${className}`.trim()}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <PageBackLink href={backHref} label={backLabel} />
           <div className="min-w-0">
             <h1
@@ -68,7 +69,7 @@ export function PageBackTitle({
           </div>
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
         ) : null}
       </div>
     </div>
