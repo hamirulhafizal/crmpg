@@ -52,6 +52,26 @@ function phoneToE164(phone: string): string {
   return `+${digits}`
 }
 
+function summarizeSendError(e: unknown): Record<string, unknown> {
+  if (e instanceof WahaApiError) {
+    return {
+      errName: 'WahaApiError',
+      httpStatus: e.status,
+      path: e.path,
+      error: e.message.slice(0, 500),
+      memoizeIdBug: /must include an id property|how we memoize/i.test(e.message),
+    }
+  }
+  if (e instanceof Error) {
+    return {
+      errName: e.name,
+      error: e.message.slice(0, 500),
+      memoizeIdBug: /must include an id property|how we memoize/i.test(e.message),
+    }
+  }
+  return { error: String(e).slice(0, 500) }
+}
+
 function isRetryableSendChatError(error: unknown): boolean {
   const message =
     error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error)
@@ -82,12 +102,49 @@ async function resolveWahaLidChatId(userId: string, session: string, digits: str
       const data = await wahaFetch<unknown>(path, { method: 'GET' }, { userId })
       if (data && typeof data === 'object') {
         const lid = (data as Record<string, unknown>).lid
-        if (typeof lid === 'string' && /@lid$/i.test(lid.trim())) return lid.trim()
+        if (typeof lid === 'string' && /@lid$/i.test(lid.trim())) {
+          console.log('[whatsapp-send] resolveLid:ok', {
+            ownerUserId: userId,
+            session,
+            digitsLast4: digits.slice(-4),
+            path,
+            lid: lid.trim(),
+          })
+          return lid.trim()
+        }
       }
+      console.log('[whatsapp-send] resolveLid:empty', {
+        ownerUserId: userId,
+        session,
+        digitsLast4: digits.slice(-4),
+        path,
+        dataType: data == null ? 'null' : typeof data,
+      })
     } catch (e) {
-      if (e instanceof WahaApiError && (e.status === 404 || e.status === 405)) continue
+      if (e instanceof WahaApiError && (e.status === 404 || e.status === 405)) {
+        console.log('[whatsapp-send] resolveLid:miss', {
+          ownerUserId: userId,
+          session,
+          digitsLast4: digits.slice(-4),
+          path,
+          httpStatus: e.status,
+        })
+        continue
+      }
+      console.log('[whatsapp-send] resolveLid:fail', {
+        ownerUserId: userId,
+        session,
+        digitsLast4: digits.slice(-4),
+        path,
+        ...summarizeSendError(e),
+      })
     }
   }
+  console.log('[whatsapp-send] resolveLid:none', {
+    ownerUserId: userId,
+    session,
+    digitsLast4: digits.slice(-4),
+  })
   return null
 }
 
@@ -197,6 +254,88 @@ async function sendWahaTextToChatCandidates(
   if (lastErr) throw lastErr
 }
 
+function chatIdKind(chatId: string): string {
+  if (chatId.endsWith('@lid')) return 'lid'
+  if (chatId.endsWith('@s.whatsapp.net')) return 's.whatsapp.net'
+  if (chatId.endsWith('@c.us')) return 'c.us'
+  return 'other'
+}
+
+async function probeWahaBeforeImageSend(
+  userId: string,
+  session: string,
+  phone: string,
+  logContext?: WhatsAppSendLogContext
+): Promise<void> {
+  const digits = normalizePhoneToMsisdn(phone)
+  const sessionDigits = normalizePhoneToMsisdn(session)
+  logWhatsAppSend(
+    'sendImage:waha:probe',
+    sendLogPayload(logContext, {
+      ownerUserId: userId,
+      session,
+      recipientDigits: digits,
+      sessionLooksLikePhone: /^\d{10,15}$/.test(sessionDigits),
+      sendingToSelf: Boolean(sessionDigits && digits && sessionDigits === digits),
+    })
+  )
+
+  try {
+    const status = await wahaFetch<{ status?: string; name?: string; me?: { id?: string } }>(
+      `/api/sessions/${encodeURIComponent(session)}`,
+      { method: 'GET' },
+      { userId }
+    )
+    logWhatsAppSend(
+      'sendImage:waha:session-status',
+      sendLogPayload(logContext, {
+        ownerUserId: userId,
+        session,
+        status: status?.status ?? null,
+        sessionName: status?.name ?? null,
+        meId: status?.me?.id ?? null,
+      })
+    )
+  } catch (e) {
+    logWhatsAppSend(
+      'sendImage:waha:session-status-fail',
+      sendLogPayload(logContext, {
+        ownerUserId: userId,
+        session,
+        ...summarizeSendError(e),
+      })
+    )
+  }
+
+  try {
+    const exists = await wahaFetch<{ numberExists?: boolean; chatId?: string }>(
+      `/api/contacts/check-exists?phone=${encodeURIComponent(digits)}&session=${encodeURIComponent(session)}`,
+      { method: 'GET' },
+      { userId }
+    )
+    logWhatsAppSend(
+      'sendImage:waha:check-exists',
+      sendLogPayload(logContext, {
+        ownerUserId: userId,
+        session,
+        phoneLast4: digits.slice(-4),
+        numberExists: exists?.numberExists ?? null,
+        existsChatId: exists?.chatId ?? null,
+      })
+    )
+  } catch (e) {
+    logWhatsAppSend(
+      'sendImage:waha:check-exists-fail',
+      sendLogPayload(logContext, {
+        ownerUserId: userId,
+        session,
+        phoneLast4: digits.slice(-4),
+        ...summarizeSendError(e),
+      })
+    )
+  }
+}
+
 async function sendWahaImageToChatCandidates(
   userId: string,
   session: string,
@@ -205,13 +344,41 @@ async function sendWahaImageToChatCandidates(
   caption?: string,
   logContext?: WhatsAppSendLogContext
 ): Promise<void> {
+  const base64Len = file.data?.length ?? 0
+  const approxJsonBytes = base64Len + (caption?.length ?? 0) + 256
+  logWhatsAppSend(
+    'sendImage:waha:payload',
+    sendLogPayload(logContext, {
+      ownerUserId: userId,
+      session,
+      mimetype: file.mimetype,
+      filename: file.filename,
+      base64Len,
+      approxJsonKB: Math.round(approxJsonBytes / 1024),
+      captionLen: caption?.length ?? 0,
+      hasCaption: Boolean(caption),
+      candidateCount: chatCandidates.length,
+    })
+  )
+
   let lastErr: unknown = null
+  let allMemoize = true
+  let anyAttempt = false
   for (let i = 0; i < chatCandidates.length; i++) {
     const chatId = chatCandidates[i]!
+    const startedAt = Date.now()
+    anyAttempt = true
     try {
       logWhatsAppSend(
         'sendImage:waha:try',
-        sendLogPayload(logContext, { ownerUserId: userId, session, chatId, attempt: i + 1 })
+        sendLogPayload(logContext, {
+          ownerUserId: userId,
+          session,
+          chatId,
+          attempt: i + 1,
+          of: chatCandidates.length,
+          chatKind: chatIdKind(chatId),
+        })
       )
       await wahaFetch(
         '/api/sendImage',
@@ -223,12 +390,19 @@ async function sendWahaImageToChatCandidates(
       )
       logWhatsAppSend(
         'sendImage:waha:chat-ok',
-        sendLogPayload(logContext, { ownerUserId: userId, session, chatId, attempt: i + 1 })
+        sendLogPayload(logContext, {
+          ownerUserId: userId,
+          session,
+          chatId,
+          attempt: i + 1,
+          elapsedMs: Date.now() - startedAt,
+        })
       )
       return
     } catch (e) {
       lastErr = e
-      const errMsg = e instanceof Error ? e.message : String(e)
+      const summary = summarizeSendError(e)
+      if (!summary.memoizeIdBug) allMemoize = false
       logWhatsAppSend(
         'sendImage:waha:chat-fail',
         sendLogPayload(logContext, {
@@ -236,13 +410,32 @@ async function sendWahaImageToChatCandidates(
           session,
           chatId,
           attempt: i + 1,
+          of: chatCandidates.length,
+          chatKind: chatIdKind(chatId),
+          elapsedMs: Date.now() - startedAt,
           retryable: isRetryableSendChatError(e),
-          error: errMsg.slice(0, 240),
+          ...summary,
         })
       )
       if (isRetryableSendChatError(e)) continue
       throw e
     }
+  }
+
+  if (anyAttempt) {
+    logWhatsAppSend(
+      'sendImage:waha:all-candidates-failed',
+      sendLogPayload(logContext, {
+        ownerUserId: userId,
+        session,
+        candidates: chatCandidates,
+        allMemoizeIdBug: allMemoize,
+        hint: allMemoize
+          ? 'Same memoize/id error on every JID — likely WAHA/WhatsApp Web engine or image payload size, not chatId format'
+          : 'Mixed errors across JIDs — inspect per-attempt httpStatus/error',
+        ...summarizeSendError(lastErr),
+      })
+    )
   }
   if (lastErr) throw lastErr
 }
@@ -319,17 +512,25 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
   const sessionRow = await loadSessionRowForSend(userId, session)
   const { provider, reason } = resolveEffectiveWhatsAppProviderDetailed(cfg, sessionRow)
 
+  const recipientDigits = normalizePhoneToMsisdn(phone)
   logWhatsAppSend(
     'sendImage:start',
     sendLogPayload(logContext, {
       ownerUserId: userId,
       session,
-      phoneLast4: phone.slice(-4),
+      phoneLast4: recipientDigits.slice(-4),
+      recipientDigits,
       cfgProvider: cfg.provider,
+      cfgBaseUrl: cfg.baseUrl,
+      cfgServerId: cfg.serverId,
       sessionProviderType: sessionRow?.provider_type ?? null,
       effectiveProvider: provider,
       effectiveReason: reason,
       bytes: imageBytes.length,
+      bytesKB: Math.round(imageBytes.length / 1024),
+      mimetype,
+      filename,
+      captionLen: caption?.length ?? 0,
     })
   )
 
@@ -355,27 +556,34 @@ export async function sendWhatsAppImage(params: WhatsAppSendImageParams): Promis
     return
   }
 
-  logWhatsAppSend('sendImage:waha', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
+  logWhatsAppSend('sendImage:waha', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: recipientDigits.slice(-4) }))
+  await probeWahaBeforeImageSend(userId, session, phone, logContext)
   // Phone JIDs first: LID often throws WAHA memoize/"id property" on sendImage while @c.us works.
   const chatCandidates = await resolveChatCandidates(userId, session, phone, {
     preferPhoneJidFirst: true,
   })
   logWhatsAppSend(
     'sendImage:waha:chat-candidates',
-    sendLogPayload(logContext, { ownerUserId: userId, session, candidates: chatCandidates })
+    sendLogPayload(logContext, {
+      ownerUserId: userId,
+      session,
+      candidates: chatCandidates,
+      kinds: chatCandidates.map(chatIdKind),
+    })
   )
   if (enableTyping && caption && chatCandidates[0]) {
     await runWahaTypingIndicator(userId, session, chatCandidates[0], caption.length)
   }
+  const base64 = imageBytes.toString('base64')
   await sendWahaImageToChatCandidates(
     userId,
     session,
     chatCandidates,
-    { mimetype, filename, data: imageBytes.toString('base64') },
+    { mimetype, filename, data: base64 },
     caption,
     logContext
   )
-  logWhatsAppSend('sendImage:waha:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: phone.slice(-4) }))
+  logWhatsAppSend('sendImage:waha:ok', sendLogPayload(logContext, { ownerUserId: userId, session, phoneLast4: recipientDigits.slice(-4) }))
 }
 
 /** Refresh live status for stored user sessions (both providers). */

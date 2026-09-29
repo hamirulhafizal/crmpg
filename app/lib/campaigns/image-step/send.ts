@@ -1,4 +1,5 @@
 import { humanizeWhatsAppText } from '@/app/lib/campaigns/whatsapp-humanize'
+import { compressCampaignImageForWhatsApp } from '@/app/lib/campaigns/image-step/compress-for-whatsapp'
 import { loadDealerImageContext } from '@/app/lib/campaigns/image-step/dealer-context'
 import { parseImageStepParameters } from '@/app/lib/campaigns/image-step/parse'
 import { renderCampaignImagePng } from '@/app/lib/campaigns/image-step/render'
@@ -8,7 +9,7 @@ import { sendCampaignWhatsAppImage } from '@/app/lib/campaigns/send-waha'
 import type { ImageStepParameters } from '@/app/lib/campaigns/image-step/types'
 import type { WhatsAppSendLogContext } from '@/app/lib/whatsapp/types'
 
-export const CAMPAIGN_IMAGE_SEND_VERSION = 'v4-no-undefined-textshadow'
+export const CAMPAIGN_IMAGE_SEND_VERSION = 'v5-jpeg-compress'
 
 export async function sendCampaignImageStep(opts: {
   userId: string
@@ -54,16 +55,18 @@ export async function sendCampaignImageStep(opts: {
 
   console.log('[campaign-image] rendered png', { bytes: png.length })
 
+  const ready = await compressCampaignImageForWhatsApp(png)
+
   let caption = renderCampaignTemplateForCustomer(params.caption_template ?? '', opts.customer)
   if (params.randomize_spaces && caption.trim()) {
     caption = humanizeWhatsAppText(caption)
   }
 
-  await sendCampaignWhatsAppImage(opts.userId, opts.session, opts.phone, png, {
+  await sendCampaignWhatsAppImage(opts.userId, opts.session, opts.phone, ready.bytes, {
     caption: caption.trim() || undefined,
     enable_typing: params.enable_typing !== false && Boolean(caption.trim()),
-    mimetype: 'image/png',
-    filename: 'campaign-image.png',
+    mimetype: ready.mimetype,
+    filename: ready.filename,
     logContext: ctx,
   })
 
@@ -71,9 +74,12 @@ export async function sendCampaignImageStep(opts: {
     ...(ctx ?? {}),
     ownerUserId: opts.userId,
     pngBytes: png.length,
+    sentBytes: ready.bytes.length,
+    mimetype: ready.mimetype,
+    quality: ready.quality,
   })
 
-  return { caption, pngBytes: png.length }
+  return { caption, pngBytes: ready.bytes.length }
 }
 
 export type { ImageStepParameters }

@@ -1630,6 +1630,9 @@ async function processDueEnrollmentRows(
           provider: sessionPick.provider,
           session,
           error: waMsg,
+          httpStatus: waErr && typeof waErr === 'object' && 'status' in waErr ? (waErr as { status: unknown }).status : null,
+          path: waErr && typeof waErr === 'object' && 'path' in waErr ? (waErr as { path: unknown }).path : null,
+          memoizeIdBug: /must include an id property|how we memoize/i.test(waMsg),
         })
         if (
           !isImageStep &&
