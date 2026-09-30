@@ -10,6 +10,7 @@ import ClientScripts from "./components/ClientScripts";
 import { MotionProvider } from "./components/motion-provider";
 import { PWAInstallPromptBootstrap } from "./components/pwa/PWAInstallPromptBootstrap";
 import { QueryProvider } from "./components/providers/query-provider";
+import { THEME_TOGGLE_ID } from "./components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Public Gold CRM",
@@ -46,6 +47,8 @@ export default function RootLayout({
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#020617" />
         <meta name="theme-color" content="#2563eb" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -59,6 +62,8 @@ export default function RootLayout({
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning
       >
+        {/* Pure CSS theme control — default follows system; checked inverts (no JS). */}
+        <input id={THEME_TOGGLE_ID} type="checkbox" aria-hidden tabIndex={-1} />
         <PWAInstallPromptBootstrap />
         {/* Google Tag Manager (noscript) */}
         <noscript>

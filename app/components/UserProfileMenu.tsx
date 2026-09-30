@@ -104,14 +104,14 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
         {open ? (
           <div
             role="menu"
-            className={`absolute right-0 ${menuZClass} mt-2 w-[min(100vw-2rem,320px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10`}
+            className={`absolute right-0 ${menuZClass} mt-2 w-[min(100vw-2rem,320px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/40`}
           >
-            <div className="border-b border-slate-100 px-4 py-4">
+            <div className="border-b border-slate-100 px-4 py-4 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <AccountAvatar avatarUrl={avatarUrl} fullName={fullName} email={email} size="sm" className="rounded-full" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
-                  <p className="truncate text-xs text-slate-500">{email}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{displayName}</p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{email}</p>
                 </div>
               </div>
             </div>
@@ -120,7 +120,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
               <Link
                 href="/profile"
                 role="menuitem"
-                className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                 onClick={() => setOpen(false)}
               >
                 Profile settings
@@ -128,7 +128,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
               <a
                 href="/logout"
                 role="menuitem"
-                className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                 onClick={() => setOpen(false)}
               >
                 Sign out
@@ -136,14 +136,14 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
             </div>
 
             {otherAccounts.length > 0 ? (
-              <div className="border-t border-slate-100 py-2">
-                <p className="px-4 pb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+              <div className="border-t border-slate-100 py-2 dark:border-slate-800">
+                <p className="px-4 pb-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Other accounts
                 </p>
                 {otherAccounts.map((account) => (
                   <div
                     key={account.userId}
-                    className="group flex items-center gap-0.5 pr-1 hover:bg-slate-50"
+                    className="group flex items-center gap-0.5 pr-1 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     <a
                       href={
@@ -152,7 +152,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
                           : `/login?switch=1&email=${encodeURIComponent(account.email)}`
                       }
                       role="menuitem"
-                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-sm text-slate-700"
+                      className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200"
                       onClick={() => setOpen(false)}
                     >
                       <AccountAvatar
@@ -167,7 +167,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
                     <button
                       type="button"
                       aria-label={`Remove ${savedAccountDisplayLabel(account)}`}
-                      className="mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 opacity-70 transition hover:bg-slate-200/80 hover:text-slate-700 group-hover:opacity-100"
+                      className="mr-1 shrink-0 rounded-lg p-1.5 text-slate-400 opacity-70 transition hover:bg-slate-200/80 hover:text-slate-700 group-hover:opacity-100 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
@@ -196,18 +196,18 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
             ) : null}
 
             {savedAccounts.length < MAX_SAVED_ACCOUNTS ? (
-              <div className="border-t border-slate-100 py-1">
+              <div className="border-t border-slate-100 py-1 dark:border-slate-800">
                 <Link
                   href="/login?add_account=1"
                   role="menuitem"
-                  className="block px-4 py-2.5 text-sm font-medium text-violet-700 hover:bg-violet-50"
+                  className="block px-4 py-2.5 text-sm font-medium text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/50"
                   onClick={() => setOpen(false)}
                 >
                   Add account
                 </Link>
               </div>
             ) : (
-              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400">
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
                 Maximum of 5 saved accounts on this device.
               </p>
             )}

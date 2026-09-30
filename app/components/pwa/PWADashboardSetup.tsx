@@ -102,7 +102,7 @@ export function PWADashboardSetup() {
 
       {showPushCard ? (
         <section
-          className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-lg"
+          className="rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-lg dark:border-emerald-800/60 dark:from-emerald-950/40 dark:to-slate-900"
           aria-labelledby="pwa-push-title"
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -118,15 +118,15 @@ export function PWADashboardSetup() {
                 </svg>
               </div>
               <div>
-                <h3 id="pwa-push-title" className="text-lg font-semibold text-slate-900">
+                <h3 id="pwa-push-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                   Enable notifications
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                   Step 2 of 2 — declarative web push. The OS delivers notifications even when PG CRM
                   is closed; no service worker required on iOS 18.4+.
                 </p>
                 {error ? (
-                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
                     {error}
                   </p>
                 ) : null}

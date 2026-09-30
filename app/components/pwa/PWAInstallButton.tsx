@@ -48,24 +48,24 @@ export function PWAInstallSection({
 }: PWAInstallSectionProps) {
   return (
     <section
-      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8"
+      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/40"
       aria-labelledby="pwa-install-title"
     >
-      <h3 id="pwa-install-title" className="text-xl font-semibold text-slate-900 sm:text-2xl">
+      <h3 id="pwa-install-title" className="text-xl font-semibold text-slate-900 sm:text-2xl dark:text-slate-100">
         How to use this app
       </h3>
-      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-400">
         PG CRM is a Progressive Web App — install it on your device for quick access and background
         notifications, even when the app is closed.
       </p>
-      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base dark:text-slate-400">
         {installPromptReady
           ? 'Tap the button below — Chrome will open the native install dialog with app previews.'
           : 'Waiting for the browser install prompt… interact with the page, then the button will become active.'}
       </p>
 
       {isIOS ? (
-        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
           <li>Tap Share in Safari</li>
           <li>Choose &quot;Add to Home Screen&quot;</li>
           <li>Open the app from your home screen</li>

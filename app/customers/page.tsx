@@ -152,12 +152,12 @@ const RANK_FUNNEL_SEGMENT_FILLS = ['#cbd5e1', '#a5b4fc', '#818cf8', '#6366f1', '
 
 /** Table row tint + left accent — aligns with Account status summary cards. */
 const ACCOUNT_STATUS_ROW_CLASSES: Record<AccountStatusKey, string> = {
-  active: 'bg-green-50/80 hover:bg-green-100/80 border-l-4 border-l-green-500',
-  inactive: 'bg-red-50/80 hover:bg-red-100/80 border-l-4 border-l-red-500',
-  free: 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500',
-  freeze: 'bg-orange-50/80 hover:bg-orange-100/80 border-l-4 border-l-orange-500',
-  temporary: 'bg-violet-50/80 hover:bg-violet-100/80 border-l-4 border-l-violet-500',
-  unknown: 'bg-slate-50 hover:bg-slate-100/80 border-l-4 border-l-slate-400',
+  active: 'customer-row customer-row--active',
+  inactive: 'customer-row customer-row--inactive',
+  free: 'customer-row customer-row--free',
+  freeze: 'customer-row customer-row--freeze',
+  temporary: 'customer-row customer-row--temporary',
+  unknown: 'customer-row customer-row--unknown',
 }
 
 const AGE_FILTER_MIN = 0
@@ -2732,7 +2732,14 @@ function CustomersPage() {
                               phone={customer.phone}
                               displayName={customer.sender_name || customer.name}
                             />
-                            <span className="min-w-0 truncate">{customer.sender_name || '-'}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(customer)}
+                              className="min-w-0 truncate font-medium text-blue-600 underline underline-offset-2 transition-colors hover:text-blue-800 focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                              title="View customer details"
+                            >
+                              {customer.sender_name || customer.name || '-'}
+                            </button>
                             <WhatsAppOpenButton phone={customer.phone} />
                           </span>
                         </td>

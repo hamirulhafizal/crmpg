@@ -11,6 +11,7 @@ import {
   type SVGProps,
 } from 'react'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { ThemeToggle } from '@/app/components/ThemeToggle'
 
 export type AppNavItem = {
   href: string
@@ -276,7 +277,7 @@ export function AppShell({
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Services">
-      <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         Services
       </p>
       {items.map((item) => {
@@ -290,19 +291,23 @@ export function AppShell({
             className={`group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors ${
               active
                 ? `${item.accentClassName} font-semibold shadow-sm ring-1 ring-black/5`
-                : 'text-slate-700 hover:bg-slate-100'
+                : 'text-foreground/80 hover:bg-muted'
             }`}
           >
             <span
               className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                active ? 'bg-white/70' : 'bg-slate-100 text-slate-600 group-hover:bg-white'
+                active ? 'bg-background/70' : 'bg-muted text-muted-foreground group-hover:bg-background'
               }`}
             >
               <Icon className="h-5 w-5" />
             </span>
             <span className="min-w-0 pt-0.5">
               <span className="block text-sm leading-tight">{item.label}</span>
-              <span className={`mt-0.5 block text-[11px] leading-snug ${active ? 'opacity-80' : 'text-slate-500'}`}>
+              <span
+                className={`mt-0.5 block text-[11px] leading-snug ${
+                  active ? 'opacity-80' : 'text-muted-foreground'
+                }`}
+              >
                 {item.description}
               </span>
             </span>
@@ -313,10 +318,10 @@ export function AppShell({
   )
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 ${className}`.trim()}>
+    <div className={`min-h-screen bg-background text-foreground ${className}`.trim()}>
       {/* Mobile drawer backdrop */}
       <div
-        className={`fixed inset-0 z-[80] bg-slate-900/40 transition-opacity lg:hidden ${
+        className={`fixed inset-0 z-[80] bg-black/40 transition-opacity lg:hidden ${
           mobileOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         aria-hidden={!mobileOpen}
@@ -326,18 +331,22 @@ export function AppShell({
       {/* Sidebar — drawer on mobile, fixed on desktop */}
       <aside
         id={panelId}
-        className={`fixed inset-y-0 left-0 z-[90] flex w-[min(100vw-3rem,18rem)] flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-300 ease-out lg:w-64 lg:translate-x-0 lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-[90] flex w-[min(100vw-3rem,18rem)] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-transform duration-300 ease-out lg:w-64 lg:translate-x-0 lg:shadow-none ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-label="App navigation"
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4">
-          <Link href="/dashboard" onClick={closeMobile} className="text-sm font-semibold text-slate-900">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
+          <Link
+            href="/dashboard"
+            onClick={closeMobile}
+            className="text-sm font-semibold text-sidebar-foreground"
+          >
             Public Gold CRM
           </Link>
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted lg:hidden"
             onClick={closeMobile}
             aria-label="Close menu"
           >
@@ -349,12 +358,12 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-h-screen flex-col lg:pl-64">
-        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+        <header className="sticky top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur">
           <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition hover:bg-muted lg:hidden"
                 onClick={() => setMobileOpen(true)}
                 aria-expanded={mobileOpen}
                 aria-controls={panelId}
@@ -362,10 +371,11 @@ export function AppShell({
               >
                 <IconMenu className="h-5 w-5" />
               </button>
-              <h1 className="truncate text-lg font-semibold text-slate-900 sm:text-xl">{title}</h1>
+              <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               {headerExtra}
+              <ThemeToggle />
               <UserProfileMenu />
             </div>
           </div>

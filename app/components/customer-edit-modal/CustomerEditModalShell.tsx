@@ -929,7 +929,7 @@ export function CustomerEditModalShell({
                 <div
                   role="tablist"
                   aria-label="Customer sections"
-                  className={`mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${
+                  className={`customer-modal-tabs mb-4 grid gap-1 rounded-xl border border-slate-200 bg-slate-100/90 p-1 ${
                     isCreating ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
                   }`}
                 >
@@ -940,8 +940,8 @@ export function CustomerEditModalShell({
                     onClick={() => setCustomerModalTab('details')}
                     className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                       customerModalTab === 'details'
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'customer-modal-tab--active bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                        : 'customer-modal-tab--idle text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     Details
@@ -954,8 +954,8 @@ export function CustomerEditModalShell({
                       onClick={() => setCustomerModalTab('follow_up')}
                       className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                         customerModalTab === 'follow_up'
-                          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'customer-modal-tab--active bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                          : 'customer-modal-tab--idle text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       Follow-up
@@ -969,8 +969,8 @@ export function CustomerEditModalShell({
                       onClick={() => setCustomerModalTab('checklist')}
                       className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                         customerModalTab === 'checklist'
-                          ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'customer-modal-tab--active bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                          : 'customer-modal-tab--idle text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       Checklist
@@ -983,8 +983,8 @@ export function CustomerEditModalShell({
                     onClick={() => setCustomerModalTab('tags')}
                     className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:px-3 ${
                       customerModalTab === 'tags'
-                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'customer-modal-tab--active bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                        : 'customer-modal-tab--idle text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     Tags

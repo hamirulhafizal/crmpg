@@ -4,7 +4,26 @@
 /*
  ---break---
  */
-@custom-variant dark (&:is(.dark *));
+/*
+ * Dark mode: follows system by default; #theme-toggle inverts.
+ * Pure CSS — no JS (see https://dev.to/mardeg/toggle-dark-mode-using-divless-pure-css-2nkl).
+ */
+@custom-variant dark {
+  @media (prefers-color-scheme: light) {
+    :root:has(#theme-toggle:checked) & {
+      @slot;
+    }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(:has(#theme-toggle:checked)) & {
+      @slot;
+    }
+  }
+  /* Explicit .dark class (scoped shells / legacy) */
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+}
 
 @theme inline {
   --color-background: var(--background);
@@ -387,6 +406,7 @@
  ---break---
  */
 :root {
+  color-scheme: light dark;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -419,11 +439,117 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Toggle button: show moon while in light (action = go dark) */
+  --theme-icon-sun-display: none;
+  --theme-icon-moon-display: block;
 }
-/*
- ---break---
- */
+
+/* Force dark when toggle checked under light system preference */
+@media (prefers-color-scheme: light) {
+  :root:has(#theme-toggle:checked) {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+    --theme-icon-sun-display: block;
+    --theme-icon-moon-display: none;
+  }
+}
+
+/* System dark (default) — unchecked follows OS */
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(#theme-toggle:checked)) {
+    color-scheme: dark;
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+    --theme-icon-sun-display: block;
+    --theme-icon-moon-display: none;
+  }
+
+  /* Checked under dark system → force light */
+  :root:has(#theme-toggle:checked) {
+    color-scheme: light;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+    --theme-icon-sun-display: none;
+    --theme-icon-moon-display: block;
+  }
+}
+
+/* Legacy .dark class (manual / scoped) */
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -455,6 +581,281 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+#theme-toggle {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--muted);
+}
+
+.theme-toggle-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.theme-toggle-btn .theme-icon-sun {
+  display: var(--theme-icon-sun-display);
+}
+
+.theme-toggle-btn .theme-icon-moon {
+  display: var(--theme-icon-moon-display);
+}
+
+/*
+ * Customer table status rows — tint follows color-scheme so dark mode
+ * keeps readable contrast with remapped slate text colors.
+ */
+.customer-row {
+  border-left-width: 4px;
+  border-left-style: solid;
+  transition: background-color 0.15s ease;
+}
+
+.customer-row--active {
+  border-left-color: #22c55e;
+  background-color: #f0fdf4cc;
+}
+.customer-row--active:hover {
+  background-color: #dcfce7cc;
+}
+.customer-row--inactive {
+  border-left-color: #ef4444;
+  background-color: #fef2f2cc;
+}
+.customer-row--inactive:hover {
+  background-color: #fee2e2cc;
+}
+.customer-row--free {
+  border-left-color: #f59e0b;
+  background-color: #fffbebcc;
+}
+.customer-row--free:hover {
+  background-color: #fef3c7cc;
+}
+.customer-row--freeze {
+  border-left-color: #f97316;
+  background-color: #fff7edcc;
+}
+.customer-row--freeze:hover {
+  background-color: #ffedd5cc;
+}
+.customer-row--temporary {
+  border-left-color: #8b5cf6;
+  background-color: #f5f3ffcc;
+}
+.customer-row--temporary:hover {
+  background-color: #ede9fecc;
+}
+.customer-row--unknown {
+  border-left-color: #94a3b8;
+  background-color: #f8fafc;
+}
+.customer-row--unknown:hover {
+  background-color: #f1f5f9cc;
+}
+
+.customer-modal-tabs {
+  border-color: #e2e8f0;
+  background-color: rgb(241 245 249 / 0.9);
+}
+
+.customer-modal-tab--idle {
+  color: #475569;
+}
+
+.customer-modal-tab--idle:hover {
+  color: #0f172a;
+}
+
+.customer-modal-tab--active {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+@supports (color: light-dark(white, black)) {
+  .customer-modal-tabs {
+    border-color: light-dark(#e2e8f0, oklch(1 0 0 / 14%)) !important;
+    background-color: light-dark(rgb(241 245 249 / 0.9), oklch(0.269 0 0)) !important;
+  }
+  .customer-modal-tab--idle {
+    color: light-dark(#475569, #e2e8f0) !important;
+  }
+  .customer-modal-tab--idle:hover {
+    color: light-dark(#0f172a, #ffffff) !important;
+  }
+  .customer-modal-tab--active {
+    background-color: light-dark(#ffffff, oklch(0.35 0.01 260)) !important;
+    color: light-dark(#0f172a, #f8fafc) !important;
+    --tw-ring-color: light-dark(rgb(226 232 240 / 0.8), oklch(1 0 0 / 12%));
+  }
+
+  .customer-row--active {
+    background-color: light-dark(#f0fdf4cc, rgb(6 78 59 / 0.55)) !important;
+  }
+  .customer-row--active:hover {
+    background-color: light-dark(#dcfce7cc, rgb(6 95 70 / 0.7)) !important;
+  }
+  .customer-row--inactive {
+    background-color: light-dark(#fef2f2cc, rgb(127 29 29 / 0.5)) !important;
+  }
+  .customer-row--inactive:hover {
+    background-color: light-dark(#fee2e2cc, rgb(153 27 27 / 0.65)) !important;
+  }
+  .customer-row--free {
+    background-color: light-dark(#fffbebcc, rgb(120 53 15 / 0.5)) !important;
+  }
+  .customer-row--free:hover {
+    background-color: light-dark(#fef3c7cc, rgb(146 64 14 / 0.65)) !important;
+  }
+  .customer-row--freeze {
+    background-color: light-dark(#fff7edcc, rgb(124 45 18 / 0.5)) !important;
+  }
+  .customer-row--freeze:hover {
+    background-color: light-dark(#ffedd5cc, rgb(154 52 18 / 0.65)) !important;
+  }
+  .customer-row--temporary {
+    background-color: light-dark(#f5f3ffcc, rgb(76 29 149 / 0.5)) !important;
+  }
+  .customer-row--temporary:hover {
+    background-color: light-dark(#ede9fecc, rgb(91 33 182 / 0.65)) !important;
+  }
+  .customer-row--unknown {
+    background-color: light-dark(#f8fafc, rgb(30 41 59 / 0.65)) !important;
+  }
+  .customer-row--unknown:hover {
+    background-color: light-dark(#f1f5f9cc, rgb(51 65 85 / 0.75)) !important;
+  }
+
+  /* Keep cell text readable on status tints in both schemes */
+  .customer-row td {
+    color: light-dark(#1e293b, #e2e8f0) !important;
+  }
+  .customer-row td .text-slate-900,
+  .customer-row td .text-slate-800,
+  .customer-row td .text-slate-700,
+  .customer-row td .text-slate-600,
+  .customer-row td .text-slate-500 {
+    color: light-dark(#1e293b, #e2e8f0) !important;
+  }
+  .customer-row td button.text-blue-600 {
+    color: light-dark(#2563eb, #93c5fd) !important;
+  }
+  .customer-row td button.text-blue-600:hover {
+    color: light-dark(#1d4ed8, #bfdbfe) !important;
+  }
+}
+
+/*
+ * Remap hardcoded light Tailwind surfaces so the whole UI follows color-scheme.
+ * color-scheme is flipped by the pure-CSS #theme-toggle + prefers-color-scheme rules above.
+ * Opt out: add class "theme-fixed" on a subtree to keep authored colors.
+ */
+@supports (color: light-dark(white, black)) {
+  .bg-white:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#ffffff, oklch(0.205 0 0)) !important;
+  }
+  .bg-white\/95:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(rgb(255 255 255 / 0.95), oklch(0.145 0 0 / 0.95)) !important;
+  }
+  .bg-white\/90:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(rgb(255 255 255 / 0.9), oklch(0.145 0 0 / 0.9)) !important;
+  }
+  .bg-white\/80:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(rgb(255 255 255 / 0.8), oklch(0.205 0 0 / 0.8)) !important;
+  }
+  .bg-white\/70:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(rgb(255 255 255 / 0.7), oklch(1 0 0 / 0.1)) !important;
+  }
+
+  .bg-slate-50:not(.theme-fixed):not(.theme-fixed *),
+  .bg-slate-50\/80:not(.theme-fixed):not(.theme-fixed *),
+  .bg-slate-50\/50:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#f8fafc, oklch(0.22 0.01 260)) !important;
+  }
+  .bg-slate-100:not(.theme-fixed):not(.theme-fixed *),
+  .bg-slate-100\/80:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#f1f5f9, oklch(0.269 0 0)) !important;
+  }
+  .bg-slate-200:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#e2e8f0, oklch(0.32 0.01 260)) !important;
+  }
+
+  .from-slate-50:not(.theme-fixed):not(.theme-fixed *) {
+    --tw-gradient-from: light-dark(#f8fafc, oklch(0.145 0 0)) !important;
+  }
+  .to-slate-100:not(.theme-fixed):not(.theme-fixed *) {
+    --tw-gradient-to: light-dark(#f1f5f9, oklch(0.205 0 0)) !important;
+  }
+  .to-white:not(.theme-fixed):not(.theme-fixed *) {
+    --tw-gradient-to: light-dark(#ffffff, oklch(0.205 0 0)) !important;
+  }
+  .from-white:not(.theme-fixed):not(.theme-fixed *) {
+    --tw-gradient-from: light-dark(#ffffff, oklch(0.205 0 0)) !important;
+  }
+
+  .text-slate-900:not(.theme-fixed):not(.theme-fixed *),
+  .text-slate-800:not(.theme-fixed):not(.theme-fixed *) {
+    color: light-dark(#0f172a, #f8fafc) !important;
+  }
+  .text-slate-700:not(.theme-fixed):not(.theme-fixed *) {
+    color: light-dark(#334155, #e2e8f0) !important;
+  }
+  .text-slate-600:not(.theme-fixed):not(.theme-fixed *) {
+    color: light-dark(#475569, #cbd5e1) !important;
+  }
+  .text-slate-500:not(.theme-fixed):not(.theme-fixed *) {
+    color: light-dark(#64748b, #94a3b8) !important;
+  }
+  .text-slate-400:not(.theme-fixed):not(.theme-fixed *) {
+    color: light-dark(#94a3b8, #64748b) !important;
+  }
+
+  .border-slate-100:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-200:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-200\/50:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-200\/80:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-200\/90:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-300:not(.theme-fixed):not(.theme-fixed *),
+  .border-slate-300\/80:not(.theme-fixed):not(.theme-fixed *) {
+    border-color: light-dark(#e2e8f0, oklch(1 0 0 / 12%)) !important;
+  }
+
+  .ring-black\/5:not(.theme-fixed):not(.theme-fixed *) {
+    --tw-ring-color: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.1)) !important;
+  }
+
+  .hover\:bg-slate-50:hover:not(.theme-fixed):not(.theme-fixed *),
+  .hover\:bg-slate-100:hover:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#f1f5f9, oklch(0.269 0 0)) !important;
+  }
+  .hover\:bg-white:hover:not(.theme-fixed):not(.theme-fixed *) {
+    background-color: light-dark(#ffffff, oklch(0.269 0 0)) !important;
+  }
 }
 /*
  ---break---
