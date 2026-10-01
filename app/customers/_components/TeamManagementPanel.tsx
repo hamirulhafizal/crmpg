@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/app/contexts/auth-context'
+import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import { CustomerWhatsAppAvatar } from '@/app/customers/_components/CustomerWhatsAppAvatar'
 import {
   getAccountStatusKey,
@@ -17,12 +18,12 @@ import { customerKeys, type CustomerListQueryParams } from '@/app/lib/customers/
 import { isValidCampaignPhone, normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 
 const ACCOUNT_STATUS_ROW_CLASSES: Record<AccountStatusKey, string> = {
-  active: 'bg-green-50/80 hover:bg-green-100/80 border-l-4 border-l-green-500',
-  inactive: 'bg-red-50/80 hover:bg-red-100/80 border-l-4 border-l-red-500',
-  free: 'bg-amber-50/80 hover:bg-amber-100/80 border-l-4 border-l-amber-500',
-  freeze: 'bg-orange-50/80 hover:bg-orange-100/80 border-l-4 border-l-orange-500',
-  temporary: 'bg-violet-50/80 hover:bg-violet-100/80 border-l-4 border-l-violet-500',
-  unknown: 'bg-slate-50 hover:bg-slate-100/80 border-l-4 border-l-slate-400',
+  active: 'customer-row customer-row--active',
+  inactive: 'customer-row customer-row--inactive',
+  free: 'customer-row customer-row--free',
+  freeze: 'customer-row customer-row--freeze',
+  temporary: 'customer-row customer-row--temporary',
+  unknown: 'customer-row customer-row--unknown',
 }
 
 function WhatsAppOpenButton({ phone }: { phone: string | null | undefined }) {
@@ -51,11 +52,11 @@ type TeamCustomer = CustomerListRow
 
 type TeamManagementPanelProps = {
   active: boolean
-  onOpenCustomer: (customer: TeamCustomer) => void
 }
 
-export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPanelProps) {
+export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
   const { user } = useAuth()
+  const { openCustomerById } = useCustomerEditModal()
   const [page, setPage] = useState(1)
   const [limit] = useState(50)
   const [searchInput, setSearchInput] = useState('')
@@ -351,7 +352,12 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
                   return (
                     <tr
                       key={customer.id}
-                      onClick={() => onOpenCustomer(customer)}
+                      onClick={() =>
+                        openCustomerById(customer.id, {
+                          tab: 'details',
+                          initialCustomer: customer as unknown as Record<string, unknown>,
+                        })
+                      }
                       className={`cursor-pointer transition-colors ${ACCOUNT_STATUS_ROW_CLASSES[accountKey]}`}
                     >
                       <td
@@ -364,7 +370,19 @@ export function TeamManagementPanel({ active, onOpenCustomer }: TeamManagementPa
                             phone={customer.phone}
                             displayName={customer.sender_name || customer.name}
                           />
-                          <span className="min-w-0 truncate">{customer.sender_name || '-'}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openCustomerById(customer.id, {
+                                tab: 'details',
+                                initialCustomer: customer as unknown as Record<string, unknown>,
+                              })
+                            }
+                            className="min-w-0 truncate font-medium text-blue-600 underline underline-offset-2 transition-colors hover:text-blue-800 focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                            title="View customer details"
+                          >
+                            {customer.sender_name || customer.name || '-'}
+                          </button>
                           <WhatsAppOpenButton phone={customer.phone} />
                         </span>
                       </td>

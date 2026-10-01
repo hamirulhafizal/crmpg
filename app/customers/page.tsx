@@ -9,9 +9,9 @@ import Link from 'next/link'
 import { AppShell } from '@/app/components/AppShell'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 import {
-  CustomerEditModalShell,
+  useCustomerEditModal,
   type CustomerEditModalTab,
-} from '@/app/components/customer-edit-modal/CustomerEditModalShell'
+} from '@/app/contexts/customer-edit-modal-context'
 import {
   getAccountStatusKey,
   getAccountStatusLabel,
@@ -52,7 +52,6 @@ import {
   fetchCustomerList,
   fetchCustomerStats,
 } from '@/app/lib/customers/fetch-customers'
-import { invalidateCachedWhatsAppAvatarUrl } from '@/app/lib/customers/avatar-url-cache'
 import { customerKeys, type CustomerListQueryParams } from '@/app/lib/customers/query-keys'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
@@ -419,13 +418,16 @@ function CustomersPage() {
   const searchParams = useSearchParams()
   const openCustomerParam = searchParams.get('openCustomer')
   const accountStatusParam = searchParams.get('accountStatus')
+  const {
+    openCustomerById,
+    openCreateCustomer,
+    subscribeOnSaved,
+    subscribeOnResumeSynced,
+  } = useCustomerEditModal()
 
   const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
-  const [isEditing, setIsEditing] = useState<string | null>(null)
-  const [editModalInitialTab, setEditModalInitialTab] = useState<CustomerEditModalTab>('details')
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   /** Desktop (md+): filter grid collapsed by default to save vertical space. */
   const [filtersAccordionOpen, setFiltersAccordionOpen] = useState(false)
@@ -1276,12 +1278,31 @@ function CustomersPage() {
   }
 
   const handleEdit = (customer: Customer, opts?: { initialTab?: CustomerEditModalTab }) => {
-    setIsCreating(false)
-    setEditModalInitialTab(opts?.initialTab ?? 'details')
-    setIsEditing(customer.id)
+    openCustomerById(customer.id, {
+      tab: opts?.initialTab ?? 'details',
+      initialCustomer: customer as unknown as Record<string, unknown>,
+      followUpResumeContext: {
+        accountStatusFilter: accountStatusFilter || '',
+        page,
+        viewMode,
+      },
+      overlayZIndexClassName: followUpQueueOpen ? 'z-[1300]' : undefined,
+    })
   }
 
   handleEditRef.current = handleEdit
+
+  useEffect(() => {
+    return subscribeOnResumeSynced((stored) => {
+      setResumeCheckpoint(stored)
+    })
+  }, [subscribeOnResumeSynced])
+
+  useEffect(() => {
+    return subscribeOnSaved(() => {
+      void invalidateCustomersCache()
+    })
+  }, [subscribeOnSaved, invalidateCustomersCache])
 
   useEffect(() => {
     if (!user || loading || managementTab !== 'workspace') return
@@ -2189,11 +2210,7 @@ function CustomersPage() {
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => {
-                setIsEditing(null)
-                setEditModalInitialTab('details')
-                setIsCreating(true)
-              }}
+              onClick={() => openCreateCustomer()}
               className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2387,42 +2404,6 @@ function CustomersPage() {
             </button>
           </div>
         ) : null}
-
-        <CustomerEditModalShell
-          open={Boolean(isCreating || isEditing)}
-          isCreating={isCreating}
-          customerId={isEditing}
-          initialCustomer={isCreating ? {} : null}
-          initialTab={editModalInitialTab}
-          overlayZIndexClassName={followUpQueueOpen ? 'z-[1300]' : undefined}
-          followUpResumeContext={
-            isEditing
-              ? {
-                  accountStatusFilter: accountStatusFilter || '',
-                  page,
-                  viewMode,
-                }
-              : null
-          }
-          onResumeSynced={(stored) => {
-            setResumeCheckpoint(stored)
-          }}
-          onClose={() => {
-                      setIsCreating(false)
-                      setIsEditing(null)
-            setEditModalInitialTab('details')
-          }}
-          onSaved={() => {
-            void invalidateCustomersCache()
-            if (isEditing && user?.id) {
-              invalidateCachedWhatsAppAvatarUrl(user.id, isEditing)
-              void queryClient.invalidateQueries({
-                queryKey: customerKeys.avatar(user.id, isEditing),
-              })
-            }
-          }}
-        />
-
 
         {/* Account status counts (all customers in your database) */}
         <div className="mb-6">
@@ -3003,10 +2984,7 @@ function CustomersPage() {
             exit={{ opacity: 0, y: -24 }}
             transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           >
-            <TeamManagementPanel
-              active={managementTab === 'team'}
-              onOpenCustomer={(customer) => handleEdit(customer as Customer)}
-            />
+            <TeamManagementPanel active={managementTab === 'team'} />
           </motion.div>
         )}
 
