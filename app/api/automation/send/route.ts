@@ -537,7 +537,7 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
     return false
   }
 
-  const loginUrl = 'https://publicgolds.com/login?next=%2Fwaha-integration'
+  const loginUrl = 'https://publicgolds.com/login?next=%2Fws-integration'
 
   try {
     const transporter = nodemailer.createTransport({

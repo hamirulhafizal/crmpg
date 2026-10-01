@@ -192,11 +192,12 @@ export const APP_SERVICE_NAV: AppNavItem[] = [
     match: (p) => p.startsWith('/customers'),
   },
   {
-    href: '/waha-integration',
+    href: '/ws-integration',
     label: 'WhatsApp Provider',
     description: 'WhatsApp integration',
     accentClassName: 'text-teal-800 bg-teal-50',
     icon: IconWhatsApp,
+    match: (p) => p.startsWith('/ws-integration') || p.startsWith('/waha-integration'),
   },
   {
     href: '/dashboard/campaigns',

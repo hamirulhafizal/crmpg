@@ -55,27 +55,39 @@ function WahaStatusBadge({
 }) {
   if (checking) {
     return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+      <Link
+        href="/ws-integration"
+        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
+        title="WhatsApp integration"
+      >
         <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-        Checking WhatsApp...
-      </span>
+        WhatsApp…
+      </Link>
     )
   }
 
   if (connected) {
     return (
-      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+      <Link
+        href="/ws-integration"
+        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
+        title="WhatsApp integration"
+      >
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        WhatsApp connected
-      </span>
+        WhatsApp ON
+      </Link>
     )
   }
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+    <Link
+      href="/ws-integration"
+      className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
+      title="WhatsApp integration"
+    >
       <span className="h-2 w-2 rounded-full bg-amber-500" />
-      WhatsApp not connected
-    </span>
+      WhatsApp  OFF
+    </Link>
   )
 }
 

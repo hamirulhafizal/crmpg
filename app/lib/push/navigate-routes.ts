@@ -14,7 +14,7 @@ export const PUSH_NAVIGATE_ROUTES: PushNavigateRoute[] = [
   { path: '/dashboard/lucky-draw', label: 'Lucky draw', group: 'Marketing' },
   { path: '/automated-messages', label: 'Automated messages', group: 'Marketing' },
   { path: '/google-ads', label: 'Google Ads', group: 'Marketing' },
-  { path: '/waha-integration', label: 'WhatsApp integration', group: 'Integrations' },
+  { path: '/ws-integration', label: 'WhatsApp integration', group: 'Integrations' },
   { path: '/excel-processor', label: 'Excel processor', group: 'Tools' },
   { path: '/extension-download', label: 'Chrome extension download', group: 'Tools' },
   { path: '/test-pwa', label: 'PWA test page', group: 'Tools' },
