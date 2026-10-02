@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -266,14 +266,8 @@ export default function LuckyDrawDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-end px-4 py-4 sm:px-6">
-          <UserProfileMenu />
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
+    <AppShell title="Lucky Draw">
+      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
         <PageBackTitle title="Lucky Draw" className="mb-0" />
 
         {message && (
@@ -398,7 +392,7 @@ export default function LuckyDrawDashboardPage() {
             </ul>
           )}
         </section>
-      </main>
+      </div>
 
       {(editorOpen || editor) && (
         <AnimatedSheetDialog
@@ -537,6 +531,6 @@ export default function LuckyDrawDashboardPage() {
           )}
         </AnimatedSheetDialog>
       )}
-    </div>
+    </AppShell>
   )
 }

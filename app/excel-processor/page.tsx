@@ -4,7 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { storage } from '@/app/lib/storage/indexeddb'
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/lib/prompts/default-prompt'
@@ -881,16 +881,7 @@ export default function ExcelProcessorPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-end">
-            <UserProfileMenu />
-          </div>
-        </div>
-      </header>
-
+    <AppShell title="Excel Processor">
       {/* Google Contacts Integration Component */}
       <GoogleContactsIntegration
         onConnectionChange={handleConnectionChange}
@@ -898,8 +889,7 @@ export default function ExcelProcessorPage() {
         onImportProgress={handleImportProgress}
       />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
         <PageBackTitle title="Excel Processor" />
         {/* Prompt Editor Section */}
         <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-6 lg:p-8 mb-6 sm:mb-8 border border-slate-200/50">
@@ -1690,7 +1680,7 @@ export default function ExcelProcessorPage() {
             </div>
           </>
         )}
-      </main>
+      </div>
 
       {/* View Transitions CSS */}
       <style jsx global>{`
@@ -1825,7 +1815,7 @@ export default function ExcelProcessorPage() {
           }
         }
       `}</style>
-    </div>
+    </AppShell>
   )
 }
 

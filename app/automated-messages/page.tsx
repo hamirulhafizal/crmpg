@@ -4,7 +4,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -976,16 +976,8 @@ export default function AutomatedMessagesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-end">
-            <UserProfileMenu />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AppShell title="Automated Messages">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 border border-slate-200/50">
           <PageBackTitle
             title="Automated WhatsApp Messages"
@@ -1186,7 +1178,7 @@ export default function AutomatedMessagesPage() {
           )}
         </div>
 
-      </main>
+      </div>
 
       {/* Create / Edit Modal */}
       <AnimatePresence>
@@ -2059,6 +2051,6 @@ export default function AutomatedMessagesPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AppShell>
   )
 }

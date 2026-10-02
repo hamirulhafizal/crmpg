@@ -5,7 +5,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { UserProfileMenu } from '@/app/components/UserProfileMenu'
+import { AppShell } from '@/app/components/AppShell'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 
 type ProfileRow = {
@@ -234,7 +234,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <AppShell title="Edit Profile">
       <div className="fixed right-4 top-4 z-50 space-y-2">
         {toasts.map((toast) => (
           <div
@@ -249,17 +249,7 @@ export default function ProfilePage() {
           </div>
         ))}
       </div>
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-end">
-            <UserProfileMenu />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <PageBackTitle title="Edit Profile" />
         <div className="bg-white rounded-2xl shadow-lg p-8 border border-slate-200">
           {/* Profile Form */}
@@ -505,8 +495,8 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 
