@@ -11,6 +11,7 @@ import { MotionProvider } from "./components/motion-provider";
 import { PWAInstallPromptBootstrap } from "./components/pwa/PWAInstallPromptBootstrap";
 import { QueryProvider } from "./components/providers/query-provider";
 import { THEME_TOGGLE_ID } from "./components/ThemeToggle";
+import { AppRouteShell } from "./components/AppRouteShell";
 
 export const metadata: Metadata = {
   title: "Public Gold CRM",
@@ -82,7 +83,7 @@ export default function RootLayout({
                 <ServiceWorkerRegistration />
                 <ViewTransitions />
                 <ClientScripts />
-                {children}
+                <AppRouteShell>{children}</AppRouteShell>
               </MotionProvider>
             </CustomerEditModalProvider>
           </QueryProvider>

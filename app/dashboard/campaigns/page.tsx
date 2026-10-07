@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AppShell } from '@/app/components/AppShell'
+import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -514,30 +514,11 @@ function CampaignsListInner() {
   }
 
   if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="text-center">
-          <svg
-            className="mx-auto h-8 w-8 animate-spin text-blue-600"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <p className="mt-4 text-slate-600">Loading…</p>
-        </div>
-      </div>
-    )
+    return <PageContentSkeleton />
   }
 
   return (
-    <AppShell title="Workflows">
+    <>
       {toasts.map((t, i) => (
         <div
           key={t.id}
@@ -997,20 +978,18 @@ function CampaignsListInner() {
           )}
         </div>
       </main>
-    </AppShell>
+    </>
   )
 }
 
 function CampaignsSuspenseFallback() {
   return (
-    <AppShell title="Workflows">
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
-          <div className="mb-6 h-8 w-48 animate-pulse rounded-lg bg-slate-200/80" />
-          <TableSkeleton />
-        </div>
-      </main>
-    </AppShell>
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="rounded-2xl border border-slate-200/50 bg-white p-6 shadow-xl">
+        <div className="mb-6 h-8 w-48 animate-pulse rounded-lg bg-slate-200/80" />
+        <TableSkeleton />
+      </div>
+    </main>
   )
 }
 

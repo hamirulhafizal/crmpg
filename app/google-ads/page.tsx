@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AppShell } from '@/app/components/AppShell'
+import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -202,17 +202,13 @@ export default function GoogleAdsParticipantPage() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <p className="text-slate-600">Loading…</p>
-      </div>
-    )
+    return <PageContentSkeleton />
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-16">
-        <div className="mx-auto max-w-lg rounded-2xl border border-red-200 bg-white p-8 shadow-sm">
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <div className="rounded-2xl border border-red-200 bg-white p-8 shadow-sm">
           <p className="text-red-800">{error}</p>
           <Link href="/dashboard" className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700">
             Back to dashboard
@@ -224,8 +220,8 @@ export default function GoogleAdsParticipantPage() {
 
   if (!data?.enrolled) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-16">
-        <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
           <h1 className="text-xl font-semibold text-slate-900">Google Ads campaign</h1>
           <p className="mt-2 text-sm text-slate-600">
             Your account is not enrolled in this program. Contact an administrator if you should have access.
@@ -242,7 +238,6 @@ export default function GoogleAdsParticipantPage() {
   }
 
   return (
-    <AppShell title="Google Ads">
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         <PageBackTitle title="Google Ads" />
 
@@ -491,6 +486,5 @@ export default function GoogleAdsParticipantPage() {
           </>
         )}
       </div>
-    </AppShell>
   )
 }

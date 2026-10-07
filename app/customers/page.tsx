@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useRef, useMemo, Suspense, useLayoutE
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
-import { AppShell } from '@/app/components/AppShell'
+import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import GoogleContactsIntegration from '@/app/components/GoogleContactsIntegration'
 import {
   useCustomerEditModal,
@@ -1395,35 +1395,9 @@ function CustomersPage() {
     }
   }
 
-  // Full-page loading only on initial load (no data yet). Sorting/filtering refetches in background.
+  // Content skeleton only on initial load (no data yet). Sorting/filtering refetches in background.
   if (loading || (isLoading && customers.length === 0)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <svg
-            className="animate-spin h-8 w-8 text-blue-600 mx-auto"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p className="mt-4 text-slate-600">Loading...</p>
-        </div>
-      </div>
-    )
+    return <PageContentSkeleton rows={6} />
   }
 
   if (!user) {
@@ -1607,7 +1581,6 @@ function CustomersPage() {
         onImportProgress={handleImportProgress}
       />
 
-      <AppShell title="Customers">
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3354,20 +3327,13 @@ function CustomersPage() {
         )}
         </AnimatePresence>
       </main>
-      </AppShell>
     </div>
   )
 }
 
 export default function CustomersPageWithSuspense() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-50">
-          <p className="text-slate-600">Loading…</p>
-        </div>
-      }
-    >
+    <Suspense fallback={<PageContentSkeleton rows={6} />}>
       <CustomersPage />
     </Suspense>
   )

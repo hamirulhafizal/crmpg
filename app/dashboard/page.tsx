@@ -7,9 +7,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
 import { WorkflowListDialog } from '@/app/dashboard/_components/WorkflowListDialog'
-import { AppShell } from '@/app/components/AppShell'
-import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
+import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
+import { useAppShellChrome } from '@/app/contexts/app-shell-chrome'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
 
 type ServiceTileProps = {
@@ -51,6 +51,7 @@ export default function DashboardPage() {
   const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const { setHeaderExtra, setDeferWhatsAppPrompt } = useAppShellChrome()
 
   const [accountChecksLoading, setAccountChecksLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
@@ -62,8 +63,6 @@ export default function DashboardPage() {
   const [showSetupPasswords, setShowSetupPasswords] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [checkingAdmin, setCheckingAdmin] = useState(true)
-  const [googleAdsEnrolled, setGoogleAdsEnrolled] = useState(false)
-  const [checkingGoogleAds, setCheckingGoogleAds] = useState(true)
   const [saasPlanLabel, setSaasPlanLabel] = useState<string | null>(null)
   const [saasActiveCampaigns, setSaasActiveCampaigns] = useState<number | null>(null)
   const [saasMaxCampaigns, setSaasMaxCampaigns] = useState<number | null>(null)
@@ -152,29 +151,9 @@ export default function DashboardPage() {
   }, [user])
 
   useEffect(() => {
-    if (!user) {
-      setGoogleAdsEnrolled(false)
-      setCheckingGoogleAds(false)
-      return
-    }
-    let cancelled = false
-    setCheckingGoogleAds(true)
-    ;(async () => {
-      try {
-        const res = await fetch('/api/google-ads/me')
-        const j = await res.json()
-        if (cancelled) return
-        setGoogleAdsEnrolled(!!j.enrolled)
-      } catch {
-        if (!cancelled) setGoogleAdsEnrolled(false)
-      } finally {
-        if (!cancelled) setCheckingGoogleAds(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [user])
+    setHeaderExtra(<PWADashboardInstallButton />)
+    return () => setHeaderExtra(null)
+  }, [setHeaderExtra])
 
   useEffect(() => {
     if (!user) {
@@ -276,71 +255,16 @@ export default function DashboardPage() {
   const showPasswordGate = needsPasswordSetup
   const showProfileGate = !needsPasswordSetup && needsProfileSetup
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <svg
-            className="animate-spin h-8 w-8 text-blue-600 mx-auto"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p className="mt-4 text-slate-600">Loading...</p>
-        </div>
-      </div>
-    )
+  useEffect(() => {
+    setDeferWhatsAppPrompt(showPasswordGate || accountChecksLoading)
+    return () => setDeferWhatsAppPrompt(false)
+  }, [showPasswordGate, accountChecksLoading, setDeferWhatsAppPrompt])
+
+  if (loading || !user || accountChecksLoading) {
+    return <PageContentSkeleton />
   }
 
-  if (!user) {
-    return null
-  }
-
-  if (accountChecksLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <svg
-            className="animate-spin h-8 w-8 text-blue-600 mx-auto"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p className="mt-4 text-slate-600">Loading your account…</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (showProfileGate && user) {
+  if (showProfileGate) {
     return (
       <ProfileCompletionDialog
         userId={user.id}
@@ -355,12 +279,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <AppShell
-      title="Dashboard"
-      showGoogleAds={!checkingGoogleAds && googleAdsEnrolled}
-      deferWhatsAppPrompt={showPasswordGate || accountChecksLoading}
-      headerExtra={<PWADashboardInstallButton />}
-    >
+    <>
       <WorkflowListDialog
         open={workflowListDialogOpen && !showPasswordGate && !showProfileGate}
         onClose={() => setWorkflowListDialogOpen(false)}
@@ -751,8 +670,7 @@ export default function DashboardPage() {
         </div>
 
       </main>
-      <CompanyLegalFooter />
-    </AppShell>
+    </>
   )
 }
 

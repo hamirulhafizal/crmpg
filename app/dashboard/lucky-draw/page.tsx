@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AppShell } from '@/app/components/AppShell'
+import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import { PageBackTitle } from '@/app/components/PageBackTitle'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -258,15 +258,11 @@ export default function LuckyDrawDashboardPage() {
   }
 
   if (loading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
-        Loading…
-      </div>
-    )
+    return <PageContentSkeleton />
   }
 
   return (
-    <AppShell title="Lucky Draw">
+    <>
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
         <PageBackTitle title="Lucky Draw" className="mb-0" />
 
@@ -531,6 +527,6 @@ export default function LuckyDrawDashboardPage() {
           )}
         </AnimatedSheetDialog>
       )}
-    </AppShell>
+    </>
   )
 }
