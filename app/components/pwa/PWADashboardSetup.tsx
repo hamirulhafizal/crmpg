@@ -91,14 +91,14 @@ export function PWADashboardSetup() {
 
   return (
     <div className="space-y-4">
-      {showInstallSection ? (
+      {/* {showInstallSection ? (
         <PWAInstallSection
           isIOS={isIOS}
           installPromptReady={installPromptReady}
           isInstalling={isInstalling}
           onInstall={() => void installApp()}
         />
-      ) : null}
+      ) : null} */}
 
       {showPushCard ? (
         <section

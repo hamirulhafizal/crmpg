@@ -57,6 +57,7 @@ export default function WahaIntegrationPage() {
   const [sessions, setSessions] = useState<WahaSession[]>([])
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
 
   const [createName, setCreateName] = useState('')
   const [createStart, setCreateStart] = useState(true)
@@ -144,15 +145,26 @@ export default function WahaIntegrationPage() {
   const loadSessions = async () => {
     setLoadingSessions(true)
     setError(null)
+    setInfo(null)
     try {
       const res = await fetch('/api/waha/sessions')
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load sessions')
-      setSessions(data.sessions || [])
-      if (data.sessions?.length && !selectedSession) {
-        setSelectedSession(data.sessions[0].name)
+      const nextSessions: WahaSession[] = data.sessions || []
+      setSessions(nextSessions)
+      if (Array.isArray(data.autoDeleted) && data.autoDeleted.length > 0) {
+        const names = data.autoDeleted.map((n: string) => String(n)).join(', ')
+        setInfo(
+          `Removed failed session${data.autoDeleted.length > 1 ? 's' : ''}: ${names}. You can create a new session.`
+        )
       }
-      if (qrSession && isSessionConnected(data.sessions?.find((s: WahaSession) => s.name === qrSession)?.status || '')) {
+      if (nextSessions.length && !selectedSession) {
+        setSelectedSession(nextSessions[0].name)
+      }
+      if (selectedSession && !nextSessions.some((s) => s.name === selectedSession)) {
+        setSelectedSession(nextSessions[0]?.name || '')
+      }
+      if (qrSession && isSessionConnected(nextSessions.find((s) => s.name === qrSession)?.status || '')) {
         setQrSession(null)
         setQrCode(null)
       }
@@ -534,6 +546,15 @@ export default function WahaIntegrationPage() {
           </div>
         ) : null}
 
+        {info && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 flex items-center justify-between gap-3">
+            <span className="text-sm">{info}</span>
+            <button type="button" onClick={() => setInfo(null)} className="text-amber-700 hover:text-amber-900" aria-label="Dismiss">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 flex items-center justify-between">
             <span>{error}</span>
@@ -543,8 +564,8 @@ export default function WahaIntegrationPage() {
           </div>
         )}
 
-        {/* Create session - only when user has no session (1 user = 1 session) */}
-        {sessions.length === 0 && (
+        {/* Create session - only when status check finished and user has no session */}
+        {!loadingSessions && sessions.length === 0 && (
           <section className="bg-white rounded-2xl shadow-xl p-6 border border-slate-200/50">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Create session</h2>
             <p className="text-sm text-slate-600 mb-4">

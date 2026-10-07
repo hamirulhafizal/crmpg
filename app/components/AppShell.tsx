@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { ThemeToggle } from '@/app/components/ThemeToggle'
+import { WhatsAppConnectHost } from '@/app/components/WhatsAppConnectHost'
 
 export type AppNavItem = {
   href: string
@@ -237,6 +238,8 @@ type AppShellProps = {
   headerExtra?: ReactNode
   /** Hide Google Ads until enrolled (dashboard can pass this). */
   showGoogleAds?: boolean
+  /** Keep WhatsApp badge but delay the create-session dialog (e.g. password setup). */
+  deferWhatsAppPrompt?: boolean
   className?: string
 }
 
@@ -245,6 +248,7 @@ export function AppShell({
   title = 'Dashboard',
   headerExtra,
   showGoogleAds = true,
+  deferWhatsAppPrompt = false,
   className = '',
 }: AppShellProps) {
   const pathname = usePathname() || '/'
@@ -375,6 +379,7 @@ export function AppShell({
               <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
               {headerExtra}
               <ThemeToggle />
               <UserProfileMenu />

@@ -21,7 +21,10 @@ import {
 } from '@/app/lib/whatsapp/resolve'
 import type { WhatsAppProvider, WhatsAppSessionView } from '@/app/lib/whatsapp/types'
 import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
-import { persistWhatsAppSessionStatus } from '@/app/lib/whatsapp/session-status'
+import {
+  isFailedWhatsAppSessionStatus,
+  persistWhatsAppSessionStatus,
+} from '@/app/lib/whatsapp/session-status'
 
 function normalizeSessionPhone(name: string): string {
   let sessionName = name.replace(/\D/g, '')
@@ -315,6 +318,32 @@ export async function stopWhatsAppSession(userId: string, sessionName: string): 
     { userId }
   )
   return { name: result.name, status: result.status, provider: 'waha' }
+}
+
+/** Delete sessions stuck in FAILED/ERROR so the user can create a new one without manual cleanup. */
+export async function purgeFailedWhatsAppSessions(
+  userId: string,
+  sessions?: WhatsAppSessionView[]
+): Promise<{ sessions: WhatsAppSessionView[]; deleted: string[] }> {
+  const listed = sessions ?? (await listWhatsAppSessions(userId))
+  const deleted: string[] = []
+  const kept: WhatsAppSessionView[] = []
+
+  for (const session of listed) {
+    if (!isFailedWhatsAppSessionStatus(session.status)) {
+      kept.push(session)
+      continue
+    }
+    try {
+      await deleteWhatsAppSession(userId, session.name)
+      deleted.push(session.name)
+    } catch (e) {
+      console.error('[whatsapp] purgeFailedWhatsAppSessions failed:', userId, session.name, e)
+      kept.push(session)
+    }
+  }
+
+  return { sessions: kept, deleted }
 }
 
 export async function deleteWhatsAppSession(userId: string, sessionName: string): Promise<void> {

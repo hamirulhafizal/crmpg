@@ -3,9 +3,10 @@
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
+import { WorkflowListDialog } from '@/app/dashboard/_components/WorkflowListDialog'
 import { AppShell } from '@/app/components/AppShell'
 import { CompanyLegalFooter } from '@/app/components/CompanyLegalFooter'
 import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
@@ -46,59 +47,10 @@ function ServiceTile({
   )
 }
 
-function WahaStatusBadge({
-  checking,
-  connected,
-}: {
-  checking: boolean
-  connected: boolean
-}) {
-  if (checking) {
-    return (
-      <Link
-        href="/ws-integration"
-        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
-        title="WhatsApp integration"
-      >
-        <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-        WhatsApp…
-      </Link>
-    )
-  }
-
-  if (connected) {
-    return (
-      <Link
-        href="/ws-integration"
-        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
-        title="WhatsApp integration"
-      >
-        <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        WhatsApp ON
-      </Link>
-    )
-  }
-
-  return (
-    <Link
-      href="/ws-integration"
-      className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
-      title="WhatsApp integration"
-    >
-      <span className="h-2 w-2 rounded-full bg-amber-500" />
-      WhatsApp  OFF
-    </Link>
-  )
-}
-
 export default function DashboardPage() {
   const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const [hasActiveWahaSession, setHasActiveWahaSession] = useState(false)
-  const [checkingWahaSession, setCheckingWahaSession] = useState(true)
-  const [wahaStatusLoaded, setWahaStatusLoaded] = useState(false)
-  const wahaStatusLoadedRef = useRef(false)
 
   const [accountChecksLoading, setAccountChecksLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
@@ -118,6 +70,7 @@ export default function DashboardPage() {
   const [saasWasenderAvailable, setSaasWasenderAvailable] = useState(false)
   const [saasAlert, setSaasAlert] = useState<string | null>(null)
   const [checkingSaas, setCheckingSaas] = useState(true)
+  const [workflowListDialogOpen, setWorkflowListDialogOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -223,66 +176,6 @@ export default function DashboardPage() {
   }, [user])
 
   useEffect(() => {
-    if (!user) return
-    let cancelled = false
-
-    const checkActiveWahaSession = async (showChecking = false) => {
-      if (!cancelled && (showChecking || !wahaStatusLoadedRef.current)) setCheckingWahaSession(true)
-      try {
-        const controller = new AbortController()
-        const timeout = window.setTimeout(() => controller.abort(), 25000)
-        const res = await fetch('/api/waha/sessions', { cache: 'no-store', signal: controller.signal })
-        window.clearTimeout(timeout)
-        if (!res.ok) {
-          if (!cancelled) setHasActiveWahaSession(false)
-          return
-        }
-        const data = await res.json()
-        if (cancelled) return
-        const sessions = Array.isArray(data?.sessions) ? data.sessions : []
-        const active = sessions.some((session: { status?: string }) => {
-          const status = String(session?.status || '').toUpperCase()
-          return status === 'WORKING' || status === 'CONNECTED'
-        })
-        setHasActiveWahaSession(active)
-      } catch {
-        if (!cancelled) setHasActiveWahaSession(false)
-      } finally {
-        if (!cancelled) {
-          wahaStatusLoadedRef.current = true
-          setCheckingWahaSession(false)
-          setWahaStatusLoaded(true)
-        }
-      }
-    }
-
-    void checkActiveWahaSession(true)
-
-    const handleWindowFocus = () => {
-      void checkActiveWahaSession(false)
-    }
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void checkActiveWahaSession(false)
-      }
-    }
-    const handlePageShow = () => {
-      void checkActiveWahaSession(false)
-    }
-
-    window.addEventListener('focus', handleWindowFocus)
-    window.addEventListener('pageshow', handlePageShow)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      cancelled = true
-      window.removeEventListener('focus', handleWindowFocus)
-      window.removeEventListener('pageshow', handlePageShow)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [user])
-
-  useEffect(() => {
     if (!user) {
       setAccountChecksLoading(true)
       setNeedsPasswordSetup(false)
@@ -312,11 +205,12 @@ export default function DashboardPage() {
       }
 
       const profileRow = profileResult.data
+      const resolvedPhone = resolveProfilePhone(profileRow?.phone, user.user_metadata?.phone)
       const profileComplete = isProfileComplete(
         {
           full_name: profileRow?.full_name ?? null,
           username_pbo: profileRow?.username_pbo ?? null,
-          phone: resolveProfilePhone(profileRow?.phone, user.user_metadata?.phone),
+          phone: resolvedPhone,
           pgcode: profileRow?.pgcode ?? null,
           gmail_app_password: profileRow?.gmail_app_password ?? null,
           gmail_message: profileRow?.gmail_message ?? null,
@@ -377,6 +271,9 @@ export default function DashboardPage() {
       setPasswordSubmitLoading(false)
     }
   }
+
+  const showPasswordGate = needsPasswordSetup
+  const showProfileGate = !needsPasswordSetup && needsProfileSetup
 
   if (loading) {
     return (
@@ -442,9 +339,6 @@ export default function DashboardPage() {
     )
   }
 
-  const showPasswordGate = needsPasswordSetup
-  const showProfileGate = !needsPasswordSetup && needsProfileSetup
-
   if (showProfileGate && user) {
     return (
       <ProfileCompletionDialog
@@ -463,13 +357,16 @@ export default function DashboardPage() {
     <AppShell
       title="Dashboard"
       showGoogleAds={!checkingGoogleAds && googleAdsEnrolled}
-      headerExtra={
-        <div className="flex items-center gap-2 sm:gap-3">
-          <WahaStatusBadge checking={checkingWahaSession} connected={hasActiveWahaSession} />
-          <PWADashboardInstallButton />
-        </div>
-      }
+      deferWhatsAppPrompt={showPasswordGate || accountChecksLoading}
+      headerExtra={<PWADashboardInstallButton />}
     >
+      <WorkflowListDialog
+        open={workflowListDialogOpen && !showPasswordGate && !showProfileGate}
+        onClose={() => setWorkflowListDialogOpen(false)}
+        onActiveCountChange={(delta) => {
+          setSaasActiveCampaigns((prev) => Math.max(0, (prev ?? 0) + delta))
+        }}
+      />
       {showPasswordGate && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
@@ -575,11 +472,31 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active workflow</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
-                  {saasActiveCampaigns ?? 0}
-                  {saasMaxCampaigns != null && saasMaxCampaigns >= 0 ? ` / ${saasMaxCampaigns}` : ''}
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active workflow</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-slate-900">
+                      {saasActiveCampaigns ?? 0}
+                      {saasMaxCampaigns != null && saasMaxCampaigns >= 0 ? ` / ${saasMaxCampaigns}` : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWorkflowListDialogOpen(true)}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                    aria-label="Open workflow list"
+                    title="Open workflow list"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">WhatsApp</p>

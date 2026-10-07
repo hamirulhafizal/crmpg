@@ -17,6 +17,12 @@ export function isWorkingWhatsAppSessionStatus(status: string | null | undefined
   return s === 'WORKING' || s === 'CONNECTED'
 }
 
+/** Terminal error states that should be auto-removed so users can create a fresh session. */
+export function isFailedWhatsAppSessionStatus(status: string | null | undefined): boolean {
+  const s = normalizeWhatsAppSessionStatus(status)
+  return s === 'FAILED' || s === 'ERROR'
+}
+
 export async function fetchLiveWhatsAppSessionStatus(
   userId: string,
   sessionName: string

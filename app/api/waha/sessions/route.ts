@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { requireUserApi } from '@/app/lib/auth/require-user'
 import { WhatsAppApiError } from '@/app/lib/whatsapp/errors'
 import { isWhatsAppConfigured } from '@/app/lib/whatsapp/resolve'
-import { createWhatsAppSession, listWhatsAppSessions } from '@/app/lib/whatsapp/sessions'
+import {
+  createWhatsAppSession,
+  listWhatsAppSessions,
+  purgeFailedWhatsAppSessions,
+} from '@/app/lib/whatsapp/sessions'
 
 export async function GET(request: Request) {
   try {
@@ -13,8 +17,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'WhatsApp integration is not configured' }, { status: 503 })
     }
 
-    const sessions = await listWhatsAppSessions(user.id)
-    return NextResponse.json({ sessions })
+    const listed = await listWhatsAppSessions(user.id)
+    const { sessions, deleted } = await purgeFailedWhatsAppSessions(user.id, listed)
+    return NextResponse.json({
+      sessions,
+      ...(deleted.length > 0 ? { autoDeleted: deleted } : {}),
+    })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to list sessions'
     return NextResponse.json({ error: message }, { status: 500 })
