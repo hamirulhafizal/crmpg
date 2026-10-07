@@ -177,13 +177,13 @@ export const APP_SERVICE_NAV: AppNavItem[] = [
     accentClassName: 'text-violet-800 bg-violet-50',
     icon: IconBilling,
   },
-  {
-    href: '/test-pwa',
-    label: 'PWA test',
-    description: 'Push & install diagnostics',
-    accentClassName: 'text-sky-800 bg-sky-50',
-    icon: IconPwa,
-  },
+  // {
+  //   href: '/test-pwa',
+  //   label: 'PWA test',
+  //   description: 'Push & install diagnostics',
+  //   accentClassName: 'text-sky-800 bg-sky-50',
+  //   icon: IconPwa,
+  // },
   {
     href: '/customers',
     label: 'Customers',
@@ -194,7 +194,7 @@ export const APP_SERVICE_NAV: AppNavItem[] = [
   },
   {
     href: '/ws-integration',
-    label: 'WhatsApp Provider',
+    label: 'WhatsApp Server',
     description: 'WhatsApp integration',
     accentClassName: 'text-teal-800 bg-teal-50',
     icon: IconWhatsApp,

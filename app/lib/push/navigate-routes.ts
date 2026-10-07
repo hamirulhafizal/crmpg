@@ -17,7 +17,7 @@ export const PUSH_NAVIGATE_ROUTES: PushNavigateRoute[] = [
   { path: '/ws-integration', label: 'WhatsApp integration', group: 'Integrations' },
   { path: '/excel-processor', label: 'Excel processor', group: 'Tools' },
   { path: '/extension-download', label: 'Chrome extension download', group: 'Tools' },
-  { path: '/test-pwa', label: 'PWA test page', group: 'Tools' },
+  // { path: '/test-pwa', label: 'PWA test page', group: 'Tools' },
   { path: '/admin/settings', label: 'Admin settings', group: 'Admin' },
   { path: '/admin/plans', label: 'SaaS plans', group: 'Admin' },
   { path: '/admin/media', label: 'Media library', group: 'Admin' },

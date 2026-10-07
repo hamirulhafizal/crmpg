@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/app/contexts/auth-context'
 import {
   WhatsAppConnectDialog,
@@ -11,6 +11,77 @@ import {
 } from '@/app/dashboard/_components/WhatsAppConnectDialog'
 import { resolveProfilePhone } from '@/app/lib/profile/completion'
 import { createClient } from '@/app/lib/supabase/client'
+
+const WA_STATUS_CACHE_PREFIX = 'wa-connection-status'
+const WA_STATUS_CACHE_TTL_MS = 5 * 60 * 1000
+
+type WaStatusCache = {
+  connected: boolean
+  hasAnySession: boolean
+  offlineSessionName: string | null
+  checkedAt: number
+}
+
+/** In-memory cache so remounts across page navigations skip localStorage + API. */
+let memoryWaStatus: { userId: string; data: WaStatusCache } | null = null
+
+function waStatusCacheKey(userId: string) {
+  return `${WA_STATUS_CACHE_PREFIX}:${userId}`
+}
+
+function isCacheFresh(checkedAt: number) {
+  return Date.now() - checkedAt <= WA_STATUS_CACHE_TTL_MS
+}
+
+function readWaStatusCache(userId: string): WaStatusCache | null {
+  if (!userId) return null
+
+  if (memoryWaStatus?.userId === userId && isCacheFresh(memoryWaStatus.data.checkedAt)) {
+    return memoryWaStatus.data
+  }
+
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(waStatusCacheKey(userId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as WaStatusCache
+    if (
+      typeof parsed?.checkedAt !== 'number' ||
+      typeof parsed?.connected !== 'boolean' ||
+      typeof parsed?.hasAnySession !== 'boolean'
+    ) {
+      return null
+    }
+    if (!isCacheFresh(parsed.checkedAt)) return null
+    const data: WaStatusCache = {
+      connected: parsed.connected,
+      hasAnySession: parsed.hasAnySession,
+      offlineSessionName:
+        typeof parsed.offlineSessionName === 'string' ? parsed.offlineSessionName : null,
+      checkedAt: parsed.checkedAt,
+    }
+    memoryWaStatus = { userId, data }
+    return data
+  } catch {
+    return null
+  }
+}
+
+function writeWaStatusCache(userId: string, value: Omit<WaStatusCache, 'checkedAt'>) {
+  if (!userId) return
+  const payload: WaStatusCache = { ...value, checkedAt: Date.now() }
+  memoryWaStatus = { userId, data: payload }
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(waStatusCacheKey(userId), JSON.stringify(payload))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function msUntilCacheExpiry(checkedAt: number) {
+  return Math.max(0, WA_STATUS_CACHE_TTL_MS - (Date.now() - checkedAt))
+}
 
 function WahaStatusBadge({
   checking,
@@ -80,19 +151,21 @@ type WhatsAppConnectHostProps = {
 
 /**
  * Header badge + create/reconnect dialog for WhatsApp.
- * Auto-opens when the user has no active session (except on /ws-integration).
+ * Status is cached 5 minutes (memory + localStorage); navigations reuse cache.
  */
 export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHostProps) {
   const { user, loading } = useAuth()
   const pathname = usePathname() || '/'
   const supabase = useMemo(() => createClient(), [])
+  const userId = user?.id
 
   const [hasActiveSession, setHasActiveSession] = useState(false)
   const [hasAnySession, setHasAnySession] = useState(false)
   const [offlineSessionName, setOfflineSessionName] = useState<string | null>(null)
-  const [checking, setChecking] = useState(true)
+  const [checking, setChecking] = useState(false)
   const [statusLoaded, setStatusLoaded] = useState(false)
   const statusLoadedRef = useRef(false)
+  const fetchInFlightRef = useRef(false)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const dismissedRef = useRef(false)
@@ -103,19 +176,53 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
   const onWsIntegrationPage =
     pathname.startsWith('/ws-integration') || pathname.startsWith('/waha-integration')
 
+  const applyStatus = useCallback(
+    (active: boolean, anySession: boolean, offlineName: string | null) => {
+      setHasActiveSession(active)
+      setHasAnySession(anySession)
+      setOfflineSessionName(offlineName)
+      if (active && userId) {
+        setDialogOpen(false)
+        dismissedRef.current = false
+        setWaConnectDialogHidden(userId, false)
+      }
+    },
+    [userId]
+  )
+
   const checkSessions = useCallback(
-    async (showChecking = false) => {
-      if (!user) return
-      if (showChecking || !statusLoadedRef.current) setChecking(true)
+    async (opts?: { showChecking?: boolean; force?: boolean }) => {
+      if (!userId) return
+      const showChecking = opts?.showChecking ?? false
+      const force = opts?.force ?? false
+
+      if (!force) {
+        const cached = readWaStatusCache(userId)
+        if (cached) {
+          applyStatus(cached.connected, cached.hasAnySession, cached.offlineSessionName)
+          statusLoadedRef.current = true
+          setChecking(false)
+          setStatusLoaded(true)
+          return
+        }
+      }
+
+      if (fetchInFlightRef.current) return
+      fetchInFlightRef.current = true
+
+      if (showChecking) setChecking(true)
       try {
         const controller = new AbortController()
         const timeout = window.setTimeout(() => controller.abort(), 25000)
         const res = await fetch('/api/waha/sessions', { cache: 'no-store', signal: controller.signal })
         window.clearTimeout(timeout)
         if (!res.ok) {
-          setHasActiveSession(false)
-          setHasAnySession(false)
-          setOfflineSessionName(null)
+          applyStatus(false, false, null)
+          writeWaStatusCache(userId, {
+            connected: false,
+            hasAnySession: false,
+            offlineSessionName: null,
+          })
           return
         }
         const data = await res.json()
@@ -131,50 +238,87 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
           })?.name ||
           sessions[0]?.name ||
           null
-        setHasActiveSession(active)
-        setHasAnySession(sessions.length > 0)
-        setOfflineSessionName(active ? null : firstOffline ? String(firstOffline) : null)
-        if (active) {
-          setDialogOpen(false)
-          dismissedRef.current = false
-          setWaConnectDialogHidden(user.id, false)
-        }
+        const offlineName = active ? null : firstOffline ? String(firstOffline) : null
+        applyStatus(active, sessions.length > 0, offlineName)
+        writeWaStatusCache(userId, {
+          connected: active,
+          hasAnySession: sessions.length > 0,
+          offlineSessionName: offlineName,
+        })
       } catch {
-        setHasActiveSession(false)
-        setHasAnySession(false)
-        setOfflineSessionName(null)
+        if (!statusLoadedRef.current) {
+          applyStatus(false, false, null)
+        }
       } finally {
+        fetchInFlightRef.current = false
         statusLoadedRef.current = true
         setChecking(false)
         setStatusLoaded(true)
       }
     },
-    [user]
+    [userId, applyStatus]
   )
 
-  useEffect(() => {
-    if (loading || !user) {
+  // Hydrate from cache before paint on every mount / user change — no "WhatsApp…" flash.
+  useLayoutEffect(() => {
+    if (loading || !userId) {
       setChecking(false)
       return
     }
-    void checkSessions(true)
 
-    const onFocus = () => void checkSessions(false)
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') void checkSessions(false)
+    const cached = readWaStatusCache(userId)
+    if (cached) {
+      applyStatus(cached.connected, cached.hasAnySession, cached.offlineSessionName)
+      statusLoadedRef.current = true
+      setChecking(false)
+      setStatusLoaded(true)
+      return
     }
-    window.addEventListener('focus', onFocus)
-    window.addEventListener('pageshow', onFocus)
+
+    void checkSessions({ showChecking: true, force: true })
+  }, [loading, userId, applyStatus, checkSessions])
+
+  // Auto re-check when the 5-minute cache expires (timer + focus).
+  useEffect(() => {
+    if (loading || !userId) return
+
+    let expiryTimer: number | undefined
+
+    const scheduleExpiryRefresh = () => {
+      if (expiryTimer) window.clearTimeout(expiryTimer)
+      const cached = readWaStatusCache(userId)
+      const delay = cached ? msUntilCacheExpiry(cached.checkedAt) : 0
+      expiryTimer = window.setTimeout(() => {
+        void checkSessions({ force: true, showChecking: false }).then(() => {
+          scheduleExpiryRefresh()
+        })
+      }, delay === 0 ? WA_STATUS_CACHE_TTL_MS : delay)
+    }
+
+    scheduleExpiryRefresh()
+
+    const onFocusOrVisible = () => {
+      void checkSessions({ force: false, showChecking: false })
+      scheduleExpiryRefresh()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onFocusOrVisible()
+    }
+
+    window.addEventListener('focus', onFocusOrVisible)
+    window.addEventListener('pageshow', onFocusOrVisible)
     document.addEventListener('visibilitychange', onVisibility)
+
     return () => {
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener('pageshow', onFocus)
+      if (expiryTimer) window.clearTimeout(expiryTimer)
+      window.removeEventListener('focus', onFocusOrVisible)
+      window.removeEventListener('pageshow', onFocusOrVisible)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [loading, user, checkSessions])
+  }, [loading, userId, checkSessions])
 
   useEffect(() => {
-    if (!user) {
+    if (!userId || !user) {
       setPlatformReadOnly(false)
       setDefaultPhone('')
       return
@@ -184,7 +328,7 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
       try {
         const [saasRes, profileRes] = await Promise.all([
           fetch('/api/saas/me'),
-          supabase.from('profiles').select('phone').eq('id', user.id).maybeSingle(),
+          supabase.from('profiles').select('phone').eq('id', userId).maybeSingle(),
         ])
         if (cancelled) return
         if (saasRes.ok) {
@@ -201,7 +345,7 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
     return () => {
       cancelled = true
     }
-  }, [user, supabase])
+  }, [userId, user, supabase])
 
   // Auto-open create/reconnect when WhatsApp is offline.
   useEffect(() => {
@@ -213,7 +357,7 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
 
     if (
       loading ||
-      !user ||
+      !userId ||
       deferPrompt ||
       onWsIntegrationPage ||
       !statusLoaded ||
@@ -223,16 +367,14 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
       return
     }
 
-    // Always prompt when the user has never created a session.
-    // "Don't show again" only suppresses reconnect reminders.
-    if (hasAnySession && isWaConnectDialogHidden(user.id)) {
+    if (hasAnySession && isWaConnectDialogHidden(userId)) {
       return
     }
 
     setDialogOpen(true)
   }, [
     loading,
-    user,
+    userId,
     deferPrompt,
     onWsIntegrationPage,
     statusLoaded,
@@ -242,21 +384,22 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
   ])
 
   const openDialog = () => {
-    if (!user) return
+    if (!userId) return
     dismissedRef.current = false
-    setWaConnectDialogHidden(user.id, false)
+    setWaConnectDialogHidden(userId, false)
     setDialogOpen(true)
+    void checkSessions({ force: true, showChecking: false })
   }
 
   const closeDialog = (opts?: { dontShowAgain?: boolean }) => {
     dismissedRef.current = true
-    if (opts?.dontShowAgain && user?.id && hasAnySession) {
-      setWaConnectDialogHidden(user.id, true)
+    if (opts?.dontShowAgain && userId && hasAnySession) {
+      setWaConnectDialogHidden(userId, true)
     }
     setDialogOpen(false)
   }
 
-  if (loading || !user) return null
+  if (loading || !user || !userId) return null
 
   return (
     <>
@@ -268,7 +411,7 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
       <WhatsAppConnectDialog
         open={dialogOpen && !deferPrompt}
         onClose={closeDialog}
-        userId={user.id}
+        userId={userId}
         hasExistingSession={hasAnySession}
         existingSessionName={offlineSessionName}
         platformReadOnly={platformReadOnly}
@@ -276,6 +419,11 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
         onSessionCreated={(sessionName) => {
           setHasAnySession(true)
           setOfflineSessionName(sessionName)
+          writeWaStatusCache(userId, {
+            connected: false,
+            hasAnySession: true,
+            offlineSessionName: sessionName,
+          })
         }}
         onConnected={() => {
           setHasActiveSession(true)
@@ -283,8 +431,13 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
           setOfflineSessionName(null)
           setDialogOpen(false)
           dismissedRef.current = false
-          setWaConnectDialogHidden(user.id, false)
-          void checkSessions(false)
+          setWaConnectDialogHidden(userId, false)
+          writeWaStatusCache(userId, {
+            connected: true,
+            hasAnySession: true,
+            offlineSessionName: null,
+          })
+          void checkSessions({ force: true, showChecking: false })
         }}
       />
     </>

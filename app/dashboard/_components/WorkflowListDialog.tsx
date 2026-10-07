@@ -83,6 +83,7 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
     setError(null)
     setActionError(null)
     setActiveTab('active')
+    setRows([])
     ;(async () => {
       try {
         const res = await fetch('/api/campaigns')
@@ -245,7 +246,13 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
                 }`}
               >
                 {tab.label}{' '}
-                <span className={selected ? 'text-slate-600' : 'text-slate-400'}>{count}</span>
+                <span className={selected ? 'text-slate-600' : 'text-slate-400'}>
+                  {loading ? (
+                    <span className="inline-block h-3 w-4 align-middle rounded bg-slate-200 animate-pulse" />
+                  ) : (
+                    count
+                  )}
+                </span>
               </button>
             )
           })}
@@ -263,9 +270,34 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
           style={{ height: `calc(4 * ${CARD_H} + 3 * ${CARD_GAP})` }}
         >
           {loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-slate-500">
-              Loading workflows…
-            </div>
+            <ul className="space-y-3 pb-1" aria-busy="true" aria-label="Loading workflows">
+              {[0, 1, 2, 3].map((i) => (
+                <li
+                  key={i}
+                  className="animate-pulse rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                  style={{ minHeight: CARD_H }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-3/4 max-w-[14rem] rounded bg-slate-200" />
+                      <div className="h-3 w-full max-w-[18rem] rounded bg-slate-100" />
+                      <div className="h-3 w-40 rounded bg-slate-100" />
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <div className="h-5 w-14 rounded-full bg-slate-200" />
+                      <div className="h-6 w-11 rounded-full bg-slate-200" />
+                    </div>
+                  </div>
+                  <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3.5 w-3.5 rounded bg-slate-200" />
+                      <div className="h-3 w-20 rounded bg-slate-200" />
+                      <div className="h-7 w-24 rounded-lg bg-slate-100" />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : error ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
           ) : rows.length === 0 ? (

@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [saasAlert, setSaasAlert] = useState<string | null>(null)
   const [checkingSaas, setCheckingSaas] = useState(true)
   const [workflowListDialogOpen, setWorkflowListDialogOpen] = useState(false)
+  const [adminToolsOpen, setAdminToolsOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -454,7 +455,36 @@ export default function DashboardPage() {
 
         <PWADashboardSetup />
 
-        {!checkingSaas && saasPlanLabel ? (
+        {checkingSaas ? (
+          <div
+            className="rounded-2xl border border-violet-200/80 bg-white p-6 shadow-xl animate-pulse"
+            aria-busy="true"
+            aria-label="Loading plan usage"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-2">
+                <div className="h-6 w-28 rounded-lg bg-slate-200" />
+                <div className="h-4 w-44 rounded bg-slate-100" />
+              </div>
+              <div className="h-9 w-32 rounded-xl bg-violet-200/70" />
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <div className="h-3 w-24 rounded bg-slate-200" />
+                    <div className="h-7 w-16 rounded bg-slate-200" />
+                  </div>
+                  <div className="h-9 w-9 rounded-xl bg-slate-200" />
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2">
+                <div className="h-3 w-20 rounded bg-slate-200" />
+                <div className="h-5 w-36 rounded bg-slate-200" />
+              </div>
+            </div>
+          </div>
+        ) : saasPlanLabel ? (
           <div className="rounded-2xl border border-violet-200/80 bg-white p-6 shadow-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -499,7 +529,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">WhatsApp</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">WhatsApp Server</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
                   {saasWasenderAvailable ? 'WAHA + WasenderAPI' : 'WAHA only'}
                 </p>
@@ -519,132 +549,152 @@ export default function DashboardPage() {
         {/* Admin tools — only for platform admins */}
         {!checkingAdmin && isAdmin && (
           <div className="rounded-2xl border border-slate-300/80 bg-white p-6 shadow-xl md:p-8">
-            <div className="mb-6">
-              <h3 className="text-xl font-semibold text-slate-900">Admin</h3>
-              <p className="mt-1 text-xs text-slate-500">Platform management tools</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setAdminToolsOpen((open) => !open)}
+              className="flex w-full items-start justify-between gap-3 text-left"
+              aria-expanded={adminToolsOpen}
+              aria-controls="admin-platform-tools"
+            >
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">Admin</h3>
+                <p className="mt-1 text-xs text-slate-500">Platform management tools</p>
+              </div>
+              <span
+                className={`mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition ${
+                  adminToolsOpen ? 'rotate-180' : ''
+                }`}
+                aria-hidden
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
 
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-              <ServiceTile
-                href="/admin/settings"
-                title="Admin Settings"
-                description="Web app settings"
-                iconClassName="bg-slate-900/90"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                    />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                }
-              />
+            {adminToolsOpen ? (
+              <div id="admin-platform-tools" className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+                <ServiceTile
+                  href="/admin/settings"
+                  title="Admin Settings"
+                  description="Web app settings"
+                  iconClassName="bg-slate-900/90"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                      />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/plans"
-                title="SaaS plans"
-                description="Free & Pro packages"
-                borderClassName="border-violet-200"
-                gradientClassName="from-violet-50/80 to-white"
-                iconClassName="bg-violet-600"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-                    />
-                  </svg>
-                }
-              />
+                <ServiceTile
+                  href="/admin/plans"
+                  title="SaaS plans"
+                  description="Free & Pro packages"
+                  borderClassName="border-violet-200"
+                  gradientClassName="from-violet-50/80 to-white"
+                  iconClassName="bg-violet-600"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                      />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/workflow-nodes"
-                title="Workflow nodes"
-                description="Campaign builder palette"
-                gradientClassName="from-violet-50/80 to-white"
-                iconClassName="bg-violet-600"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
-                  </svg>
-                }
-              />
+                <ServiceTile
+                  href="/admin/workflow-nodes"
+                  title="Workflow nodes"
+                  description="Campaign builder palette"
+                  gradientClassName="from-violet-50/80 to-white"
+                  iconClassName="bg-violet-600"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/lucky-draw-defaults"
-                title="Lucky draw defaults"
-                description="Platform draw template"
-                borderClassName="border-amber-200"
-                gradientClassName="from-amber-50/80 to-white"
-                iconClassName="bg-amber-500"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-                    />
-                  </svg>
-                }
-              />
+                <ServiceTile
+                  href="/admin/lucky-draw-defaults"
+                  title="Lucky draw defaults"
+                  description="Platform draw template"
+                  borderClassName="border-amber-200"
+                  gradientClassName="from-amber-50/80 to-white"
+                  iconClassName="bg-amber-500"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+                      />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/google-ads"
-                title="Admin Google Ads"
-                description="Campaign management"
-                iconClassName="bg-slate-900/90"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                  </svg>
-                }
-              />
+                <ServiceTile
+                  href="/admin/google-ads"
+                  title="Admin Google Ads"
+                  description="Campaign management"
+                  iconClassName="bg-slate-900/90"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/media"
-                title="Media library"
-                description="R2 images, audio, video, PDF"
-                borderClassName="border-indigo-200"
-                gradientClassName="from-indigo-50/80 to-white"
-                iconClassName="bg-indigo-600"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                }
-              />
+                <ServiceTile
+                  href="/admin/media"
+                  title="Media library"
+                  description="R2 images, audio, video, PDF"
+                  borderClassName="border-indigo-200"
+                  gradientClassName="from-indigo-50/80 to-white"
+                  iconClassName="bg-indigo-600"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                  }
+                />
 
-              <ServiceTile
-                href="/admin/push"
-                title="Push notifications"
-                description="Test broadcast to PWA devices"
-                borderClassName="border-blue-200"
-                gradientClassName="from-blue-50/80 to-white"
-                iconClassName="bg-blue-600"
-                icon={
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                  </svg>
-                }
-              />
-            </div>
+                <ServiceTile
+                  href="/admin/push"
+                  title="Push notifications"
+                  description="Test broadcast to PWA devices"
+                  borderClassName="border-blue-200"
+                  gradientClassName="from-blue-50/80 to-white"
+                  iconClassName="bg-blue-600"
+                  icon={
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                      />
+                    </svg>
+                  }
+                />
+              </div>
+            ) : null}
           </div>
         )}
 

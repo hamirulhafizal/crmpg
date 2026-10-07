@@ -255,7 +255,7 @@ export default function DashboardBillingPage() {
               </span>
             </p>
             <p className="mt-1">
-              WhatsApp:{' '}
+              WhatsApp Server:{' '}
               <span className="font-semibold text-slate-900">
                 {data.entitlements.whatsappProviderLabel ||
                   data.alerts?.whatsapp_provider_label ||

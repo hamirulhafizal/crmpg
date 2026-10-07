@@ -311,7 +311,7 @@ export function WhatsAppConnectDialog({
               onClick={() => handleClose()}
               className="text-sm font-medium text-slate-500 transition hover:text-slate-800"
             >
-              Open WhatsApp Provider
+              Open WhatsApp Server
             </Link>
             <div className="flex items-center gap-2">
               <button

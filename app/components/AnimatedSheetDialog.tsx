@@ -1,7 +1,8 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 const NARROW_MEDIA = '(max-width: 639px)'
 
@@ -24,32 +25,29 @@ function useIsNarrow() {
 }
 
 const mobilePanelVariants = {
-  hidden: { y: '100%', opacity: 1 },
+  hidden: { y: '100%' },
   visible: {
     y: 0,
-    opacity: 1,
     transition: { type: 'spring' as const, damping: 32, stiffness: 360 },
   },
   exit: {
     y: '100%',
-    opacity: 1,
     transition: { type: 'tween' as const, duration: 0.28, ease: [0.32, 0.72, 0, 1] as const },
   },
 }
 
+/** Opacity/scale only — no translateY, so flexbox centering stays correct. */
 const desktopPanelVariants = {
-  hidden: { opacity: 0, scale: 0.96, y: 16 },
+  hidden: { opacity: 0, scale: 0.96 },
   visible: {
     opacity: 1,
     scale: 1,
-    y: 0,
     transition: { type: 'spring' as const, damping: 28, stiffness: 380 },
   },
   exit: {
     opacity: 0,
-    scale: 1,
-    y: 0,
-    transition: { type: 'tween' as const, duration: 0.22, ease: [0.4, 0, 1, 1] as const },
+    scale: 0.98,
+    transition: { type: 'tween' as const, duration: 0.2, ease: [0.4, 0, 1, 1] as const },
   },
 }
 
@@ -79,6 +77,11 @@ export function AnimatedSheetDialog({
   bodyClassName = 'overflow-y-auto',
 }: AnimatedSheetDialogProps) {
   const isNarrow = useIsNarrow()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -89,12 +92,37 @@ export function AnimatedSheetDialog({
     }
   }, [open])
 
-  return (
+  if (!mounted) return null
+
+  const header = (
+    <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <h2 id="animated-sheet-dialog-title" className="text-lg font-semibold text-slate-900">
+        {title}
+      </h2>
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-lg px-2 py-1 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+      >
+        Close
+      </button>
+    </div>
+  )
+
+  const body = (
+    <div className={`min-h-0 flex-1 overscroll-contain bg-white ${bodyClassName}`.trim()}>{children}</div>
+  )
+
+  const footerNode = footer ? (
+    <div className="shrink-0 border-t border-slate-200 bg-white">{footer}</div>
+  ) : null
+
+  return createPortal(
     <AnimatePresence onExitComplete={onExitComplete}>
       {open && (
         <motion.div
           key="animated-sheet-dialog-root"
-          className="fixed inset-0 z-[100] isolate"
+          className="fixed inset-0 z-[100] isolate overscroll-none"
           initial={{ opacity: 1 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 1 }}
@@ -110,41 +138,53 @@ export function AnimatedSheetDialog({
             onClick={onClose}
           />
 
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center sm:items-center sm:p-4">
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="animated-sheet-dialog-title"
-              className={`pointer-events-auto flex max-h-[94vh] w-full ${maxWidthClassName} flex-col overflow-hidden rounded-t-2xl bg-white opacity-100 shadow-2xl sm:max-h-[90vh] sm:rounded-2xl ${panelClassName}`.trim()}
-              variants={isNarrow ? mobilePanelVariants : desktopPanelVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
+          {isNarrow ? (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center overflow-hidden"
+              style={{
+                paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))',
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+              }}
             >
-              <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-slate-200 sm:hidden" />
-
-              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-                <h2 id="animated-sheet-dialog-title" className="text-lg font-semibold text-slate-900">
-                  {title}
-                </h2>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-lg px-2 py-1 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="animated-sheet-dialog-title"
+                className={`pointer-events-auto flex w-full ${maxWidthClassName} max-h-[min(92dvh,100%)] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl ${panelClassName}`.trim()}
+                variants={mobilePanelVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-slate-200" />
+                {header}
+                {body}
+                {footerNode}
+              </motion.div>
+            </div>
+          ) : (
+            <div className="pointer-events-none absolute inset-0 z-10 overflow-y-auto overscroll-contain p-4">
+              <div className="flex min-h-full items-center justify-center py-4">
+                <motion.div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="animated-sheet-dialog-title"
+                  className={`pointer-events-auto flex w-full ${maxWidthClassName} max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ${panelClassName}`.trim()}
+                  variants={desktopPanelVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
                 >
-                  Close
-                </button>
+                  {header}
+                  {body}
+                  {footerNode}
+                </motion.div>
               </div>
-
-              <div className={`min-h-0 flex-1 bg-white ${bodyClassName}`.trim()}>{children}</div>
-
-              {footer ? (
-                <div className="shrink-0 border-t border-slate-200 bg-white">{footer}</div>
-              ) : null}
-            </motion.div>
-          </div>
+            </div>
+          )}
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
