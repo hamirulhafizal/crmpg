@@ -406,7 +406,10 @@ export default function AdminSettingsPage() {
   const publishDefaultWorkflow = useCallback(
     async (row: PlatformCampaignDefaultListItem) => {
       const tierLabel = row.tier === 'pro' ? 'Pro' : 'Free'
-      const confirmMessage = `Publish "${row.name}" to all ${tierLabel} users?\n\nLinked campaigns will be updated and set to draft so users can review before activating.`
+      const confirmMessage =
+        row.tier === 'pro'
+          ? `Publish "${row.name}" to all Pro package users (active + trialing)?\n\nMissing users get a new draft campaign. Linked copies are updated and set to draft.`
+          : `Publish "${row.name}" to all Free package users?\n\nMissing users get a new draft campaign. Linked copies are updated and set to draft.`
 
       if (!window.confirm(confirmMessage)) return
 

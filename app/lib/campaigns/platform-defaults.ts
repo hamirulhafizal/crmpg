@@ -10,7 +10,6 @@ import {
   type WorkflowMediaExportAsset,
 } from '@/app/lib/workflows/workflow-media-transfer'
 import type { WorkflowDefinition } from '@/app/lib/workflows/types'
-import { isProSubscriptionActive } from '@/app/lib/saas/billing'
 import { isPlatformAdmin } from '@/app/lib/saas/admin-access'
 import type { SaasSubscriptionStatus } from '@/app/lib/saas/types'
 
@@ -656,6 +655,19 @@ function planSlugFromSubscription(sub: SubscriptionWithPlan): string {
   return String(plan?.slug ?? 'free')
 }
 
+/**
+ * Publish targets by **package assignment**, not billing-period window.
+ * Pro templates → every user on Pro plan with status active|trialing
+ *   (including platform admins on Pro, for testing).
+ * Free templates → everyone else (free plan, or pro expired/cancelled),
+ *   excluding platform admins (admins are not Free dealers).
+ */
+function isProPackageSubscriber(sub: SubscriptionWithPlan): boolean {
+  const planSlug = planSlugFromSubscription(sub)
+  if (planSlug !== 'pro') return false
+  return sub.status === 'active' || sub.status === 'trialing'
+}
+
 async function listTargetUserIdsForDefaultTier(
   supabase: SupabaseClient,
   tier: PlatformDefaultTier
@@ -666,23 +678,15 @@ async function listTargetUserIdsForDefaultTier(
 
   if (error) throw error
 
-  const now = new Date()
   const userIds: string[] = []
 
   for (const raw of subs ?? []) {
     const sub = raw as SubscriptionWithPlan
-    const planSlug = planSlugFromSubscription(sub)
-    const proActive = isProSubscriptionActive({
-      planSlug,
-      status: sub.status,
-      trialEndsAt: sub.trial_ends_at,
-      currentPeriodEnd: sub.current_period_end,
-      now,
-    })
-
-    const matchesTier = tier === 'pro' ? proActive : !proActive
+    const onProPackage = isProPackageSubscriber(sub)
+    const matchesTier = tier === 'pro' ? onProPackage : !onProPackage
     if (!matchesTier) continue
-    if (await isPlatformAdmin(sub.user_id)) continue
+    // Pro: include admins. Free: skip admins (not Free dealers).
+    if (tier === 'free' && (await isPlatformAdmin(sub.user_id))) continue
     userIds.push(sub.user_id)
   }
 
