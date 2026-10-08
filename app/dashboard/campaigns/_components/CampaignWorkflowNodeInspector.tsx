@@ -254,7 +254,7 @@ export function CampaignWorkflowNodeInspector({
                         }
                   ),
                 }
-                return definitionToDraft(nextDef, withLimit)
+                return definitionToDraft(nextDef)
               })
             }}
           />
