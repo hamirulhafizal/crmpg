@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sanitizeCrmOrderNumber } from '@/app/lib/google-ads/sanitize-order-number'
+import { syncSaasMandateByOrderNumber } from '@/app/lib/saas/sync-bayarcash-mandate'
 import {
   syncPendingSaasPaymentsForUser,
   syncSaasPaymentByOrderNumber,
@@ -21,10 +22,21 @@ export async function GET(request: Request) {
 
   if (syncAllPending) {
     const result = await syncPendingSaasPaymentsForUser(admin, user.id)
+    // Also reconcile pending Direct Debit enrollments
+    const { data: pendingMandates } = await admin
+      .from('saas_mandates')
+      .select('order_number')
+      .eq('user_id', user.id)
+      .eq('status', 'pending_enrollment')
+    let mandatePaid = 0
+    for (const m of pendingMandates ?? []) {
+      const r = await syncSaasMandateByOrderNumber(admin, m.order_number)
+      if (r.status === 'active') mandatePaid += 1
+    }
     return NextResponse.json({
-      status: result.paid > 0 ? 'paid' : 'pending',
-      synced: result.synced,
-      paid: result.paid,
+      status: result.paid > 0 || mandatePaid > 0 ? 'paid' : 'pending',
+      synced: result.synced + (pendingMandates?.length ?? 0),
+      paid: result.paid + mandatePaid,
       errors: result.errors,
     })
   }
@@ -45,7 +57,7 @@ export async function GET(request: Request) {
     if (result.status === 'error') {
       return NextResponse.json({ error: result.message }, { status: 400 })
     }
-    return NextResponse.json({ status: result.status })
+    return NextResponse.json({ status: result.status, method: 'fpx' })
   }
 
   let orderNumber = ''
@@ -60,9 +72,30 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'order_number is required' }, { status: 400 })
   }
 
+  if (orderNumber.startsWith('SADD-')) {
+    const { data: mandateRow } = await admin
+      .from('saas_mandates')
+      .select('order_number')
+      .eq('order_number', orderNumber)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (!mandateRow) {
+      return NextResponse.json({ error: 'Mandate not found' }, { status: 404 })
+    }
+
+    const result = await syncSaasMandateByOrderNumber(admin, orderNumber)
+    if (result.status === 'error') {
+      return NextResponse.json({ error: result.message }, { status: 400 })
+    }
+    if (result.status === 'active') return NextResponse.json({ status: 'paid', method: 'direct_debit' })
+    if (result.status === 'failed') return NextResponse.json({ status: 'failed', method: 'direct_debit' })
+    return NextResponse.json({ status: 'pending', method: 'direct_debit' })
+  }
+
   const { data: paymentRow } = await admin
     .from('saas_payments')
-    .select('order_number')
+    .select('order_number, mandate_id')
     .eq('order_number', orderNumber)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -71,11 +104,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
   }
 
+  if (paymentRow.mandate_id) {
+    const result = await syncSaasMandateByOrderNumber(admin, orderNumber)
+    if (result.status === 'error') {
+      return NextResponse.json({ error: result.message }, { status: 400 })
+    }
+    if (result.status === 'active') return NextResponse.json({ status: 'paid', method: 'direct_debit' })
+    if (result.status === 'failed') return NextResponse.json({ status: 'failed', method: 'direct_debit' })
+    return NextResponse.json({ status: 'pending', method: 'direct_debit' })
+  }
+
   const result = await syncSaasPaymentByOrderNumber(admin, orderNumber)
 
   if (result.status === 'error') {
     return NextResponse.json({ error: result.message }, { status: 400 })
   }
 
-  return NextResponse.json({ status: result.status })
+  return NextResponse.json({ status: result.status, method: 'fpx' })
 }

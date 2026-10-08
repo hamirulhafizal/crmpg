@@ -33,7 +33,11 @@ function PaymentCompleteInner() {
       const res = await fetch(
         `/api/google-ads/sync-payment?order_number=${encodeURIComponent(orderNumber)}`
       )
-      const j = (await res.json().catch(() => ({}))) as { status?: string; error?: string }
+      const j = (await res.json().catch(() => ({}))) as {
+        status?: string
+        error?: string
+        method?: string
+      }
       if (cancelled) return
 
       if (!res.ok) {
@@ -43,12 +47,20 @@ function PaymentCompleteInner() {
       }
       if (j.status === 'paid') {
         setStatus('paid')
-        setMessage('Payment received. Your subscription is now active.')
+        setMessage(
+          j.method === 'direct_debit'
+            ? 'Direct Debit mandate approved. Your subscription is now active.'
+            : 'Payment received. Your subscription is now active.'
+        )
         return
       }
       if (j.status === 'failed') {
         setStatus('error')
-        setMessage('This payment was not completed. You can start checkout again from the Google Ads page.')
+        setMessage(
+          j.method === 'direct_debit'
+            ? 'Direct Debit enrollment was not completed. You can try again from the Google Ads page.'
+            : 'This payment was not completed. You can start checkout again from the Google Ads page.'
+        )
         return
       }
 

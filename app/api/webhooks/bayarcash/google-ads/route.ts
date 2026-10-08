@@ -1,10 +1,29 @@
 import { NextResponse } from 'next/server'
 import { sanitizeCrmOrderNumber } from '@/app/lib/google-ads/sanitize-order-number'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
+import { syncGoogleAdsMandateByOrderNumber } from '@/app/lib/google-ads/sync-bayarcash-mandate'
 import { syncGoogleAdsPaymentByOrderNumber } from '@/app/lib/google-ads/sync-bayarcash-payment'
 
+async function syncByOrderNumber(orderNumber: string) {
+  const admin = createServiceRoleClient()
+  if (orderNumber.startsWith('GADD-')) {
+    await syncGoogleAdsMandateByOrderNumber(admin, orderNumber)
+    return
+  }
+  const { data: pay } = await admin
+    .from('google_ads_payments')
+    .select('mandate_id')
+    .eq('order_number', orderNumber)
+    .maybeSingle()
+  if (pay?.mandate_id) {
+    await syncGoogleAdsMandateByOrderNumber(admin, orderNumber)
+    return
+  }
+  await syncGoogleAdsPaymentByOrderNumber(admin, orderNumber)
+}
+
 /**
- * Bayarcash callback_url — body shape may vary; we resolve by order_number and poll payment-intent status.
+ * Bayarcash callback_url — body shape may vary; we resolve by order_number and poll payment-intent / mandate status.
  */
 export async function POST(request: Request) {
   let body: Record<string, unknown>
@@ -27,8 +46,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const admin = createServiceRoleClient()
-    await syncGoogleAdsPaymentByOrderNumber(admin, clean)
+    await syncByOrderNumber(clean)
   } catch (e) {
     console.error('bayarcash google-ads webhook', e)
   }
@@ -45,8 +63,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true })
   }
   try {
-    const admin = createServiceRoleClient()
-    await syncGoogleAdsPaymentByOrderNumber(admin, orderNumber)
+    await syncByOrderNumber(orderNumber)
   } catch (e) {
     console.error('bayarcash google-ads webhook GET', e)
   }

@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
-import { isBayarcashConfiguredForCheckout, isGoogleAdsBayarcashRenewalEnabled } from '@/app/lib/bayarcash/config'
+import {
+  isBayarcashConfiguredForCheckout,
+  isBayarcashConfiguredForDirectDebit,
+  isGoogleAdsBayarcashDirectDebitEnabled,
+  isGoogleAdsBayarcashRenewalEnabled,
+} from '@/app/lib/bayarcash/config'
 import { createClient } from '@/app/lib/supabase/server'
 
 /** Participant: subscription summary + active packages for renewal selection. */
@@ -94,6 +99,40 @@ export async function GET() {
     const bayarcashCheckoutEnabled =
       isGoogleAdsBayarcashRenewalEnabled() && isBayarcashConfiguredForCheckout()
 
+    const bayarcashDirectDebitEnabled =
+      bayarcashCheckoutEnabled &&
+      isGoogleAdsBayarcashDirectDebitEnabled() &&
+      isBayarcashConfiguredForDirectDebit()
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('phone')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    let activeMandate: {
+      id: string
+      status: string
+      order_number: string
+      amount: number
+      frequency_mode: string
+      created_at: string
+      updated_at: string
+    } | null = null
+    try {
+      const { data: mandateRow } = await supabase
+        .from('google_ads_mandates')
+        .select('id, status, order_number, amount, frequency_mode, created_at, updated_at')
+        .eq('participant_id', participant.id)
+        .in('status', ['pending_enrollment', 'active'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      activeMandate = mandateRow ?? null
+    } catch {
+      activeMandate = null
+    }
+
     return NextResponse.json({
       enrolled: true as const,
       participant,
@@ -101,6 +140,9 @@ export async function GET() {
       packages: packages || [],
       payments: payments || [],
       bayarcashCheckoutEnabled,
+      bayarcashDirectDebitEnabled,
+      profilePhone: profile?.phone ?? null,
+      mandate: activeMandate,
     })
   } catch (e) {
     console.error(e)

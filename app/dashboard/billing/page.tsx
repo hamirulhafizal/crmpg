@@ -18,6 +18,8 @@ type PlanRow = {
   features: Record<string, string>
 }
 
+type PaymentMethod = 'fpx' | 'direct_debit'
+
 type MeResponse = {
   subscription: {
     status: string
@@ -47,6 +49,7 @@ type MeResponse = {
     can_checkout: boolean
     can_upgrade_from_trial: boolean
     bayarcash_checkout_enabled: boolean
+    bayarcash_direct_debit_enabled?: boolean
     trial_days: number
     free_trial_days: number
     renewal_price: number
@@ -54,6 +57,16 @@ type MeResponse = {
     is_pro_paid: boolean
     is_pro_trial: boolean
   }
+  profile_phone?: string | null
+  mandate?: {
+    id: string
+    status: string
+    order_number: string
+    amount: number
+    frequency_mode: string
+    created_at: string
+    updated_at: string
+  } | null
   alerts?: {
     plan_expired?: boolean
     platform_read_only?: boolean
@@ -101,6 +114,9 @@ export default function DashboardBillingPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [trialLoading, setTrialLoading] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('fpx')
+  const [payerNric, setPayerNric] = useState('')
+  const [payerPhone, setPayerPhone] = useState('')
 
   const load = useCallback(async (opts?: { syncPending?: boolean }) => {
     setLoading(true)
@@ -123,6 +139,12 @@ export default function DashboardBillingPage() {
   useEffect(() => {
     void load({ syncPending: true })
   }, [load])
+
+  useEffect(() => {
+    if (data?.profile_phone && !payerPhone) {
+      setPayerPhone(data.profile_phone)
+    }
+  }, [data?.profile_phone, payerPhone])
 
   const freePlan = useMemo(() => data?.plans.find((p) => p.slug === 'free'), [data])
   const proPlan = useMemo(() => data?.plans.find((p) => p.slug === 'pro'), [data])
@@ -147,6 +169,27 @@ export default function DashboardBillingPage() {
     setCheckoutLoading(true)
     setActionMessage(null)
     try {
+      if (paymentMethod === 'direct_debit') {
+        if (!payerNric.trim()) throw new Error('NRIC / IC number is required for auto Direct Debit')
+        if (!payerPhone.trim()) throw new Error('Phone number is required for auto Direct Debit')
+        const res = await fetch('/api/saas/direct-debit/enroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payer_id: payerNric.trim(),
+            payer_phone: payerPhone.trim(),
+          }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          enrollUrl?: string
+          error?: string
+        }
+        if (!res.ok) throw new Error(json.error || 'Direct Debit enrollment failed')
+        if (!json.enrollUrl) throw new Error('No enrollment URL returned')
+        window.location.href = json.enrollUrl
+        return
+      }
+
       const res = await fetch('/api/saas/checkout', { method: 'POST' })
       const json = (await res.json()) as { checkoutUrl?: string; error?: string }
       if (!res.ok) throw new Error(json.error || 'Checkout failed')
@@ -188,6 +231,112 @@ export default function DashboardBillingPage() {
 
   const showCheckout =
     data.flags.can_checkout && !data.flags.can_start_trial && (data.flags.can_upgrade_from_trial || !data.flags.is_pro_active || sub.status === 'active')
+
+  const ddEnabled = Boolean(data.flags.bayarcash_direct_debit_enabled)
+  const checkoutEnabled = data.flags.bayarcash_checkout_enabled
+  const activeMandate = data.mandate
+
+  const submitLabel =
+    checkoutLoading
+      ? paymentMethod === 'direct_debit'
+        ? 'Opening bank enrollment…'
+        : 'Redirecting…'
+      : paymentMethod === 'direct_debit'
+        ? `Set up auto debit — ${fmtMoney(checkoutAmount, proPlan?.currency || 'MYR')}/mo`
+        : checkoutLabel
+
+  const paymentMethodPicker = checkoutEnabled ? (
+      <div className="space-y-3">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-slate-700">Payment method</legend>
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+              paymentMethod === 'fpx'
+                ? 'border-violet-600 bg-violet-50/60'
+                : 'border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <input
+              type="radio"
+              name="billing-payment-method"
+              value="fpx"
+              checked={paymentMethod === 'fpx'}
+              onChange={() => setPaymentMethod('fpx')}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
+              <span className="mt-0.5 block text-xs text-slate-600">
+                Pay once now via online banking. Renew again next period.
+              </span>
+            </span>
+          </label>
+          {ddEnabled ? (
+            <label
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                paymentMethod === 'direct_debit'
+                  ? 'border-violet-600 bg-violet-50/60'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <input
+                type="radio"
+                name="billing-payment-method"
+                value="direct_debit"
+                checked={paymentMethod === 'direct_debit'}
+                onChange={() => setPaymentMethod('direct_debit')}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">Auto Direct Debit</span>
+                <span className="mt-0.5 block text-xs text-slate-600">
+                  Set up e-Mandate once; bank deducts automatically each month.
+                </span>
+              </span>
+            </label>
+          ) : null}
+        </fieldset>
+
+        {ddEnabled && paymentMethod === 'direct_debit' ? (
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3">
+            <div>
+              <label htmlFor="billing-payer-nric" className="block text-sm font-medium text-slate-700">
+                NRIC / IC number
+              </label>
+              <input
+                id="billing-payer-nric"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={payerNric}
+                onChange={(e) => setPayerNric(e.target.value)}
+                required
+                placeholder="e.g. 900101011234"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+            <div>
+              <label htmlFor="billing-payer-phone" className="block text-sm font-medium text-slate-700">
+                Phone (for bank enrollment)
+              </label>
+              <input
+                id="billing-payer-phone"
+                type="tel"
+                autoComplete="tel"
+                value={payerPhone}
+                onChange={(e) => setPayerPhone(e.target.value)}
+                required
+                placeholder="e.g. 0123456789"
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
+            <p className="text-xs text-slate-500">
+              Required by FPX Direct Debit. We store only the last 4 digits of your IC.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    ) : null
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
@@ -259,22 +408,30 @@ export default function DashboardBillingPage() {
             </p>
           </div>
         </div>
+
+        {activeMandate?.status === 'active' ? (
+          <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            Auto Direct Debit is active (order {activeMandate.order_number}).
+          </p>
+        ) : null}
+
         {data.flags.can_upgrade_from_trial && data.flags.can_checkout ? (
-          <div className="mt-6 rounded-xl border border-violet-200 bg-violet-50/80 p-4">
+          <div className="mt-6 space-y-3 rounded-xl border border-violet-200 bg-violet-50/80 p-4">
             <p className="text-sm text-violet-900">
               You&apos;re on a Pro trial with WAHA WhatsApp. Upgrade to paid Pro to switch to WasenderAPI —
               you&apos;ll scan a new QR code after payment.
             </p>
+            {paymentMethodPicker}
             <button
               type="button"
               onClick={() => void checkout()}
-              disabled={checkoutLoading || !data.flags.bayarcash_checkout_enabled}
-              className="mt-3 w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 sm:w-auto sm:min-w-[220px]"
+              disabled={checkoutLoading || !checkoutEnabled}
+              className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 sm:w-auto sm:min-w-[220px]"
             >
-              {checkoutLoading ? 'Redirecting…' : checkoutLabel}
+              {submitLabel}
             </button>
-            {!data.flags.bayarcash_checkout_enabled ? (
-              <p className="mt-2 text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
+            {!checkoutEnabled ? (
+              <p className="text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
             ) : null}
           </div>
         ) : null}
@@ -319,7 +476,7 @@ export default function DashboardBillingPage() {
               </ul>
 
               {isPro && !data.flags.is_pro_active ? (
-                <div className="mt-6 space-y-2">
+                <div className="mt-6 space-y-3">
                   {data.flags.can_start_trial ? (
                     <button
                       type="button"
@@ -331,36 +488,38 @@ export default function DashboardBillingPage() {
                     </button>
                   ) : null}
                   {data.flags.can_checkout ? (
-                    <button
-                      type="button"
-                      onClick={() => void checkout()}
-                      disabled={checkoutLoading || trialLoading || !data.flags.bayarcash_checkout_enabled}
-                      className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-                    >
-                      {checkoutLoading ? 'Redirecting…' : checkoutLabel}
-                    </button>
+                    <>
+                      {paymentMethodPicker}
+                      <button
+                        type="button"
+                        onClick={() => void checkout()}
+                        disabled={checkoutLoading || trialLoading || !checkoutEnabled}
+                        className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {submitLabel}
+                      </button>
+                    </>
                   ) : null}
-                  {!data.flags.bayarcash_checkout_enabled && data.flags.can_checkout ? (
+                  {!checkoutEnabled && data.flags.can_checkout ? (
                     <p className="text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
                   ) : null}
                 </div>
               ) : null}
 
-              {isPro && data.flags.is_pro_active && showCheckout ? (
-                <button
-                  type="button"
-                  onClick={() => void checkout()}
-                  disabled={checkoutLoading || !data.flags.bayarcash_checkout_enabled}
-                  className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${
-                    data.flags.can_upgrade_from_trial
-                      ? 'bg-violet-600 hover:bg-violet-700'
-                      : 'bg-slate-900 hover:bg-slate-800'
-                  }`}
-                >
-                  {checkoutLoading ? 'Redirecting…' : checkoutLabel}
-                </button>
+              {isPro && data.flags.is_pro_active && showCheckout && !data.flags.can_upgrade_from_trial ? (
+                <div className="mt-6 space-y-3">
+                  {paymentMethodPicker}
+                  <button
+                    type="button"
+                    onClick={() => void checkout()}
+                    disabled={checkoutLoading || !checkoutEnabled}
+                    className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {submitLabel}
+                  </button>
+                </div>
               ) : null}
-              {!data.flags.bayarcash_checkout_enabled && isPro && showCheckout ? (
+              {!checkoutEnabled && isPro && showCheckout ? (
                 <p className="mt-2 text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
               ) : null}
             </div>

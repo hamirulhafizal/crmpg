@@ -38,7 +38,11 @@ function PaymentCompleteInner() {
 
     const poll = async () => {
       const res = await fetch(syncUrl)
-      const j = (await res.json().catch(() => ({}))) as { status?: string; error?: string }
+      const j = (await res.json().catch(() => ({}))) as {
+        status?: string
+        error?: string
+        method?: string
+      }
       if (cancelled) return
 
       if (!res.ok) {
@@ -48,12 +52,20 @@ function PaymentCompleteInner() {
       }
       if (j.status === 'paid') {
         setStatus('paid')
-        setMessage('Payment received. Your Pro subscription is now active.')
+        setMessage(
+          j.method === 'direct_debit'
+            ? 'Direct Debit mandate approved. Your Pro subscription is now active.'
+            : 'Payment received. Your Pro subscription is now active.'
+        )
         return
       }
       if (j.status === 'failed') {
         setStatus('error')
-        setMessage('This payment was not completed. You can try checkout again from billing.')
+        setMessage(
+          j.method === 'direct_debit'
+            ? 'Direct Debit enrollment was not completed. You can try again from billing.'
+            : 'This payment was not completed. You can try checkout again from billing.'
+        )
         return
       }
 

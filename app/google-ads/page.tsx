@@ -52,7 +52,20 @@ type MeResponse =
       packages: PackageRow[]
       payments: PaymentRow[]
       bayarcashCheckoutEnabled: boolean
+      bayarcashDirectDebitEnabled?: boolean
+      profilePhone?: string | null
+      mandate?: {
+        id: string
+        status: string
+        order_number: string
+        amount: number
+        frequency_mode: string
+        created_at: string
+        updated_at: string
+      } | null
     }
+
+type PaymentMethod = 'fpx' | 'direct_debit'
 
 function fmtMoney(amount: number, currency: string) {
   try {
@@ -70,6 +83,9 @@ export default function GoogleAdsParticipantPage() {
   const [renewPkgId, setRenewPkgId] = useState('')
   const [renewSubmitting, setRenewSubmitting] = useState(false)
   const [renewMessage, setRenewMessage] = useState<string | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('fpx')
+  const [payerNric, setPayerNric] = useState('')
+  const [payerPhone, setPayerPhone] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -94,7 +110,16 @@ export default function GoogleAdsParticipantPage() {
   const packages = data && data.enrolled ? data.packages : []
   const payments = data && data.enrolled ? data.payments ?? [] : []
   const bayarcashCheckoutEnabled = data && data.enrolled ? data.bayarcashCheckoutEnabled : false
+  const bayarcashDirectDebitEnabled =
+    data && data.enrolled ? Boolean(data.bayarcashDirectDebitEnabled) : false
+  const activeMandate = data && data.enrolled ? data.mandate ?? null : null
   const missingSubscription = Boolean(data?.enrolled && !subscription)
+
+  useEffect(() => {
+    if (data && data.enrolled && data.profilePhone && !payerPhone) {
+      setPayerPhone(data.profilePhone)
+    }
+  }, [data, payerPhone])
 
   const currentPkg = useMemo(() => {
     if (!subscription?.package) return null
@@ -160,6 +185,29 @@ export default function GoogleAdsParticipantPage() {
     setRenewSubmitting(true)
     setRenewMessage(null)
     try {
+      if (paymentMethod === 'direct_debit') {
+        if (!payerNric.trim()) throw new Error('NRIC / IC number is required for auto Direct Debit')
+        if (!payerPhone.trim()) throw new Error('Phone number is required for auto Direct Debit')
+        const res = await fetch('/api/google-ads/direct-debit/enroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            package_id: renewPkgId,
+            payer_id: payerNric.trim(),
+            payer_phone: payerPhone.trim(),
+          }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          enrollUrl?: string
+          error?: string
+          detail?: string
+        }
+        if (!res.ok) throw new Error(json.error || 'Direct Debit enrollment failed')
+        if (!json.enrollUrl) throw new Error('No enrollment URL returned')
+        window.location.assign(json.enrollUrl)
+        return
+      }
+
       const res = await fetch('/api/google-ads/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -424,14 +472,19 @@ export default function GoogleAdsParticipantPage() {
             <p className="mt-1 text-sm text-slate-600">
               {missingSubscription
                 ? bayarcashCheckoutEnabled
-                  ? 'Pick your billing pac and pay with Bayarcash. Your subscription is created when you start checkout.'
+                  ? 'Pick your billing pac and payment method. Your subscription is created when you start checkout.'
                   : 'Pick your pac and submit a payment request. An administrator will confirm and activate your period.'
                 : bayarcashCheckoutEnabled
                   ? subscription?.status === 'pending_payment' && !hasActivePackage
-                    ? 'Confirm the pac (pre-filled from your enrollment), then pay with Bayarcash to activate. Receipts appear above after payment.'
-                    : 'Choose your pac, then pay securely with Bayarcash. Receipt details appear above after payment.'
+                    ? 'Confirm the pac, choose how to pay, then complete checkout to activate.'
+                    : 'Choose your pac and payment method, then pay securely with Bayarcash.'
                   : 'Choose the pac for your next term. An administrator will confirm when payment is received.'}
             </p>
+            {activeMandate?.status === 'active' && (
+              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                Auto Direct Debit is active for this subscription (order {activeMandate.order_number}).
+              </p>
+            )}
             <form
               onSubmit={bayarcashCheckoutEnabled ? submitCheckout : submitRenew}
               className="mt-4 space-y-4"
@@ -456,6 +509,102 @@ export default function GoogleAdsParticipantPage() {
                   ))}
                 </select>
               </div>
+
+              {bayarcashCheckoutEnabled && (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-slate-700">Payment method</legend>
+                  <label
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                      paymentMethod === 'fpx'
+                        ? 'border-slate-900 bg-slate-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      value="fpx"
+                      checked={paymentMethod === 'fpx'}
+                      onChange={() => setPaymentMethod('fpx')}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
+                      <span className="mt-0.5 block text-xs text-slate-600">
+                        Pay once now via online banking. Renew again next period.
+                      </span>
+                    </span>
+                  </label>
+                  {bayarcashDirectDebitEnabled && (
+                    <label
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+                        paymentMethod === 'direct_debit'
+                          ? 'border-slate-900 bg-slate-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="payment-method"
+                        value="direct_debit"
+                        checked={paymentMethod === 'direct_debit'}
+                        onChange={() => setPaymentMethod('direct_debit')}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-900">
+                          Auto Direct Debit
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-600">
+                          Set up e-Mandate once; bank deducts automatically each billing cycle.
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                </fieldset>
+              )}
+
+              {bayarcashCheckoutEnabled &&
+                bayarcashDirectDebitEnabled &&
+                paymentMethod === 'direct_debit' && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                    <div>
+                      <label htmlFor="payer-nric" className="block text-sm font-medium text-slate-700">
+                        NRIC / IC number
+                      </label>
+                      <input
+                        id="payer-nric"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={payerNric}
+                        onChange={(e) => setPayerNric(e.target.value)}
+                        required
+                        placeholder="e.g. 900101011234"
+                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="payer-phone" className="block text-sm font-medium text-slate-700">
+                        Phone (for bank enrollment)
+                      </label>
+                      <input
+                        id="payer-phone"
+                        type="tel"
+                        autoComplete="tel"
+                        value={payerPhone}
+                        onChange={(e) => setPayerPhone(e.target.value)}
+                        required
+                        placeholder="e.g. 0123456789"
+                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Required by FPX Direct Debit. We store only the last 4 digits of your IC.
+                    </p>
+                  </div>
+                )}
+
               <button
                 type="submit"
                 disabled={renewSubmitting || !renewPkgId}
@@ -463,10 +612,14 @@ export default function GoogleAdsParticipantPage() {
               >
                 {renewSubmitting
                   ? bayarcashCheckoutEnabled
-                    ? 'Opening checkout…'
+                    ? paymentMethod === 'direct_debit'
+                      ? 'Opening bank enrollment…'
+                      : 'Opening checkout…'
                     : 'Submitting…'
                   : bayarcashCheckoutEnabled
-                    ? 'Pay with Bayarcash'
+                    ? paymentMethod === 'direct_debit'
+                      ? 'Set up auto Direct Debit'
+                      : 'Pay with FPX'
                     : 'Request renewal'}
               </button>
             </form>

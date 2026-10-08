@@ -1,5 +1,7 @@
 import {
   isBayarcashConfiguredForCheckout,
+  isBayarcashConfiguredForDirectDebit,
+  isGoogleAdsBayarcashDirectDebitEnabled,
   isGoogleAdsBayarcashRenewalEnabled,
 } from '@/app/lib/bayarcash/config'
 import {
@@ -53,6 +55,7 @@ export type SaasMePayload = {
     can_start_trial: boolean
     can_checkout: boolean
     bayarcash_checkout_enabled: boolean
+    bayarcash_direct_debit_enabled: boolean
     trial_days: number
     free_trial_days: number
     renewal_price: number
@@ -62,6 +65,16 @@ export type SaasMePayload = {
     is_pro_paid: boolean
     is_pro_trial: boolean
   }
+  profile_phone: string | null
+  mandate: {
+    id: string
+    status: string
+    order_number: string
+    amount: number
+    frequency_mode: string
+    created_at: string
+    updated_at: string
+  } | null
   alerts: {
     at_campaign_limit: boolean
     days_until_expiry: number | null
@@ -153,6 +166,27 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(12)
+
+  const { data: profileRow } = await admin
+    .from('profiles')
+    .select('phone')
+    .eq('id', userId)
+    .maybeSingle()
+
+  let activeMandate: SaasMePayload['mandate'] = null
+  try {
+    const { data: mandateRow } = await admin
+      .from('saas_mandates')
+      .select('id, status, order_number, amount, frequency_mode, created_at, updated_at')
+      .eq('user_id', userId)
+      .in('status', ['pending_enrollment', 'active'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    activeMandate = mandateRow ?? null
+  } catch {
+    activeMandate = null
+  }
 
   const planRow = plan as SaasPlanRow
   const freePlanRow = (allPlans ?? []).find((p) => p.slug === 'free') as SaasPlanRow | undefined
@@ -299,6 +333,8 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     plans: plansWithFeatures,
     usage: { active_campaigns: activeCount },
     payments: (payments ?? []) as SaasMePayload['payments'],
+    profile_phone: profileRow?.phone ?? null,
+    mandate: activeMandate,
     flags: {
       is_pro_active: isProActive,
       is_free_trial_active: platformAdmin ? false : isFreeTrialActiveNow,
@@ -307,6 +343,10 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
       can_checkout: platformAdmin ? false : canCheckout && (proPlan?.price_amount ?? 0) > 0,
       bayarcash_checkout_enabled:
         isGoogleAdsBayarcashRenewalEnabled() && isBayarcashConfiguredForCheckout(),
+      bayarcash_direct_debit_enabled:
+        isGoogleAdsBayarcashRenewalEnabled() &&
+        isGoogleAdsBayarcashDirectDebitEnabled() &&
+        isBayarcashConfiguredForDirectDebit(),
       trial_days: proPlan?.trial_days ?? 0,
       free_trial_days: freePlanRow?.trial_days ?? 0,
       renewal_price: Number(subscription.locked_price_amount) || Number(proPlan?.price_amount ?? 0),
