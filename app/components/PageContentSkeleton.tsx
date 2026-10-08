@@ -79,7 +79,7 @@ export function PageContentSkeleton({
 
   return (
     <div
-      className={`mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8 ${className}`.trim()}
+      className={`mx-auto flex w-full max-w-auto flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8 ${className}`.trim()}
       aria-busy="true"
       aria-label="Loading page"
     >
