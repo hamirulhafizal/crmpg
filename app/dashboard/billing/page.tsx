@@ -107,6 +107,121 @@ function proPlanWhatsAppMarketing(data: MeResponse): string {
   return 'WAHA during trial · WasenderAPI when paid'
 }
 
+function PaymentMethodPicker({
+  checkoutEnabled,
+  ddEnabled,
+  paymentMethod,
+  onPaymentMethodChange,
+  payerNric,
+  onPayerNricChange,
+  payerPhone,
+  onPayerPhoneChange,
+}: {
+  checkoutEnabled: boolean
+  ddEnabled: boolean
+  paymentMethod: PaymentMethod
+  onPaymentMethodChange: (method: PaymentMethod) => void
+  payerNric: string
+  onPayerNricChange: (value: string) => void
+  payerPhone: string
+  onPayerPhoneChange: (value: string) => void
+}) {
+  if (!checkoutEnabled) return null
+
+  return (
+    <div className="space-y-3">
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-slate-700">Payment method</legend>
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+            paymentMethod === 'fpx'
+              ? 'border-violet-600 bg-violet-50/60'
+              : 'border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <input
+            type="radio"
+            name="billing-payment-method"
+            value="fpx"
+            checked={paymentMethod === 'fpx'}
+            onChange={() => onPaymentMethodChange('fpx')}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
+            <span className="mt-0.5 block text-xs text-slate-600">
+              Pay once now via online banking. Renew again next period.
+            </span>
+          </span>
+        </label>
+        {ddEnabled ? (
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+              paymentMethod === 'direct_debit'
+                ? 'border-violet-600 bg-violet-50/60'
+                : 'border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <input
+              type="radio"
+              name="billing-payment-method"
+              value="direct_debit"
+              checked={paymentMethod === 'direct_debit'}
+              onChange={() => onPaymentMethodChange('direct_debit')}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">Auto Direct Debit</span>
+              <span className="mt-0.5 block text-xs text-slate-600">
+                Set up e-Mandate once; bank deducts automatically each month.
+              </span>
+            </span>
+          </label>
+        ) : null}
+      </fieldset>
+
+      {ddEnabled && paymentMethod === 'direct_debit' ? (
+        <div className="space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3">
+          <div>
+            <label htmlFor="billing-payer-nric" className="block text-sm font-medium text-slate-700">
+              NRIC / IC number
+            </label>
+            <input
+              id="billing-payer-nric"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={payerNric}
+              onChange={(e) => onPayerNricChange(e.target.value)}
+              required
+              placeholder="e.g. 900101011234"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+            />
+          </div>
+          <div>
+            <label htmlFor="billing-payer-phone" className="block text-sm font-medium text-slate-700">
+              Phone (for bank enrollment)
+            </label>
+            <input
+              id="billing-payer-phone"
+              type="tel"
+              autoComplete="tel"
+              value={payerPhone}
+              onChange={(e) => onPayerPhoneChange(e.target.value)}
+              required
+              placeholder="e.g. 0123456789"
+              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+            />
+          </div>
+          <p className="text-xs text-slate-500">
+            Required by FPX Direct Debit. We store only the last 4 digits of your IC.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export default function DashboardBillingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -202,7 +317,7 @@ export default function DashboardBillingPage() {
   }
 
   if (loading) {
-    return <PageContentSkeleton />
+    return <PageContentSkeleton variant="billing" />
   }
 
   if (error || !data) {
@@ -245,98 +360,18 @@ export default function DashboardBillingPage() {
         ? `Set up auto debit — ${fmtMoney(checkoutAmount, proPlan?.currency || 'MYR')}/mo`
         : checkoutLabel
 
-  const paymentMethodPicker = checkoutEnabled ? (
-      <div className="space-y-3">
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-slate-700">Payment method</legend>
-          <label
-            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
-              paymentMethod === 'fpx'
-                ? 'border-violet-600 bg-violet-50/60'
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            <input
-              type="radio"
-              name="billing-payment-method"
-              value="fpx"
-              checked={paymentMethod === 'fpx'}
-              onChange={() => setPaymentMethod('fpx')}
-              className="mt-1"
-            />
-            <span>
-              <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
-              <span className="mt-0.5 block text-xs text-slate-600">
-                Pay once now via online banking. Renew again next period.
-              </span>
-            </span>
-          </label>
-          {ddEnabled ? (
-            <label
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
-                paymentMethod === 'direct_debit'
-                  ? 'border-violet-600 bg-violet-50/60'
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <input
-                type="radio"
-                name="billing-payment-method"
-                value="direct_debit"
-                checked={paymentMethod === 'direct_debit'}
-                onChange={() => setPaymentMethod('direct_debit')}
-                className="mt-1"
-              />
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">Auto Direct Debit</span>
-                <span className="mt-0.5 block text-xs text-slate-600">
-                  Set up e-Mandate once; bank deducts automatically each month.
-                </span>
-              </span>
-            </label>
-          ) : null}
-        </fieldset>
-
-        {ddEnabled && paymentMethod === 'direct_debit' ? (
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-            <div>
-              <label htmlFor="billing-payer-nric" className="block text-sm font-medium text-slate-700">
-                NRIC / IC number
-              </label>
-              <input
-                id="billing-payer-nric"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={payerNric}
-                onChange={(e) => setPayerNric(e.target.value)}
-                required
-                placeholder="e.g. 900101011234"
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-              />
-            </div>
-            <div>
-              <label htmlFor="billing-payer-phone" className="block text-sm font-medium text-slate-700">
-                Phone (for bank enrollment)
-              </label>
-              <input
-                id="billing-payer-phone"
-                type="tel"
-                autoComplete="tel"
-                value={payerPhone}
-                onChange={(e) => setPayerPhone(e.target.value)}
-                required
-                placeholder="e.g. 0123456789"
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
-              />
-            </div>
-            <p className="text-xs text-slate-500">
-              Required by FPX Direct Debit. We store only the last 4 digits of your IC.
-            </p>
-          </div>
-        ) : null}
-      </div>
-    ) : null
+  const paymentMethodPickerEl = (
+    <PaymentMethodPicker
+      checkoutEnabled={checkoutEnabled}
+      ddEnabled={ddEnabled}
+      paymentMethod={paymentMethod}
+      onPaymentMethodChange={setPaymentMethod}
+      payerNric={payerNric}
+      onPayerNricChange={setPayerNric}
+      payerPhone={payerPhone}
+      onPayerPhoneChange={setPayerPhone}
+    />
+  )
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
@@ -421,7 +456,7 @@ export default function DashboardBillingPage() {
               You&apos;re on a Pro trial with WAHA WhatsApp. Upgrade to paid Pro to switch to WasenderAPI —
               you&apos;ll scan a new QR code after payment.
             </p>
-            {paymentMethodPicker}
+            {paymentMethodPickerEl}
             <button
               type="button"
               onClick={() => void checkout()}
@@ -489,7 +524,7 @@ export default function DashboardBillingPage() {
                   ) : null}
                   {data.flags.can_checkout ? (
                     <>
-                      {paymentMethodPicker}
+                      {paymentMethodPickerEl}
                       <button
                         type="button"
                         onClick={() => void checkout()}
@@ -508,7 +543,7 @@ export default function DashboardBillingPage() {
 
               {isPro && data.flags.is_pro_active && showCheckout && !data.flags.can_upgrade_from_trial ? (
                 <div className="mt-6 space-y-3">
-                  {paymentMethodPicker}
+                  {paymentMethodPickerEl}
                   <button
                     type="button"
                     onClick={() => void checkout()}

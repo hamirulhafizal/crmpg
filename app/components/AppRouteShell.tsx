@@ -47,6 +47,7 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
 
   const title = titleOverride || resolveAppShellTitle(pathname)
   const shellKey = user?.id || 'anon'
+  const ready = !loading && !!user
 
   useEffect(() => {
     if (!loading && !user) {
@@ -81,25 +82,23 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
     document.body.style.overflow = ''
   }, [shellKey])
 
-  if (loading || !user) {
-    return (
-      <AppShell key={shellKey} title={title} showGoogleAds={false} deferWhatsAppPrompt>
-        <PageContentSkeleton />
-        <CompanyLegalFooter />
-      </AppShell>
-    )
-  }
-
+  // One AppShell only — swapping whole shells during auth caused double headers.
   return (
     <AppShell
       key={shellKey}
       title={title}
-      headerExtra={headerExtra}
-      showGoogleAds={showGoogleAds}
-      deferWhatsAppPrompt={deferWhatsAppPrompt}
+      headerExtra={ready ? headerExtra : undefined}
+      showGoogleAds={ready ? showGoogleAds : false}
+      deferWhatsAppPrompt={ready ? deferWhatsAppPrompt : true}
     >
-      {children}
-      <CompanyLegalFooter />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1">
+          {ready ? children : <PageContentSkeleton />}
+        </div>
+        <div className="mt-auto shrink-0">
+          <CompanyLegalFooter />
+        </div>
+      </div>
     </AppShell>
   )
 }

@@ -361,9 +361,9 @@ export function AppShell({
         {nav}
       </aside>
 
-      {/* Main column */}
+      {/* Main column — flex column so page content can grow and footer stick to bottom */}
       <div className="flex min-h-screen flex-col lg:pl-64">
-        <header className="sticky top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur">
+        <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80">
           <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-2">
               <button
@@ -380,14 +380,14 @@ export function AppShell({
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
-              {headerExtra}
+              {headerExtra ?? null}
               <ThemeToggle />
               <UserProfileMenu />
             </div>
           </div>
         </header>
 
-        <div className="flex-1">{children}</div>
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
       </div>
     </div>
   )
