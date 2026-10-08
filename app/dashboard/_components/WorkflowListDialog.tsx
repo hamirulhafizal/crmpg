@@ -47,7 +47,7 @@ const TABS: { id: WorkflowTab; label: string }[] = [
 ]
 
 /** Approximate card height for skeleton + scroll viewport (~3–4 cards). */
-const CARD_H = '11.5rem'
+const CARD_H = '7.5rem'
 const CARD_GAP = '0.75rem'
 
 function canToggleStatus(status: string): boolean {
