@@ -493,9 +493,20 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-8 text-center text-sm text-slate-500">
-          By signing in, you agree to our Terms of Service and Privacy Policy
+          By signing in, you agree to our{' '}
+          <Link href="/policy/terms" className="font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900">
+            Terms &amp; Conditions
+          </Link>{' '}
+          and{' '}
+          <Link href="/policy/privacy" className="font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900">
+            Privacy Policy
+          </Link>
         </p>
-        <CompanyLegalFooter className="mt-6 border-0 bg-transparent py-0 text-slate-500" />
+        <CompanyLegalFooter
+          showCompanyLinks
+          showPolicyLinks
+          className="mt-6 border-0 bg-transparent py-0 text-slate-500"
+        />
       </div>
     </div>
   )
