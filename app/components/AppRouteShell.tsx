@@ -14,7 +14,7 @@ import { isAppShellPath, resolveAppShellTitle } from '@/app/lib/app-shell-routes
 
 /**
  * Keeps sidebar/header/footer mounted across app navigations.
- * Only page `children` swap; auth + Google Ads nav visibility live here once.
+ * Remounts chrome when the signed-in user changes (account switch).
  */
 export function AppRouteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || '/'
@@ -24,7 +24,15 @@ export function AppRouteShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppShellChromeProvider>
+    <AuthenticatedAppChromeGate>{children}</AuthenticatedAppChromeGate>
+  )
+}
+
+/** Remount chrome provider when the signed-in user changes so header extras don't leak. */
+function AuthenticatedAppChromeGate({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  return (
+    <AppShellChromeProvider key={user?.id || 'anon'}>
       <AuthenticatedAppChrome>{children}</AuthenticatedAppChrome>
     </AppShellChromeProvider>
   )
@@ -38,6 +46,7 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
   const [showGoogleAds, setShowGoogleAds] = useState(false)
 
   const title = titleOverride || resolveAppShellTitle(pathname)
+  const shellKey = user?.id || 'anon'
 
   useEffect(() => {
     if (!loading && !user) {
@@ -66,9 +75,15 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
     }
   }, [user?.id])
 
+  // Clear body locks left behind by dialogs / interrupted navigations after account switch.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.body.style.overflow = ''
+  }, [shellKey])
+
   if (loading || !user) {
     return (
-      <AppShell title={title} showGoogleAds={false} deferWhatsAppPrompt>
+      <AppShell key={shellKey} title={title} showGoogleAds={false} deferWhatsAppPrompt>
         <PageContentSkeleton />
         <CompanyLegalFooter />
       </AppShell>
@@ -77,6 +92,7 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
 
   return (
     <AppShell
+      key={shellKey}
       title={title}
       headerExtra={headerExtra}
       showGoogleAds={showGoogleAds}

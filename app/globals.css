@@ -349,59 +349,24 @@
   border-color: var(--wf-border) !important;
 }
 
-/* View Transitions - Cross-fade animation */
-@supports (view-transition-name: none) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 300ms;
-    animation-timing-function: ease-out;
-    animation-direction: normal;
+@keyframes workflow-node-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(56, 189, 248, 0.45),
+      0 0 18px 4px rgba(56, 189, 248, 0.28);
   }
-
-  ::view-transition-old(root) {
-    animation-name: fade-out;
-  }
-
-  ::view-transition-new(root) {
-    animation-name: fade-in;
-  }
-
-  @keyframes fade-out {
-    from {
-      opacity: 1;
-    }
-    to {
-      opacity: 0;
-    }
-  }
-
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  @keyframes workflow-node-glow {
-    0%,
-    100% {
-      box-shadow:
-        0 0 0 1px rgba(56, 189, 248, 0.45),
-        0 0 18px 4px rgba(56, 189, 248, 0.28);
-    }
-    50% {
-      box-shadow:
-        0 0 0 1px rgba(56, 189, 248, 0.65),
-        0 0 28px 10px rgba(56, 189, 248, 0.42);
-    }
-  }
-
-  .workflow-node-running {
-    animation: workflow-node-glow 1.15s ease-in-out infinite;
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(56, 189, 248, 0.65),
+      0 0 28px 10px rgba(56, 189, 248, 0.42);
   }
 }
+
+.workflow-node-running {
+  animation: workflow-node-glow 1.15s ease-in-out infinite;
+}
+
 /*
  ---break---
  */
