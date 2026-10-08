@@ -910,7 +910,14 @@ function CampaignsListInner() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {rows.map((r) => (
-                      <tr key={r.id} className="hover:bg-slate-50/80">
+                      <tr
+                        key={r.id}
+                        className={
+                          selectedIds.has(r.id)
+                            ? 'bg-muted/70 text-foreground hover:bg-muted'
+                            : 'text-foreground hover:bg-muted/60'
+                        }
+                      >
                         <td className="px-3 py-3 align-top">
                           <input
                             type="checkbox"

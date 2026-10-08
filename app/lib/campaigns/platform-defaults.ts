@@ -339,6 +339,54 @@ function newProDefaultId(): string {
   return `pro-${crypto.randomUUID()}`
 }
 
+function newTemplateDefaultId(): string {
+  return `tpl-${crypto.randomUUID()}`
+}
+
+/** Clone a platform default template (new id, media copied, not linked to users yet). */
+export async function duplicatePlatformCampaignDefault(
+  supabase: SupabaseClient,
+  sourceId: string,
+  opts?: { name?: string }
+): Promise<{ defaults: PlatformCampaignDefault }> {
+  const id = sourceId.trim()
+  if (!id) throw new Error('Template id is required')
+
+  const source = await loadPlatformCampaignDefault(supabase, id)
+  if (!source) throw new Error('Template not found')
+
+  const stripped = stripExportedGmailFallbackTemplate(source.workflow_definition)
+  if (!stripped?.nodes?.length) {
+    throw new Error('Source template has no workflow definition')
+  }
+
+  const newId = newTemplateDefaultId()
+  const workflowDefinition = await ensurePlatformMediaFromWorkflow(supabase, newId, stripped)
+  const compiled_steps = compileStepsForStorage(workflowDefinition)
+  const name = opts?.name?.trim() || `${source.name.trim()} (copy)`
+
+  const defaults = await upsertPlatformDefault(supabase, {
+    id: newId,
+    tier: source.tier,
+    sort_order: source.tier === 'pro' ? await nextProSortOrder(supabase) : Number(source.sort_order ?? 0),
+    name,
+    description: source.description,
+    trigger_type: source.trigger_type,
+    trigger_offset_days: source.trigger_offset_days,
+    timezone: source.timezone,
+    audience_filters: source.audience_filters,
+    daily_send_limit: source.daily_send_limit,
+    cooldown_days: source.cooldown_days,
+    workflow_definition: workflowDefinition as never,
+    workflow_layout: source.workflow_layout,
+    compiled_steps: compiled_steps as never,
+    source_campaign_id: null,
+    updated_at: new Date().toISOString(),
+  })
+
+  return { defaults }
+}
+
 async function nextProSortOrder(supabase: SupabaseClient): Promise<number> {
   const { data } = await supabase
     .from('campaign_platform_defaults')

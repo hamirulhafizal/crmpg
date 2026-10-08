@@ -850,7 +850,10 @@
   }
 
   .hover\:bg-slate-50:hover:not(.theme-fixed):not(.theme-fixed *),
-  .hover\:bg-slate-100:hover:not(.theme-fixed):not(.theme-fixed *) {
+  .hover\:bg-slate-50\/80:hover:not(.theme-fixed):not(.theme-fixed *),
+  .hover\:bg-slate-50\/50:hover:not(.theme-fixed):not(.theme-fixed *),
+  .hover\:bg-slate-100:hover:not(.theme-fixed):not(.theme-fixed *),
+  .hover\:bg-slate-100\/80:hover:not(.theme-fixed):not(.theme-fixed *) {
     background-color: light-dark(#f1f5f9, oklch(0.269 0 0)) !important;
   }
   .hover\:bg-white:hover:not(.theme-fixed):not(.theme-fixed *) {

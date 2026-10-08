@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AdminPlatformWorkflowEditor } from '@/app/admin/settings/AdminPlatformWorkflowEditor'
 import {
+  DuplicateProgressDialog,
+  type DuplicateProgressState,
+} from '@/app/admin/settings/DuplicateProgressDialog'
+import {
   PlatformDefaultWorkflowDialog,
   WorkflowPublishIcon,
 } from '@/app/admin/settings/PlatformDefaultWorkflowDialog'
@@ -194,6 +198,15 @@ export default function AdminSettingsPage() {
   >({})
   const [savingMetaId, setSavingMetaId] = useState<string | null>(null)
   const [publishingDefaultId, setPublishingDefaultId] = useState<string | null>(null)
+  const [duplicatingDefaultId, setDuplicatingDefaultId] = useState<string | null>(null)
+  const [duplicateProgress, setDuplicateProgress] = useState<DuplicateProgressState>({
+    open: false,
+    sourceName: '',
+    percent: 0,
+    label: '',
+    error: null,
+    done: false,
+  })
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false)
   const [workflowDialogTemplateId, setWorkflowDialogTemplateId] = useState<string | null>(null)
 
@@ -432,6 +445,100 @@ export default function AdminSettingsPage() {
         setCampaignDefaultError('Failed to publish template')
       } finally {
         setPublishingDefaultId(null)
+      }
+    },
+    [loadCampaignWorkflowDefaults]
+  )
+
+  const closeDuplicateProgress = useCallback(() => {
+    setDuplicateProgress((prev) => ({ ...prev, open: false }))
+  }, [])
+
+  const duplicateDefaultWorkflow = useCallback(
+    async (row: PlatformCampaignDefaultListItem) => {
+      setDuplicatingDefaultId(row.id)
+      setCampaignDefaultError(null)
+      setCampaignDefaultSuccess(null)
+      setDuplicateProgress({
+        open: true,
+        sourceName: row.name,
+        percent: 8,
+        label: 'Preparing copy…',
+        error: null,
+        done: false,
+      })
+
+      const stages = [
+        { at: 400, percent: 28, label: 'Cloning workflow steps…' },
+        { at: 900, percent: 52, label: 'Copying media assets…' },
+        { at: 1500, percent: 72, label: 'Saving new template…' },
+        { at: 2200, percent: 85, label: 'Almost done…' },
+      ] as const
+      const timers = stages.map((stage) =>
+        window.setTimeout(() => {
+          setDuplicateProgress((prev) => {
+            if (!prev.open || prev.error || prev.done) return prev
+            if (prev.percent >= stage.percent) return prev
+            return { ...prev, percent: stage.percent, label: stage.label }
+          })
+        }, stage.at)
+      )
+
+      try {
+        const res = await fetch('/api/admin/campaign-workflow-defaults/duplicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: row.id }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          const message =
+            typeof data.error === 'string' ? data.error : 'Failed to duplicate template'
+          setCampaignDefaultError(message)
+          setDuplicateProgress((prev) => ({
+            ...prev,
+            open: true,
+            error: message,
+            done: false,
+            label: 'Failed',
+          }))
+          return
+        }
+
+        setDuplicateProgress((prev) => ({
+          ...prev,
+          percent: 92,
+          label: 'Refreshing list…',
+          error: null,
+          done: false,
+        }))
+
+        const copyName =
+          typeof data?.data?.name === 'string' ? data.data.name : `${row.name} (copy)`
+        await loadCampaignWorkflowDefaults()
+        setCampaignDefaultSuccess(`Duplicated as "${copyName}". Edit and publish when ready.`)
+        setDuplicateProgress((prev) => ({
+          ...prev,
+          open: true,
+          percent: 100,
+          label: 'Complete',
+          error: null,
+          done: true,
+          sourceName: copyName,
+        }))
+      } catch {
+        const message = 'Failed to duplicate template'
+        setCampaignDefaultError(message)
+        setDuplicateProgress((prev) => ({
+          ...prev,
+          open: true,
+          error: message,
+          done: false,
+          label: 'Failed',
+        }))
+      } finally {
+        for (const timer of timers) window.clearTimeout(timer)
+        setDuplicatingDefaultId(null)
       }
     },
     [loadCampaignWorkflowDefaults]
@@ -1574,12 +1681,21 @@ export default function AdminSettingsPage() {
                       </td>
                     </tr>
                   ) : (
-                    allPlatformDefaults.map((row) => (
-                        <tr key={row.id} className="hover:bg-slate-50/80">
+                    allPlatformDefaults.map((row) => {
+                      const selected = selectedDefaultIds.has(row.id)
+                      return (
+                        <tr
+                          key={row.id}
+                          className={
+                            selected
+                              ? 'bg-muted/70 text-foreground hover:bg-muted'
+                              : 'text-foreground hover:bg-muted/60'
+                          }
+                        >
                           <td className="px-3 py-3 align-top">
                             <input
                               type="checkbox"
-                              checked={selectedDefaultIds.has(row.id)}
+                              checked={selected}
                               onChange={(e) =>
                                 setSelectedDefaultIds((prev) => {
                                   const next = new Set(prev)
@@ -1604,17 +1720,17 @@ export default function AdminSettingsPage() {
                                   },
                                 }))
                               }
-                              className="w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-900"
+                              className="w-full min-w-[10rem] rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm font-medium text-foreground"
                               aria-label={`Template name for ${row.name}`}
                             />
                           </td>
-                          <td className="px-4 py-3 align-top text-slate-600">
+                          <td className="px-4 py-3 align-top text-muted-foreground">
                             {row.description?.trim() ? (
-                              <p className="max-w-[16rem] text-sm leading-snug text-slate-600 line-clamp-3">
+                              <p className="max-w-[16rem] text-sm leading-snug text-muted-foreground line-clamp-3">
                                 {row.description}
                               </p>
                             ) : (
-                              <span className="text-xs text-slate-400">—</span>
+                              <span className="text-xs text-muted-foreground/70">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3 align-top">
@@ -1629,26 +1745,26 @@ export default function AdminSettingsPage() {
                                   },
                                 }))
                               }
-                              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold uppercase text-slate-800"
+                              className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold uppercase text-foreground"
                               aria-label={`Template tier for ${row.name}`}
                             >
                               <option value="free">Free</option>
                               <option value="pro">Pro</option>
                             </select>
                           </td>
-                          <td className="px-4 py-3 align-top text-slate-600">
-                            <span className="capitalize">{row.trigger_type || 'manual'}</span>
+                          <td className="px-4 py-3 align-top text-muted-foreground">
+                            <span className="capitalize text-foreground/90">{row.trigger_type || 'manual'}</span>
                             {row.timezone ? (
-                              <p className="mt-0.5 text-xs text-slate-400">{row.timezone}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{row.timezone}</p>
                             ) : null}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                             {row.step_count ?? row.compiled_steps.length}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                             {syncedByDefaultId[row.id] ?? 0}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
+                          <td className="px-4 py-3 text-muted-foreground">
                             {row.updated_at ? new Date(row.updated_at).toLocaleDateString() : '—'}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -1702,6 +1818,34 @@ export default function AdminSettingsPage() {
                               </button>
                               <button
                                 type="button"
+                                disabled={
+                                  duplicatingDefaultId === row.id ||
+                                  campaignDefaultSaving ||
+                                  publishingDefaultId === row.id
+                                }
+                                onClick={() => void duplicateDefaultWorkflow(row)}
+                                title="Duplicate template"
+                                aria-label="Duplicate template"
+                                className="inline-flex items-center justify-center rounded-lg border border-slate-200 p-2 text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                  aria-hidden
+                                >
+                                  <rect x="8" y="8" width="12" height="12" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M4 16V6a2 2 0 012-2h10"
+                                  />
+                                </svg>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   void (async () => {
                                     if (!window.confirm(`Remove template "${row.name}"?`)) return
@@ -1747,7 +1891,8 @@ export default function AdminSettingsPage() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -1821,6 +1966,8 @@ export default function AdminSettingsPage() {
           </details>
         </section>
       )}
+
+      <DuplicateProgressDialog state={duplicateProgress} onClose={closeDuplicateProgress} />
 
       <PlatformDefaultWorkflowDialog
         open={workflowDialogOpen}
