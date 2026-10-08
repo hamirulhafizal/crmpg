@@ -32,6 +32,7 @@ import {
 } from '@/app/dashboard/campaigns/_components/workflow-node-parameter-forms'
 import { safeInt } from '@/app/lib/safe-number'
 import { getBuiltinNodeType } from '@/app/lib/workflows/catalog'
+import { isCampaignSendStepType } from '@/app/lib/workflows/send-step-types'
 
 const TRIGGERS: { value: CampaignTriggerType; label: string }[] = [
   { value: 'manual', label: 'Manual (run / cron sync)' },
@@ -205,17 +206,62 @@ export function CampaignWorkflowNodeInspector({
   }
 
   if (nodeType === 'crm.enroll.queue') {
+    const enrollParams = (defNode?.parameters ?? {}) as Record<string, unknown>
+    const stepCount = Math.max(
+      1,
+      (draft.definition?.nodes ?? []).filter(
+        (n) => isCampaignSendStepType(String(n.type)) && n.parameters?.is_active !== false
+      ).length
+    )
+    const customersRaw = Math.trunc(Number(enrollParams.daily_customers_per_day))
+    const customers =
+      Number.isFinite(customersRaw) && customersRaw >= 1
+        ? customersRaw
+        : Math.max(1, Math.floor(safeInt(draft.daily_send_limit, 100, 1) / stepCount))
+
     return (
       <InspectorShell title="Enroll & send limits" subtitle="Queue and rate limits" onClose={onClose}>
         <label className="field">
-          <span>Daily send limit</span>
+          <span>Customers per day</span>
           <input
             type="number"
             min={1}
             className="input text-black"
-            value={safeInt(draft.daily_send_limit, 100, 1)}
-            onChange={(e) => patch({ daily_send_limit: Math.max(1, Number(e.target.value) || 1) })}
+            value={customers}
+            onChange={(e) => {
+              const next = Math.max(1, Number(e.target.value) || 1)
+              const messageCap = next * stepCount
+              if (!selectedNodeId) {
+                patch({ daily_send_limit: messageCap })
+                return
+              }
+              onChange((prev) => {
+                const withLimit = { ...prev, daily_send_limit: messageCap }
+                const d = draftToDefinition(withLimit)
+                if (!d) return withLimit
+                const nextDef = {
+                  ...d,
+                  nodes: d.nodes.map((n) =>
+                    n.id !== selectedNodeId
+                      ? n
+                      : {
+                          ...n,
+                          parameters: {
+                            ...n.parameters,
+                            daily_customers_per_day: next,
+                            daily_send_limit: messageCap,
+                          },
+                        }
+                  ),
+                }
+                return definitionToDraft(nextDef, withLimit)
+              })
+            }}
           />
+          <span className="hint">
+            Message limit auto-updates: {customers} customers × {stepCount} step
+            {stepCount === 1 ? '' : 's'} = {customers * stepCount} sends/day.
+          </span>
         </label>
         <label className="field">
           <span>Cooldown (days)</span>

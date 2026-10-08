@@ -53,6 +53,7 @@ export const BUILTIN_WORKFLOW_NODE_TYPES: WorkflowNodeTypeDescriptor[] = [
     parameter_schema: {
       type: 'object',
       properties: {
+        daily_customers_per_day: { type: 'number', minimum: 1 },
         daily_send_limit: { type: 'number', minimum: 1 },
         cooldown_days: { type: 'number', minimum: 0 },
       },
@@ -284,7 +285,7 @@ export function defaultParametersForType(slug: WorkflowNodeTypeSlug | string): R
     case 'crm.audience.filter':
       return { audience_filters: {} }
     case 'crm.enroll.queue':
-      return { daily_send_limit: 100, cooldown_days: 30 }
+      return { daily_customers_per_day: 100, daily_send_limit: 100, cooldown_days: 30 }
     case 'crm.whatsapp.send':
       return {
         step_order: 1,

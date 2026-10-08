@@ -34,9 +34,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ data: [] })
     }
 
+    const dayStartIso = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())
+    ).toISOString()
+
     const [enrRes, logRes] = await Promise.all([
       supabase.from('campaign_enrollments').select('campaign_id').in('campaign_id', ids),
-      supabase.from('campaign_message_logs').select('campaign_id, send_status').in('campaign_id', ids),
+      supabase
+        .from('campaign_message_logs')
+        .select('campaign_id, send_status, sent_at')
+        .in('campaign_id', ids),
     ])
 
     const enrolledBy = new Map<string, number>()
@@ -46,10 +53,15 @@ export async function GET(request: Request) {
     }
 
     const sentBy = new Map<string, number>()
+    const sentTodayBy = new Map<string, number>()
     for (const r of logRes.data ?? []) {
       if (r.send_status !== 'sent') continue
       const k = r.campaign_id as string
       sentBy.set(k, (sentBy.get(k) ?? 0) + 1)
+      const sentAt = r.sent_at ? String(r.sent_at) : ''
+      if (sentAt && sentAt >= dayStartIso) {
+        sentTodayBy.set(k, (sentTodayBy.get(k) ?? 0) + 1)
+      }
     }
 
     const enriched = await Promise.all(
@@ -60,6 +72,7 @@ export async function GET(request: Request) {
           platform_default_tier: tier,
           enrolled_count: enrolledBy.get(c.id) ?? 0,
           sent_count: sentBy.get(c.id) ?? 0,
+          sent_today_count: sentTodayBy.get(c.id) ?? 0,
         }
       })
     )

@@ -1,4 +1,5 @@
 import type { CampaignAudienceFilters, CampaignTriggerType } from '@/app/lib/campaigns/types'
+import { messageCapFromCustomers } from '@/app/lib/campaigns/daily-customer-cap'
 import { sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { normalizeRunDate, normalizeRunTime, normalizeRunDayOfMonth, normalizeRunFrequency, normalizeRunWeekday } from '@/app/lib/campaigns/trigger-schedule'
 import { topologicalOrder } from '@/app/lib/workflows/graph-order'
@@ -21,6 +22,8 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
   let audience_filters: CampaignAudienceFilters = {}
   let daily_send_limit = 100
   let cooldown_days = 30
+  /** When set, message cap = customers × active send steps (recomputed after graph walk). */
+  let daily_customers_per_day: number | null = null
   const steps: CompiledWorkflow['steps'] = []
 
   const hasEnroll = ordered.some((n) => n.type === 'crm.enroll.queue')
@@ -47,10 +50,15 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
           audience_filters = (p.audience_filters as CampaignAudienceFilters) ?? audience_filters
         }
         break
-      case 'crm.enroll.queue':
+      case 'crm.enroll.queue': {
+        const customers = Math.trunc(Number(p.daily_customers_per_day))
+        if (Number.isFinite(customers) && customers >= 1) {
+          daily_customers_per_day = customers
+        }
         daily_send_limit = Math.max(1, Number(p.daily_send_limit ?? 100))
         cooldown_days = Math.max(0, Number(p.cooldown_days ?? 30))
         break
+      }
       case 'crm.flow.loop':
         if (!hasEnroll) {
           daily_send_limit = Math.max(1, Number(p.batch_size ?? 1))
@@ -90,6 +98,10 @@ export function compileWorkflowDefinition(def: WorkflowDefinition): CompiledWork
   }
 
   steps.sort((a, b) => a.step_order - b.step_order)
+
+  if (daily_customers_per_day != null) {
+    daily_send_limit = messageCapFromCustomers(daily_customers_per_day, steps.length)
+  }
 
   return {
     trigger_type,

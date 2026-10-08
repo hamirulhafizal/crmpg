@@ -77,6 +77,7 @@ function syncDefinitionFromDraftFields(def: WorkflowDefinition, draft: WorkflowE
           ...n,
           parameters: {
             ...n.parameters,
+            // Keep daily_customers_per_day if present; compile derives message cap from it × steps.
             daily_send_limit: draft.daily_send_limit,
             cooldown_days: draft.cooldown_days,
           },
