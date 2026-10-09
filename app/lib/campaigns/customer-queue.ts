@@ -92,70 +92,61 @@ export async function countWaitingEnrollments(
   return (data ?? []).filter((row) => isQueueWaiting(row.metadata)).length
 }
 
-/** Ensure at most one non-waiting active enrollment owns the send slot. */
+type EnrollmentSlotRow = EnrollmentRow & { next_send_at?: string | null }
+
+/**
+ * Ensure at most one enrollment owns the send slot.
+ * Only loads rows with next_send_at set (plus a small null sample) so campaigns with
+ * 1000+ waiting enrollments do not time out the global cron.
+ */
 export async function reconcileSequentialQueue(
   supabase: Supabase,
   campaignId: string,
   log?: (msg: string) => void
 ): Promise<void> {
-  const { data, error } = await supabase
+  const { data: scheduled, error } = await supabase
     .from('campaign_enrollments')
-    .select('id, metadata, enrolled_at, last_step_sent')
+    .select('id, metadata, enrolled_at, last_step_sent, next_send_at')
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
+    .not('next_send_at', 'is', null)
     .order('enrolled_at', { ascending: true })
+    .limit(50)
 
   if (error) throw error
-  const rows = (data ?? []) as EnrollmentRow[]
-  const inSlot = rows.filter((row) => !isQueueWaiting(row.metadata))
+  const scheduledRows = (scheduled ?? []) as EnrollmentSlotRow[]
+  const inSlot = scheduledRows.filter((row) => !isQueueWaiting(row.metadata))
+
   if (inSlot.length === 0) {
-    // Self-heal deadlock: if all active rows are tagged waiting, promote the earliest one.
     const promoted = await promoteNextQueuedEnrollment(supabase, campaignId, { log })
     if (promoted) {
       log?.('queue self-heal: promoted first waiting enrollment because no active slot owner existed')
     }
     return
   }
-  if (inSlot.length === 1) {
-    const sole = inSlot[0]!
-    // Self-heal: slot owner with null next_send_at is never due → whole campaign stalls at 0 sends.
-    const { data: soleFull } = await supabase
-      .from('campaign_enrollments')
-      .select('id, next_send_at, last_step_sent')
-      .eq('id', sole.id)
-      .maybeSingle()
-    if (soleFull && soleFull.next_send_at == null) {
-      const sendAt = new Date().toISOString()
-      await supabase
-        .from('campaign_enrollments')
-        .update({ next_send_at: sendAt })
-        .eq('id', sole.id)
-      log?.(
-        `queue self-heal: active slot enrollment=${sole.id} had next_send_at=null → set due ${sendAt}`
-      )
-    }
-    return
-  }
+
+  if (inSlot.length === 1) return
 
   const keeper =
     inSlot.find((row) => (row.last_step_sent ?? 0) > 0) ??
-    inSlot.sort((a, b) => String(a.enrolled_at).localeCompare(String(b.enrolled_at)))[0]
+    inSlot[0]!
 
+  let waitBase = await countWaitingEnrollments(supabase, campaignId)
   for (const row of inSlot) {
-    if (row.id === keeper?.id) continue
-    const position = (await countWaitingEnrollments(supabase, campaignId)) + 1
+    if (row.id === keeper.id) continue
+    waitBase += 1
     await supabase
       .from('campaign_enrollments')
       .update({
         next_send_at: null,
         metadata: metadataWithCustomerQueue((row.metadata ?? {}) as Record<string, unknown>, {
           status: 'waiting',
-          position,
+          position: waitBase,
           enrolled_at: String(row.enrolled_at ?? new Date().toISOString()),
         }),
       })
       .eq('id', row.id)
-    log?.(`queue demote enrollment=${row.id} → waiting (#${position})`)
+    log?.(`queue demote enrollment=${row.id} → waiting (#${waitBase})`)
   }
 }
 
@@ -165,15 +156,21 @@ export async function promoteNextQueuedEnrollment(
   opts?: { nextSendAt?: Date | string; log?: (msg: string) => void }
 ): Promise<boolean> {
   const log = opts?.log
+  // Waiting rows always use next_send_at=null — avoid loading the full active set.
   const { data, error } = await supabase
     .from('campaign_enrollments')
     .select('id, metadata, enrolled_at')
     .eq('campaign_id', campaignId)
     .eq('status', 'active')
+    .is('next_send_at', null)
     .order('enrolled_at', { ascending: true })
+    .limit(100)
 
   if (error) throw error
-  const next = ((data ?? []) as EnrollmentRow[]).find((row) => isQueueWaiting(row.metadata))
+  const next =
+    ((data ?? []) as EnrollmentRow[]).find((row) => isQueueWaiting(row.metadata)) ??
+    // Broken state: active + null next_send_at but missing waiting tag — still promote earliest.
+    ((data ?? []) as EnrollmentRow[])[0]
   if (!next) return false
 
   const sendAt =

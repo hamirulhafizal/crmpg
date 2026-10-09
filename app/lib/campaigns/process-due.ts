@@ -2036,6 +2036,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
   for (const ctx of campaignsToSync) {
     const { campaign: c, steps, plan } = ctx
     const insBefore = summary.enrollments_inserted
+    const sentBefore = summary.messages_sent
     cronLog(debugLines, `── sync+send begin ${campaignLogTag(c)} ──`)
     const progress = onProgress && opts?.campaignIdOnly === c.id ? onProgress : undefined
     if (progress) {
@@ -2047,6 +2048,21 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
       }
       progress({ type: 'phase', phase: 'enrollment_sync' })
     }
+
+    // Send BEFORE enrollment sync. Large campaigns (1000+ enrollments) often 504 during
+    // customer paging — post-sync send never runs. Pre-campaign send unblocks queues.
+    await runDueSendBatch({
+      supabase,
+      plansByCampaignId,
+      active: [c],
+      summary,
+      opts,
+      dueCampaignId: c.id,
+      debugLines,
+      onProgress: progress,
+      phaseLabel: 'pre-campaign-sync',
+    })
+
     await syncEnrollmentsForCampaign(supabase, c, steps, plan, summary, debugLines, progress)
     cronLog(debugLines, `enrollment sync campaign=${c.id} +${summary.enrollments_inserted - insBefore}`)
     await activateParallelBirthdayQueueWaiters(
@@ -2057,8 +2073,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     )
     await reconcileEnrollmentsToAudience(supabase, c.id, plan, debugLines, progress)
 
-    // Send immediately after each campaign enrolls so a global cron timeout does not
-    // skip sends for campaigns processed late in the queue.
+    // Send again after sync for newly enrolled / promoted customers.
     await runDueSendBatch({
       supabase,
       plansByCampaignId,
@@ -2072,7 +2087,7 @@ export async function processDueCampaignMessages(opts?: ProcessDueOptions): Prom
     })
     cronLog(
       debugLines,
-      `── sync+send end ${campaignLogTag(c)} enrollments+${summary.enrollments_inserted - insBefore} sent=${summary.messages_sent} failed=${summary.messages_failed} ──`
+      `── sync+send end ${campaignLogTag(c)} enrollments+${summary.enrollments_inserted - insBefore} sent=${summary.messages_sent - sentBefore} (run total sent=${summary.messages_sent}) failed=${summary.messages_failed} ──`
     )
   }
 
