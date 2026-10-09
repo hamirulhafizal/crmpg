@@ -116,6 +116,70 @@ function listSendSteps(row: WorkflowRow): SendStepSummary[] {
     .sort((a, b) => a.stepOrder - b.stepOrder)
 }
 
+type CardEditDraft = {
+  runTimeEnabled: boolean
+  runTime: string
+  customers: string
+}
+
+type CardSaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+function committedCardEdit(row: WorkflowRow): CardEditDraft {
+  const schedule = resolveCampaignTriggerSchedule(row)
+  const stepCount = Math.max(1, listSendSteps(row).length)
+  const customers = resolveDailyCustomersPerDay(
+    enrollParamsFromDefinition(parseWorkflowDefinition(row.workflow_definition)),
+    normalizePositiveInt(row.daily_send_limit),
+    stepCount
+  )
+  return {
+    runTimeEnabled: Boolean(schedule.run_time),
+    runTime: schedule.run_time || '08:00',
+    customers: String(customers),
+  }
+}
+
+function isCardEditDirty(draft: CardEditDraft, committed: CardEditDraft): boolean {
+  if (draft.runTimeEnabled !== committed.runTimeEnabled) return true
+  if (draft.runTimeEnabled && draft.runTime !== committed.runTime) return true
+  if (normalizePositiveInt(draft.customers, 0) !== normalizePositiveInt(committed.customers, 0)) {
+    return true
+  }
+  // Allow dirty while typing incomplete number
+  if (draft.customers.trim() !== committed.customers.trim()) return true
+  return false
+}
+
+function SaveStateIcon({ state }: { state: CardSaveState }) {
+  if (state === 'saving') {
+    return (
+      <svg className="h-4 w-4 animate-spin text-emerald-600" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        />
+      </svg>
+    )
+  }
+  if (state === 'saved') {
+    return (
+      <svg className="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+      </svg>
+    )
+  }
+  if (state === 'error') {
+    return (
+      <svg className="h-4 w-4 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    )
+  }
+  return null
+}
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -128,10 +192,10 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
   const [actionError, setActionError] = useState<string | null>(null)
   const [rows, setRows] = useState<WorkflowRow[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [savingCapId, setSavingCapId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<WorkflowTab>('active')
-  /** Local draft strings while editing daily cap (commit on blur / Enter). */
-  const [capDrafts, setCapDrafts] = useState<Record<string, string>>({})
+  /** Per-card local edits; Save commits to the API. */
+  const [cardDrafts, setCardDrafts] = useState<Record<string, CardEditDraft>>({})
+  const [cardSaveState, setCardSaveState] = useState<Record<string, CardSaveState>>({})
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const showToast = useCallback((type: 'success' | 'error', text: string) => {
@@ -145,6 +209,23 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
   }, [toast])
 
   useEffect(() => {
+    const savedIds = Object.entries(cardSaveState)
+      .filter(([, s]) => s === 'saved')
+      .map(([id]) => id)
+    if (savedIds.length === 0) return
+    const t = window.setTimeout(() => {
+      setCardSaveState((prev) => {
+        const next = { ...prev }
+        for (const id of savedIds) {
+          if (next[id] === 'saved') next[id] = 'idle'
+        }
+        return next
+      })
+    }, 2200)
+    return () => window.clearTimeout(t)
+  }, [cardSaveState])
+
+  useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
@@ -153,7 +234,8 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
     setToast(null)
     setActiveTab('active')
     setRows([])
-    setCapDrafts({})
+    setCardDrafts({})
+    setCardSaveState({})
     ;(async () => {
       try {
         const res = await fetch('/api/campaigns')
@@ -223,106 +305,114 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
     }
   }
 
-  const patchRunTime = async (row: WorkflowRow, runTime: string) => {
-    const def = parseWorkflowDefinition(row.workflow_definition)
-    if (!def) {
-      setActionError('Open the workflow editor to set a trigger time for this campaign.')
-      return
-    }
-
-    setBusyId(row.id)
-    setActionError(null)
-    try {
-      const nextDef = withTriggerRunTime(def, runTime)
-      const res = await fetch(`/api/campaigns/${row.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workflow_definition: nextDef }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to update trigger time')
-      setRows((prev) =>
-        prev.map((r) =>
-          r.id === row.id
-            ? {
-                ...r,
-                ...json.data,
-                workflow_definition: json.data?.workflow_definition ?? nextDef,
-              }
-            : r
-        )
-      )
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to update trigger time')
-    } finally {
-      setBusyId(null)
-    }
+  const updateCardDraft = (row: WorkflowRow, patch: Partial<CardEditDraft>) => {
+    const committed = committedCardEdit(row)
+    setCardDrafts((prev) => {
+      const base = prev[row.id] ?? committed
+      const next = { ...base, ...patch }
+      if (!isCardEditDirty(next, committed)) {
+        const { [row.id]: _, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [row.id]: next }
+    })
+    setCardSaveState((prev) => {
+      if (prev[row.id] === 'idle' || prev[row.id] == null) return prev
+      return { ...prev, [row.id]: 'idle' }
+    })
   }
 
-  const patchDailyCustomers = async (row: WorkflowRow, rawValue: string) => {
+  const saveCardEdits = async (row: WorkflowRow) => {
+    const committed = committedCardEdit(row)
+    const draft = cardDrafts[row.id] ?? committed
+    if (!isCardEditDirty(draft, committed)) return
+
+    const canEditTime = hasEditableTrigger(row)
     const def = parseWorkflowDefinition(row.workflow_definition)
-    const stepCount = Math.max(1, listSendSteps(row).length)
-    const enrollParams = enrollParamsFromDefinition(def)
-    const prevCustomers = resolveDailyCustomersPerDay(
-      enrollParams,
-      normalizePositiveInt(row.daily_send_limit),
-      stepCount
-    )
-    const nextCustomers = normalizePositiveInt(rawValue, prevCustomers)
-    const messageCap = messageCapFromCustomers(nextCustomers, stepCount)
-    setCapDrafts((d) => {
-      const { [row.id]: _, ...rest } = d
-      return rest
-    })
-    // Skip only when customer target and message cap already match (cap may be stale after step edits).
-    if (
-      nextCustomers === prevCustomers &&
-      normalizePositiveInt(row.daily_send_limit) === messageCap &&
-      enrollParams?.daily_customers_per_day != null
-    ) {
+    if (canEditTime && !def) {
+      setCardSaveState((s) => ({ ...s, [row.id]: 'error' }))
+      setActionError('Open the workflow editor to set a trigger time for this campaign.')
+      showToast('error', 'Open the workflow editor to set a trigger time for this campaign.')
       return
     }
 
+    const stepCount = Math.max(1, listSendSteps(row).length)
+    const nextCustomers = normalizePositiveInt(draft.customers, normalizePositiveInt(committed.customers))
+    const messageCap = messageCapFromCustomers(nextCustomers, stepCount)
+    const runTimeChanged =
+      canEditTime &&
+      (draft.runTimeEnabled !== committed.runTimeEnabled ||
+        (draft.runTimeEnabled && draft.runTime !== committed.runTime))
+    const customersChanged =
+      nextCustomers !== normalizePositiveInt(committed.customers) ||
+      normalizePositiveInt(row.daily_send_limit) !== messageCap
+
     setBusyId(row.id)
-    setSavingCapId(row.id)
+    setCardSaveState((s) => ({ ...s, [row.id]: 'saving' }))
     setActionError(null)
+
     try {
-      const body: Record<string, unknown> = { daily_send_limit: messageCap }
-      if (def) {
-        body.workflow_definition = withEnrollDailyCustomers(def, nextCustomers, messageCap)
+      let nextDef = def
+      if (nextDef && runTimeChanged) {
+        nextDef = withTriggerRunTime(nextDef, draft.runTimeEnabled ? draft.runTime || '08:00' : '')
       }
+      if (nextDef && customersChanged) {
+        nextDef = withEnrollDailyCustomers(nextDef, nextCustomers, messageCap)
+      }
+
+      const body: Record<string, unknown> = {}
+      if (customersChanged) body.daily_send_limit = messageCap
+      if (nextDef && (runTimeChanged || customersChanged)) {
+        body.workflow_definition = nextDef
+      }
+
+      if (Object.keys(body).length === 0) {
+        setCardDrafts((d) => {
+          const { [row.id]: _, ...rest } = d
+          return rest
+        })
+        setCardSaveState((s) => ({ ...s, [row.id]: 'saved' }))
+        return
+      }
+
       const res = await fetch(`/api/campaigns/${row.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Failed to update customer limit')
-      setRows((prevRows) =>
-        prevRows.map((r) =>
+      if (!res.ok) throw new Error(json.error || 'Failed to save changes')
+
+      setRows((prev) =>
+        prev.map((r) =>
           r.id === row.id
             ? {
                 ...r,
                 ...json.data,
-                daily_send_limit: normalizePositiveInt(json.data?.daily_send_limit, messageCap),
+                daily_send_limit: normalizePositiveInt(
+                  json.data?.daily_send_limit,
+                  customersChanged ? messageCap : normalizePositiveInt(r.daily_send_limit)
+                ),
                 workflow_definition:
                   json.data?.workflow_definition ?? body.workflow_definition ?? r.workflow_definition,
               }
             : r
         )
       )
+      setCardDrafts((d) => {
+        const { [row.id]: _, ...rest } = d
+        return rest
+      })
+      setCardSaveState((s) => ({ ...s, [row.id]: 'saved' }))
       const label = row.name?.trim() || 'Workflow'
-      showToast(
-        'success',
-        `Saved — ${label} will send to ${nextCustomers.toLocaleString()} customer${nextCustomers === 1 ? '' : 's'} per day`
-      )
+      showToast('success', `Saved — ${label}`)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to update customer limit'
+      const msg = err instanceof Error ? err.message : 'Failed to save changes'
+      setCardSaveState((s) => ({ ...s, [row.id]: 'error' }))
       setActionError(msg)
       showToast('error', msg)
     } finally {
       setBusyId(null)
-      setSavingCapId(null)
     }
   }
 
@@ -483,24 +573,24 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
                 const isActive = row.status.toLowerCase() === 'active'
                 const togglable = canToggleStatus(row.status)
                 const busy = busyId === row.id
-                const savingCap = savingCapId === row.id
                 const schedule = resolveCampaignTriggerSchedule(row)
                 const canEditTime = hasEditableTrigger(row)
-                const runTimeEnabled = Boolean(schedule.run_time)
                 const sendSteps = listSendSteps(row)
-                const stepCount = Math.max(1, sendSteps.length)
-                const customersPerDay = resolveDailyCustomersPerDay(
-                  enrollParamsFromDefinition(parseWorkflowDefinition(row.workflow_definition)),
-                  normalizePositiveInt(row.daily_send_limit),
-                  stepCount
-                )
+                const committed = committedCardEdit(row)
+                const edit = cardDrafts[row.id] ?? committed
+                const dirty = isCardEditDirty(edit, committed)
+                const saveState = cardSaveState[row.id] ?? 'idle'
+                const saving = saveState === 'saving'
                 const sentToday = row.sent_today_count ?? 0
-                const capInputValue = capDrafts[row.id] ?? String(customersPerDay)
 
                 return (
                   <li
                     key={row.id}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-violet-200 hover:shadow-md"
+                    className={`rounded-2xl border bg-white px-4 py-3 shadow-sm transition ${
+                      dirty
+                        ? 'border-emerald-300 ring-1 ring-emerald-100'
+                        : 'border-slate-200 hover:border-violet-200 hover:shadow-md'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <Link
@@ -580,28 +670,32 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
                           <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
                             <input
                               type="checkbox"
-                              checked={runTimeEnabled}
-                              disabled={busy}
+                              checked={edit.runTimeEnabled}
+                              disabled={busy || saving}
                               onChange={(e) => {
-                                void patchRunTime(row, e.target.checked ? schedule.run_time || '08:00' : '')
+                                updateCardDraft(row, {
+                                  runTimeEnabled: e.target.checked,
+                                  runTime: edit.runTime || '08:00',
+                                })
                               }}
                               className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                             />
                             Run at time
                           </label>
-                          {runTimeEnabled ? (
-                            <div className="relative">
-                              <input
-                                type="time"
-                                value={schedule.run_time}
-                                disabled={busy}
-                                onChange={(e) => {
-                                  void patchRunTime(row, e.target.value)
-                                }}
-                                className="rounded-lg border border-slate-300 bg-white py-1.5 pr-8 pl-2.5 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
-                                aria-label={`Run time for ${row.name}`}
-                              />
-                            </div>
+                          {edit.runTimeEnabled ? (
+                            <input
+                              type="time"
+                              value={edit.runTime}
+                              disabled={busy || saving}
+                              onChange={(e) => {
+                                updateCardDraft(row, {
+                                  runTimeEnabled: true,
+                                  runTime: e.target.value,
+                                })
+                              }}
+                              className="rounded-lg border border-slate-300 bg-white py-1.5 pr-2 pl-2.5 text-xs text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
+                              aria-label={`Run time for ${row.name}`}
+                            />
                           ) : (
                             <span className="text-xs text-slate-500">No fixed time</span>
                           )}
@@ -614,71 +708,75 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
 
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-700">
                         <span className="font-medium">Send this message to</span>
-                        <span className="relative inline-flex items-center">
-                          <input
-                            id={`daily-cap-${row.id}`}
-                            type="number"
-                            min={1}
-                            inputMode="numeric"
-                            disabled={busy}
-                            value={capInputValue}
-                            onChange={(e) => {
-                              const v = e.target.value
-                              setCapDrafts((d) => ({ ...d, [row.id]: v }))
-                            }}
-                            onBlur={() => {
-                              void patchDailyCustomers(
-                                row,
-                                capDrafts[row.id] ?? String(customersPerDay)
-                              )
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.currentTarget.blur()
-                              }
-                            }}
-                            className="w-14 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
-                            aria-label={`Customers to message per day for ${row.name}`}
-                            aria-busy={savingCap}
-                          />
-                          {savingCap ? (
-                            <span
-                              className="pointer-events-none absolute -right-5 top-1/2 -translate-y-1/2"
-                              aria-hidden
-                            >
-                              <svg
-                                className="h-3.5 w-3.5 animate-spin text-emerald-600"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                              >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
-                                />
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                />
-                              </svg>
-                            </span>
-                          ) : null}
+                        <input
+                          id={`daily-cap-${row.id}`}
+                          type="number"
+                          min={1}
+                          inputMode="numeric"
+                          disabled={busy || saving}
+                          value={edit.customers}
+                          onChange={(e) => {
+                            updateCardDraft(row, { customers: e.target.value })
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && dirty && !saving) {
+                              e.preventDefault()
+                              void saveCardEdits(row)
+                            }
+                          }}
+                          className="w-14 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
+                          aria-label={`Customers to message per day for ${row.name}`}
+                        />
+                        <span className="font-medium">customers per day</span>
+                        <span className="w-full text-[11px] text-slate-500 sm:w-auto sm:ml-1">
+                          · {sentToday.toLocaleString()} sent today
                         </span>
-                        <span className={`font-medium ${savingCap ? 'ml-4' : ''}`}>customers per day</span>
-                        {savingCap ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
-                            Saving…
-                          </span>
-                        ) : (
-                          <span className="w-full text-[11px] text-slate-500 sm:w-auto sm:ml-1">
-                            · {sentToday.toLocaleString()} sent today
-                          </span>
-                        )}
                       </div>
+
+                      {(dirty || saveState !== 'idle') && (
+                        <div className="flex items-center justify-end gap-2 pt-0.5">
+                          <span
+                            className="inline-flex h-5 w-5 items-center justify-center"
+                            aria-live="polite"
+                            aria-label={
+                              saveState === 'saving'
+                                ? 'Saving'
+                                : saveState === 'saved'
+                                  ? 'Saved'
+                                  : saveState === 'error'
+                                    ? 'Save failed'
+                                    : undefined
+                            }
+                          >
+                            <SaveStateIcon state={saveState} />
+                          </span>
+                          {dirty ? (
+                            <button
+                              type="button"
+                              disabled={busy || saving}
+                              onClick={() => {
+                                void saveCardEdits(row)
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {saving ? 'Saving…' : 'Save'}
+                            </button>
+                          ) : saveState === 'saved' ? (
+                            <span className="text-xs font-medium text-emerald-700">Saved</span>
+                          ) : saveState === 'error' ? (
+                            <button
+                              type="button"
+                              disabled={busy || saving}
+                              onClick={() => {
+                                void saveCardEdits(row)
+                              }}
+                              className="inline-flex items-center rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                            >
+                              Retry
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </li>
                 )
