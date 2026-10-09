@@ -116,7 +116,26 @@ export async function reconcileSequentialQueue(
     }
     return
   }
-  if (inSlot.length === 1) return
+  if (inSlot.length === 1) {
+    const sole = inSlot[0]!
+    // Self-heal: slot owner with null next_send_at is never due → whole campaign stalls at 0 sends.
+    const { data: soleFull } = await supabase
+      .from('campaign_enrollments')
+      .select('id, next_send_at, last_step_sent')
+      .eq('id', sole.id)
+      .maybeSingle()
+    if (soleFull && soleFull.next_send_at == null) {
+      const sendAt = new Date().toISOString()
+      await supabase
+        .from('campaign_enrollments')
+        .update({ next_send_at: sendAt })
+        .eq('id', sole.id)
+      log?.(
+        `queue self-heal: active slot enrollment=${sole.id} had next_send_at=null → set due ${sendAt}`
+      )
+    }
+    return
+  }
 
   const keeper =
     inSlot.find((row) => (row.last_step_sent ?? 0) > 0) ??

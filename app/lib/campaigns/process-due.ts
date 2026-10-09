@@ -424,6 +424,73 @@ async function promoteNextCustomerInQueue(
   })
 }
 
+/**
+ * Permanent skip for the current sequential-queue slot holder.
+ * Without this, a blocked/mismatched customer holds the only "active" slot forever
+ * while everyone else stays waiting (0 sends).
+ */
+async function completeEnrollmentAndReleaseQueue(opts: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  row: DueEnrollmentRow
+  campaign: CampaignRow
+  plan: CampaignWorkflowPlan
+  audienceFilters?: CampaignAudienceFilters
+  reason: string
+  metaKey: string
+  metaExtra?: Record<string, unknown>
+  debugLines?: string[]
+  onProgress?: CampaignWorkflowProgressHandler
+  progressMessage?: string
+}): Promise<void> {
+  const {
+    supabase,
+    row,
+    campaign,
+    plan,
+    audienceFilters,
+    reason,
+    metaKey,
+    metaExtra,
+    debugLines,
+    onProgress,
+    progressMessage,
+  } = opts
+
+  cronLog(debugLines, `complete+release enrollment=${row.id} campaign=${campaign.id}: ${reason}`)
+  await supabase
+    .from('campaign_enrollments')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      next_send_at: null,
+      metadata: {
+        ...(row.metadata ?? {}),
+        [metaKey]: {
+          at: new Date().toISOString(),
+          reason,
+          ...metaExtra,
+        },
+      },
+    })
+    .eq('id', row.id)
+
+  if (progressMessage) {
+    onProgress?.({ type: 'log', message: progressMessage, level: 'info' })
+  }
+
+  if (usesSequentialCustomerQueue(plan, audienceFilters)) {
+    await promoteNextCustomerInQueue(
+      supabase,
+      campaign.id,
+      plan,
+      row.last_step_sent,
+      new Date(),
+      debugLines,
+      audienceFilters
+    )
+  }
+}
+
 async function countRecentFailedStepAttempts(
   supabase: ReturnType<typeof createServiceRoleClient>,
   enrollmentId: string,
@@ -1279,14 +1346,19 @@ async function processDueEnrollmentRows(
 
     if (!isWhatsAppSendAllowed(customer)) {
       const phoneStatus = getPhoneContactStatusFromRow(customer)
-      cronLog(
+      const label = customerWorkflowLabel(customer)
+      await completeEnrollmentAndReleaseQueue({
+        supabase,
+        row,
+        campaign,
+        plan,
+        audienceFilters,
+        reason: `phone_contact_status=${phoneStatus} (WhatsApp blocked)`,
+        metaKey: 'skip_whatsapp_blocked',
+        metaExtra: { phone_contact_status: phoneStatus, customer_id: customer.id },
         debugLines,
-        `skip enrollment=${row.id}: phone_contact_status=${phoneStatus} (WhatsApp blocked)`
-      )
-      onProgress?.({
-        type: 'log',
-        message: `Skipped ${customerWorkflowLabel(customer)} — phone status: ${phoneStatus}`,
-        level: 'info',
+        onProgress,
+        progressMessage: `Skipped ${label} — phone status: ${phoneStatus}`,
       })
       continue
     }
@@ -1297,14 +1369,19 @@ async function processDueEnrollmentRows(
     }
 
     if (plan.audienceNodeId && !customerMatchesFilters(customer, plan.compiled.audience_filters)) {
-      cronLog(
+      const label = customerWorkflowLabel(customer)
+      await completeEnrollmentAndReleaseQueue({
+        supabase,
+        row,
+        campaign,
+        plan,
+        audienceFilters,
+        reason: 'customer no longer matches audience filters',
+        metaKey: 'skip_audience_mismatch',
+        metaExtra: { customer_id: customer.id },
         debugLines,
-        `skip enrollment=${row.id}: customer=${customer.id} does not match audience filters`
-      )
-      onProgress?.({
-        type: 'log',
-        message: `Skipped ${customerWorkflowLabel(customer)} — not in target audience`,
-        level: 'info',
+        onProgress,
+        progressMessage: `Skipped ${label} — not in target audience`,
       })
       continue
     }
