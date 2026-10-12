@@ -388,7 +388,8 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
                                 customer.sender_name ||
                                 customer.name ||
                                 dealerPg,
-                              expected_frontline: frontline > 0 ? frontline : null,
+                              expected_frontline:
+                                frontline != null && frontline > 0 ? frontline : null,
                             })
                           }}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/25 transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40"

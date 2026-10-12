@@ -78,7 +78,7 @@ export async function GET(request: Request) {
 
     const { data: parentRow } = await supabase
       .from('customers')
-      .select('id, name, sender_name, pg_code, parent_pg_code')
+      .select('id, name, sender_name, pg_code, parent_pg_code, original_data')
       .eq('user_id', user.id)
       .ilike('pg_code', parentPgCode)
       .maybeSingle()
