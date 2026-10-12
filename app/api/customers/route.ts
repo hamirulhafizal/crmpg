@@ -11,9 +11,12 @@ import {
   matchesNetworkSizeBucket,
   parseDirectDebitSubscriptionFromOriginalData,
   parseNetworkSizeBucket,
+  matchesNationalityFilter,
   parseOriginalDataCount,
   parseProfileVerifiedFromOriginalData,
 } from '@/app/lib/customer-account-status'
+import { isRootFrontlineCustomer } from '@/app/lib/customers/frontline-parent'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import {
   isKnownPhoneContactStatusInput,
   parsePhoneContactStatus,
@@ -59,6 +62,13 @@ export async function GET(request: Request) {
     }
     const { user, supabase } = auth
 
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('pgcode')
+      .eq('id', user.id)
+      .maybeSingle()
+    const rootPgCode = normalizePgCodeValue(profile?.pgcode)
+
     // Get query parameters
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -66,6 +76,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || ''
     const gender = searchParams.get('gender') || ''
     const ethnicity = searchParams.get('ethnicity') || ''
+    const nationality = (searchParams.get('nationality') || '').trim()
     const birthday = searchParams.get('birthday') || '' // '', 'today', 'month'
     const accountStatus = searchParams.get('accountStatus') || '' // '', matches AccountStatusKey
     const profileVerified = searchParams.get('profileVerified') || '' // '', 'yes', 'no'
@@ -123,6 +134,7 @@ export async function GET(request: Request) {
       !!search ||
       !!gender ||
       !!ethnicity ||
+      !!nationality ||
       !!birthday ||
       !!accountStatus ||
       !!profileVerified ||
@@ -152,6 +164,20 @@ export async function GET(request: Request) {
       return q.eq('phone_contact_status', phoneContactStatus)
     }
 
+    /** Workspace = my frontline only (exclude Mos / nested Tree Tier syncs). */
+    const applyRootFrontlineDbFilter = <
+      T extends { or: (filters: string) => T }
+    >(
+      q: T
+    ): T => {
+      if (!rootPgCode) return q
+      q = q.or(`parent_pg_code.is.null,parent_pg_code.eq.${rootPgCode}`)
+      q = q.or(
+        `original_data->>Parent PGCode.is.null,original_data->>Parent PGCode.eq.${rootPgCode}`
+      )
+      return q
+    }
+
     // Build query
     let query = supabase
       .from('customers')
@@ -160,6 +186,7 @@ export async function GET(request: Request) {
 
     query = applyDealersRankDbFilter(query)
     query = applyPhoneContactStatusDbFilter(query)
+    query = applyRootFrontlineDbFilter(query)
 
     if (tagIds.length === 1) {
       query = query.eq('customer_tags.tag_id', tagIds[0])
@@ -230,6 +257,7 @@ export async function GET(request: Request) {
 
         batchQuery = applyDealersRankDbFilter(batchQuery)
         batchQuery = applyPhoneContactStatusDbFilter(batchQuery)
+        batchQuery = applyRootFrontlineDbFilter(batchQuery)
 
         if (tagIds.length === 1) {
           batchQuery = batchQuery.eq('customer_tags.tag_id', tagIds[0])
@@ -297,6 +325,20 @@ export async function GET(request: Request) {
       }
 
       let filtered = dedupeByCustomerId(allRows)
+
+      if (rootPgCode) {
+        filtered = filtered.filter((c: any) =>
+          isRootFrontlineCustomer(
+            {
+              pg_code: c?.pg_code ?? null,
+              name: c?.name ?? null,
+              parent_pg_code: c?.parent_pg_code ?? null,
+              original_data: c?.original_data,
+            },
+            rootPgCode
+          )
+        )
+      }
 
       if (birthday === 'today' || birthday === 'month') {
         // Match existing birthday automation logic (UTC+8 / Malaysia).
@@ -384,6 +426,12 @@ export async function GET(request: Request) {
         filtered = filtered.filter((c: any) => {
           return parseProfileVerifiedFromOriginalData(c?.original_data) === wanted
         })
+      }
+
+      if (nationality) {
+        filtered = filtered.filter((c: any) =>
+          matchesNationalityFilter(c?.original_data, nationality)
+        )
       }
 
       if (directDebit === 'yes' || directDebit === 'no') {

@@ -282,6 +282,14 @@ body {
     background: rgba(197, 48, 48, 0.08);
 }
 
+.btn-sync-root {
+    margin-bottom: 8px;
+}
+
+.btn-sync-tier {
+    background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
+}
+
 .btn-sync {
     background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
     color: #fff !important;
@@ -393,6 +401,80 @@ body {
 .btn-test-confetti:hover {
     background: #e2e8f0 !important;
     color: #475569 !important;
+}
+
+.sync-tier-info {
+    margin: 12px 0 4px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #dbeafe;
+    background: #f0f9ff;
+    text-align: left;
+}
+
+.sync-tier-info.is-syncing {
+    border-color: #38bdf8;
+    background: #e0f2fe;
+    box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.2);
+}
+
+.sync-tier-info.is-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.sync-tier-info-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #0284c7;
+    margin-bottom: 4px;
+}
+
+.sync-tier-info.is-error .sync-tier-info-label {
+    color: #b91c1c;
+}
+
+.sync-tier-info-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.sync-tier-info-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.sync-tier-info-pg {
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #0369a1;
+}
+
+.sync-tier-info-level {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.sync-tier-info-status {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #64748b;
+}
+
+.sync-tier-info.is-syncing .sync-tier-info-status {
+    color: #0369a1;
+    font-weight: 600;
 }
 
 .sync-progress {

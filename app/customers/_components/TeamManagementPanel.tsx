@@ -13,7 +13,12 @@ import {
   type AccountStatusKey,
   type NetworkSizeBucket,
 } from '@/app/lib/customer-account-status'
+import {
+  DealerFrontlineModal,
+  type DealerFrontlineSeed,
+} from '@/app/customers/_components/DealerFrontlineModal'
 import { fetchCustomerList, type CustomerListRow } from '@/app/lib/customers/fetch-customers'
+import { hasRealPgCode, normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import { customerKeys, type CustomerListQueryParams } from '@/app/lib/customers/query-keys'
 import { isValidCampaignPhone, normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
 
@@ -66,6 +71,7 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
   const [filtersOpen, setFiltersOpen] = useState(true)
   const [sortBy, setSortBy] = useState('total_frontline')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [frontlineDealer, setFrontlineDealer] = useState<DealerFrontlineSeed | null>(null)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -84,6 +90,7 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
       search,
       gender: '',
       ethnicity: '',
+      nationality: '',
       ageMin: 0,
       ageMax: 120,
       ageFilterMin: 0,
@@ -290,6 +297,9 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
           <table className="min-w-full border-separate border-spacing-0">
             <thead>
               <tr>
+                <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
+                  View
+                </th>
                 <th className="sticky top-0 z-30 border-b-2 border-slate-300 bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-900 shadow-[0_1px_0_0_rgb(203,213,225)]">
                   Sender Name
                 </th>
@@ -338,7 +348,7 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
             <tbody className="divide-y divide-slate-200 bg-white">
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                     {isLoading ? 'Loading…' : 'No dealers found'}
                   </td>
                 </tr>
@@ -348,6 +358,8 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
                   const rankBucket = getBusinessRankBucket(customer.original_data)
                   const frontline = parseOriginalDataCount(customer.original_data, 'Total Frontline')
                   const empire = parseOriginalDataCount(customer.original_data, 'Empire Size')
+                  const dealerPg = normalizePgCodeValue(customer.pg_code)
+                  const canViewFrontline = hasRealPgCode(dealerPg)
 
                   return (
                     <tr
@@ -360,6 +372,59 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
                       }
                       className={`cursor-pointer transition-colors ${ACCOUNT_STATUS_ROW_CLASSES[accountKey]}`}
                     >
+                      <td
+                        className="px-3 py-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          disabled={!canViewFrontline}
+                          onClick={() => {
+                            if (!canViewFrontline) return
+                            setFrontlineDealer({
+                              id: customer.id,
+                              pg_code: dealerPg,
+                              name:
+                                customer.sender_name ||
+                                customer.name ||
+                                dealerPg,
+                              expected_frontline: frontline > 0 ? frontline : null,
+                            })
+                          }}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/25 transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            canViewFrontline
+                              ? 'View direct frontline'
+                              : 'Dealer needs a PG code to view frontline'
+                          }
+                          aria-label={
+                            canViewFrontline
+                              ? `View frontline of ${customer.sender_name || customer.name || dealerPg}`
+                              : 'Frontline unavailable — no PG code'
+                          }
+                        >
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        </button>
+                      </td>
                       <td
                         className="px-4 py-3 text-sm text-slate-800"
                         onClick={(e) => e.stopPropagation()}
@@ -434,6 +499,12 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
           </div>
         )}
       </div>
+
+      <DealerFrontlineModal
+        open={Boolean(frontlineDealer)}
+        dealer={frontlineDealer}
+        onClose={() => setFrontlineDealer(null)}
+      />
     </div>
   )
 }

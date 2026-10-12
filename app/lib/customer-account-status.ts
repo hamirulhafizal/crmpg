@@ -438,6 +438,32 @@ export function isProfileVerifiedYes(originalData: unknown): boolean {
   return normalized === 'yes' || normalized === 'y' || normalized === 'true' || normalized === '1'
 }
 
+/** BC `Nationality` from `original_data` (trimmed). Empty / "-" / masked → null. */
+export function parseNationalityFromOriginalData(originalData: unknown): string | null {
+  const data = normalizeCustomerOriginalData(originalData)
+  if (!data) return null
+  const raw = data.Nationality ?? data.nationality
+  if (raw === undefined || raw === null) return null
+  const t = String(raw).replace(/\s{2,}/g, ' ').trim()
+  if (!t) return null
+  if (t === '-' || t === '—' || t === '–') return null
+  // Masked / redacted values from BC
+  if (/^\*+$/.test(t)) return null
+  return t
+}
+
+/** Workspace Nationality filter: exact country, or `unknown` for blank/masked. */
+export function matchesNationalityFilter(
+  originalData: unknown,
+  filter: string
+): boolean {
+  const wanted = String(filter || '').trim()
+  if (!wanted) return true
+  const value = parseNationalityFromOriginalData(originalData)
+  if (wanted.toLowerCase() === 'unknown') return value == null
+  return Boolean(value && value.toLowerCase() === wanted.toLowerCase())
+}
+
 /** `Direct Debit Subscription` from `original_data` — `true` / `false` / unknown. */
 export function parseDirectDebitSubscriptionFromOriginalData(originalData: unknown): boolean | null {
   const data = normalizeCustomerOriginalData(originalData)

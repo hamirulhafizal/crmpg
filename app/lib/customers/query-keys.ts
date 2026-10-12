@@ -6,6 +6,8 @@ export type CustomerListQueryParams = {
   search: string
   gender: string
   ethnicity: string
+  /** BC Nationality from original_data; `unknown` = blank/masked. */
+  nationality: string
   ageMin: number
   ageMax: number
   ageFilterMin: number
@@ -37,6 +39,12 @@ export const customerKeys = {
   team: (userId: string) => [...customerKeys.all(userId), 'team'] as const,
   teamList: (userId: string, params: CustomerListQueryParams) =>
     [...customerKeys.team(userId), params] as const,
+  frontline: (
+    userId: string,
+    parentPgCode: string,
+    dealerId: string,
+    params: { search: string; page: number; limit: number }
+  ) => [...customerKeys.team(userId), 'frontline', parentPgCode, dealerId, params] as const,
   detail: (userId: string, customerId: string) =>
     [...customerKeys.all(userId), 'detail', customerId] as const,
   avatar: (userId: string, customerId: string) =>

@@ -40,7 +40,20 @@ import {
 import { CrmTagMultiSelect } from '@/app/customers/_components/CrmTagMultiSelect'
 import { CustomerWhatsAppAvatar } from '@/app/customers/_components/CustomerWhatsAppAvatar'
 import { PgBusinessCenterSyncModal } from '@/app/customers/_components/PgBusinessCenterSyncModal'
-import { TeamManagementPanel } from '@/app/customers/_components/TeamManagementPanel'
+import dynamic from 'next/dynamic'
+
+const TeamManagementPanel = dynamic(
+  () =>
+    import('@/app/customers/_components/TeamManagementPanel').then((m) => m.TeamManagementPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+        Loading team management…
+      </div>
+    ),
+  }
+)
 import { usePgSyncQueueMonitor } from '@/app/customers/_components/usePgSyncQueueMonitor'
 import { displayCustomerAge } from '@/app/lib/customer-dob'
 import {
@@ -479,6 +492,7 @@ function CustomersPage() {
   const [searchInput, setSearchInput] = useState('') // immediate input value; search is debounced
   const [genderFilter, setGenderFilter] = useState('')
   const [ethnicityFilter, setEthnicityFilter] = useState('')
+  const [nationalityFilter, setNationalityFilter] = useState('')
   const [ageMinFilter, setAgeMinFilter] = useState<number>(AGE_FILTER_MIN)
   const [ageMaxFilter, setAgeMaxFilter] = useState<number>(AGE_FILTER_MAX)
   const [ageMinDraft, setAgeMinDraft] = useState<number>(AGE_FILTER_MIN)
@@ -510,6 +524,7 @@ function CustomersPage() {
       search,
       gender: genderFilter,
       ethnicity: ethnicityFilter,
+      nationality: nationalityFilter,
       ageMin: ageMinFilter,
       ageMax: ageMaxFilter,
       ageFilterMin: AGE_FILTER_MIN,
@@ -533,6 +548,7 @@ function CustomersPage() {
       search,
       genderFilter,
       ethnicityFilter,
+      nationalityFilter,
       ageMinFilter,
       ageMaxFilter,
       birthdayFilter,
@@ -826,6 +842,7 @@ function CustomersPage() {
     setSearch('')
     setGenderFilter('')
     setEthnicityFilter('')
+    setNationalityFilter('')
     setAgeMinFilter(AGE_FILTER_MIN)
     setAgeMaxFilter(AGE_FILTER_MAX)
     setAgeMinDraft(AGE_FILTER_MIN)
@@ -846,6 +863,7 @@ function CustomersPage() {
   const handleResetAdvancedFilters = () => {
     setGenderFilter('')
     setEthnicityFilter('')
+    setNationalityFilter('')
     setAgeMinFilter(AGE_FILTER_MIN)
     setAgeMaxFilter(AGE_FILTER_MAX)
     setAgeMinDraft(AGE_FILTER_MIN)
@@ -868,6 +886,7 @@ function CustomersPage() {
       Boolean(
         genderFilter ||
           ethnicityFilter ||
+          nationalityFilter ||
           agePresetFilter ||
           birthdayFilter ||
           accountStatusFilter ||
@@ -884,6 +903,7 @@ function CustomersPage() {
     [
       genderFilter,
       ethnicityFilter,
+      nationalityFilter,
       agePresetFilter,
       birthdayFilter,
       accountStatusFilter,
@@ -909,6 +929,15 @@ function CustomersPage() {
         key: 'ethnicity',
         label: `Ethnicity: ${ethnicityFilter}`,
         onClear: () => setEthnicityFilter(''),
+      })
+    }
+    if (nationalityFilter) {
+      chips.push({
+        key: 'nationality',
+        label: `Nationality: ${
+          nationalityFilter === 'unknown' ? 'Unknown' : nationalityFilter
+        }`,
+        onClear: () => setNationalityFilter(''),
       })
     }
     if (agePresetFilter || ageMinFilter !== AGE_FILTER_MIN || ageMaxFilter !== AGE_FILTER_MAX) {
@@ -993,6 +1022,7 @@ function CustomersPage() {
   }, [
     genderFilter,
     ethnicityFilter,
+    nationalityFilter,
     agePresetFilter,
     ageMinFilter,
     ageMaxFilter,
@@ -1632,7 +1662,7 @@ function CustomersPage() {
           </div>
         </div>
 
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
         {managementTab === 'workspace' && (
         <motion.div
           key="customer-mgmt-workspace"
@@ -1920,6 +1950,28 @@ function CustomersPage() {
                       <option value="Chinese">Chinese</option>
                       <option value="Indian">Indian</option>
                       <option value="Other">Other</option>
+                    </select>
+                  </FilterField>
+
+                  <FilterField label="Nationality" htmlFor="filter-nationality">
+                    <select
+                      id="filter-nationality"
+                      value={nationalityFilter}
+                      onChange={(e) => {
+                        setNationalityFilter(e.target.value)
+                        setPage(1)
+                      }}
+                      className={FILTER_SELECT_CLASS}
+                    >
+                      <option value="">All</option>
+                      <option value="Malaysia">Malaysia</option>
+                      <option value="Indonesia">Indonesia</option>
+                      <option value="Singapore">Singapore</option>
+                      <option value="Brunei Darussalam">Brunei Darussalam</option>
+                      <option value="Nepal">Nepal</option>
+                      <option value="Cambodia">Cambodia</option>
+                      <option value="India">India</option>
+                      <option value="unknown">Unknown</option>
                     </select>
                   </FilterField>
 

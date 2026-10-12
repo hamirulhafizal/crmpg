@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { AuthProvider } from "./contexts/auth-context";
 import { CustomerEditModalProvider } from "./contexts/customer-edit-modal-context";
+import { ClientOnly } from "./components/ClientOnly";
 import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
 import ViewTransitions from "./components/ViewTransitions";
 import ClientScripts from "./components/ClientScripts";
@@ -80,9 +81,11 @@ export default function RootLayout({
           <QueryProvider>
             <CustomerEditModalProvider>
               <MotionProvider>
-                <ServiceWorkerRegistration />
-                <ViewTransitions />
-                <ClientScripts />
+                <ClientOnly>
+                  <ServiceWorkerRegistration />
+                  <ViewTransitions />
+                  <ClientScripts />
+                </ClientOnly>
                 <AppRouteShell>{children}</AppRouteShell>
               </MotionProvider>
             </CustomerEditModalProvider>

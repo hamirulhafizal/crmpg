@@ -20,6 +20,7 @@ export type CustomerListRow = {
   sender_name: string | null
   save_name: string | null
   pg_code: string | null
+  parent_pg_code?: string | null
   row_number: number | null
   original_data: unknown
   is_married: boolean | null
@@ -30,6 +31,31 @@ export type CustomerListRow = {
   is_monthly_buyer?: boolean | null
   segment_attributes?: Record<string, unknown> | null
   phone_contact_status?: string | null
+}
+
+export type FrontlinePathNode = {
+  id: string | null
+  pg_code: string
+  name: string
+}
+
+export type FrontlineResult = {
+  data: CustomerListRow[]
+  total: number
+  totalPages: number
+  page: number
+  limit: number
+  parent: FrontlinePathNode
+  root_pg_code: string | null
+  path: FrontlinePathNode[]
+  ratios: {
+    total: number
+    active: number
+    inactive_free: number
+  }
+  parent_pg_linked: boolean
+  column_match_total?: number
+  message: string | null
 }
 
 export type CustomerListResult = {
@@ -58,6 +84,7 @@ function buildListSearchParams(params: CustomerListQueryParams): URLSearchParams
   if (params.search) qs.append('search', params.search)
   if (params.gender) qs.append('gender', params.gender)
   if (params.ethnicity) qs.append('ethnicity', params.ethnicity)
+  if (params.nationality) qs.append('nationality', params.nationality)
   if (params.ageMin > params.ageFilterMin) qs.append('ageMin', String(params.ageMin))
   if (params.ageMax < params.ageFilterMax) qs.append('ageMax', String(params.ageMax))
   if (params.birthday) qs.append('birthday', params.birthday)
@@ -108,6 +135,42 @@ export async function fetchCustomerStats(): Promise<CustomerStatsResult> {
       AccountStatusKey,
       number
     >,
+  }
+}
+
+export async function fetchDealerFrontline(params: {
+  parentPgCode: string
+  search?: string
+  page?: number
+  limit?: number
+}): Promise<FrontlineResult> {
+  const qs = new URLSearchParams({
+    parent_pg_code: params.parentPgCode,
+    page: String(params.page ?? 1),
+    limit: String(params.limit ?? 50),
+  })
+  if (params.search?.trim()) qs.set('search', params.search.trim())
+
+  const response = await fetch(`/api/customers/frontline?${qs}`, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  })
+  const result = (await response.json()) as FrontlineResult & { error?: string }
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to load frontline')
+  }
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    total: result.total ?? 0,
+    totalPages: result.totalPages ?? 1,
+    page: result.page ?? params.page ?? 1,
+    limit: result.limit ?? params.limit ?? 50,
+    parent: result.parent,
+    root_pg_code: result.root_pg_code ?? null,
+    path: Array.isArray(result.path) ? result.path : [],
+    ratios: result.ratios ?? { total: 0, active: 0, inactive_free: 0 },
+    parent_pg_linked: Boolean(result.parent_pg_linked),
+    message: result.message ?? null,
   }
 }
 

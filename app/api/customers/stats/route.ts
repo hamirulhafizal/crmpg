@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireUserApi } from '@/app/lib/auth/require-user'
 import { getAccountStatusKey, type AccountStatusKey } from '@/app/lib/customer-account-status'
+import { isRootFrontlineCustomer } from '@/app/lib/customers/frontline-parent'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 
 const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -19,7 +21,7 @@ const STATUS_KEYS: AccountStatusKey[] = [
 ]
 
 // GET /api/customers/stats — counts by account status for the logged-in user
-// Use select('*') so missing optional columns (e.g. before migration 010) never break the query.
+// Workspace scope: root frontline only (excludes nested dealer syncs e.g. Mos).
 export async function GET(request: Request) {
   try {
     const auth = await requireUserApi(request)
@@ -27,6 +29,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: noStoreHeaders })
     }
     const { user, supabase } = auth
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('pgcode')
+      .eq('id', user.id)
+      .maybeSingle()
+    const rootPgCode = normalizePgCodeValue(profile?.pgcode)
 
     const counts: Record<AccountStatusKey, number> = {
       temporary: 0,
@@ -41,12 +50,22 @@ export async function GET(request: Request) {
     let from = 0
 
     for (;;) {
-      const { data: batch, error } = await supabase
+      let query = supabase
         .from('customers')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .range(from, from + pageSize - 1)
+
+      if (rootPgCode) {
+        query = query
+          .or(`parent_pg_code.is.null,parent_pg_code.eq.${rootPgCode}`)
+          .or(
+            `original_data->>Parent PGCode.is.null,original_data->>Parent PGCode.eq.${rootPgCode}`
+          )
+      }
+
+      const { data: batch, error } = await query
 
       if (error) {
         console.error('Error fetching customers for stats:', error)
@@ -56,6 +75,20 @@ export async function GET(request: Request) {
       if (!batch?.length) break
 
       for (const row of batch) {
+        if (
+          rootPgCode &&
+          !isRootFrontlineCustomer(
+            {
+              pg_code: (row as { pg_code?: string | null }).pg_code ?? null,
+              name: (row as { name?: string | null }).name ?? null,
+              parent_pg_code: (row as { parent_pg_code?: string | null }).parent_pg_code ?? null,
+              original_data: (row as { original_data?: unknown }).original_data,
+            },
+            rootPgCode
+          )
+        ) {
+          continue
+        }
         const key = getAccountStatusKey(row)
         counts[key] += 1
       }

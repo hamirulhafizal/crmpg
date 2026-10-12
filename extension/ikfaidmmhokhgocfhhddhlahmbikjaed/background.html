@@ -48,13 +48,31 @@
             <!-- <hr style="margin: 20px 0;"> -->
 
             
+            <div id="syncTierInfo" class="sync-tier-info" aria-live="polite">
+                <div class="sync-tier-info-label">Open Tree Tier on BC</div>
+                <div id="syncTierName" class="sync-tier-info-name">Open Group Details on BC…</div>
+                <div class="sync-tier-info-meta">
+                    <span id="syncTierPg" class="sync-tier-info-pg">—</span>
+                    <span id="syncTierLevel" class="sync-tier-info-level"></span>
+                </div>
+                <div id="syncTierStatus" class="sync-tier-info-status">Waiting for Business Center tab</div>
+            </div>
+
             <div id="syncProgress" class="sync-progress" style="display: none;">
                 <div class="sync-progress-bar"><div id="syncProgressFill" class="sync-progress-fill"></div></div>
                 <p id="syncProgressText" class="sync-progress-text">Preparing...</p>
             </div>
 
             <button id="btn-sync-supabase" class="btn-sync" hidden>Sync to CRMPG</button>
-            <button id="btn-sync-supabase-2" class="btn-sync">Sync to CRMPG</button>
+            <button id="btn-sync-my-frontline" class="btn-sync btn-sync-root">
+                Sync my frontline (all pages)
+            </button>
+            <button id="btn-sync-current-tier" class="btn-sync btn-sync-tier">
+                Sync open Tree Tier (all pages)
+            </button>
+            <p class="form-hint sync-tier-hint" style="margin-top: 8px; margin-bottom: 0;">
+                <strong>My frontline</strong> always syncs tier 0 (your PG). <strong>Open Tree Tier</strong> syncs whichever dealer you clicked in BC — e.g. Mos. Does not auto-walk deeper tiers.
+            </p>
 
             <div id="extensionUpdateBanner" class="extension-update-banner" style="display: none;">
                 <p id="extensionUpdateBannerText" class="extension-update-banner-text"></p>
@@ -67,7 +85,7 @@
             <button id="logout" style="margin-top: 20px">Logout</button>
 
             <div class="extension-version-footer">
-                <span id="extensionVersionLabel">v1.0.3</span>
+                <span id="extensionVersionLabel">v1.0.10</span>
             </div>
         </div>
 
@@ -78,6 +96,7 @@
 <script src="update.js"></script>
 <script src="jquery.min.js"></script>
 <script src="xlsx.full.min.js"></script>
+<script src="group-detail-parser.js"></script>
 <script src="login.js"></script>
 <script src="background.js"></script>
 </body>
