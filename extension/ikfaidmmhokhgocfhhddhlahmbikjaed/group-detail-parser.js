@@ -432,8 +432,23 @@ function stampParentPgCodesOnRows(rows, viewedPgCode, extraNameToPg) {
 
   for (var j = 0; j < rows.length; j++) {
     var row = rows[j];
+    var rowPg = normalizePgCodeValue(row.PGCode || row.pg_code);
     var parentNameRaw = row['Parent Name'] || row.parent_name || '';
     var parentPg = '';
+
+    // Never stamp a dealer as their own parent (Tree Tier upsert of the
+    // open dealer must keep parent = root, not viewed).
+    if (rowPg && viewed && rowPg === viewed) {
+      var existingParent = normalizePgCodeValue(
+        row.parent_pg_code || row['Parent PGCode'] || ''
+      );
+      if (existingParent && existingParent !== rowPg) {
+        row.parent_pg_code = existingParent;
+        row['Parent PGCode'] = existingParent;
+      }
+      row._viewed_pg_code = existingParent || row._viewed_pg_code || '';
+      continue;
+    }
 
     if (isBlankParentName(parentNameRaw)) {
       // Blank Parent Name → the open Tree Tier / viewed dealer.
@@ -444,6 +459,10 @@ function stampParentPgCodesOnRows(rows, viewedPgCode, extraNameToPg) {
       // named parent is not in this batch yet, still attach to the viewed PG
       // so Workspace does not treat the row as root frontline (null parent).
       if (!parentPg && viewed) parentPg = viewed;
+    }
+
+    if (parentPg && rowPg && parentPg === rowPg) {
+      parentPg = '';
     }
 
     if (parentPg) {

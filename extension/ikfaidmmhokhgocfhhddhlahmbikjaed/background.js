@@ -1051,6 +1051,20 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return payload;
     }
 
+    /**
+     * Open Tree Tier syncs only that dealer's children — never upsert the
+     * viewed dealer themselves (phone / empire / rank live on root frontline).
+     */
+    function skipViewedDealerFromRows(rows, viewedPgCode) {
+        var list = Array.isArray(rows) ? rows : [];
+        var viewedKey = normalizePgCodeForMatch(viewedPgCode || '');
+        if (!viewedKey) return list.slice();
+        return list.filter(function (r) {
+            var rowPg = normalizePgCodeForMatch(r.PGCode || r.pg_code || '');
+            return !rowPg || rowPg !== viewedKey;
+        });
+    }
+
     function prepareRowsForUpsert(rows, viewedPgCodeHint, extraNameToPg) {
         var list = Array.isArray(rows) ? rows.slice() : [];
         var viewed = normalizePgCodeForStorage(viewedPgCodeHint);
@@ -1080,6 +1094,17 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 if (n && p) nameToPg[n] = p;
             });
             list.forEach(function (r) {
+                var rowPg = normalizePgCodeForStorage(r.PGCode || r.pg_code);
+                if (rowPg && viewed && rowPg === viewed) {
+                    var existingParent = normalizePgCodeForStorage(
+                        r.parent_pg_code || r['Parent PGCode'] || ''
+                    );
+                    if (existingParent && existingParent !== rowPg) {
+                        r.parent_pg_code = existingParent;
+                        r['Parent PGCode'] = existingParent;
+                    }
+                    return;
+                }
                 var parentName = String(r['Parent Name'] || '').replace(/\s{2,}/g, ' ').trim();
                 var parentPg = null;
                 if (!parentName || parentName === '-' || parentName === '—' || parentName === '–') {
@@ -1090,6 +1115,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                     // on a Tree Tier sync still belongs under the viewed dealer.
                     if (!parentPg && viewed) parentPg = viewed;
                 }
+                if (parentPg && rowPg && parentPg === rowPg) parentPg = null;
                 if (parentPg) {
                     r.parent_pg_code = parentPg;
                     r['Parent PGCode'] = parentPg;
@@ -1107,6 +1133,8 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             progressOpts.viewedPgCode || null,
             progressOpts.extraNameToPg || null
         );
+        // Never upsert the open Tree Tier dealer from their own frontline sync.
+        rows = skipViewedDealerFromRows(rows, progressOpts.viewedPgCode || null);
         var rowStart = progressOpts.rowStart != null ? progressOpts.rowStart : 5;
         var rowEnd = progressOpts.rowEnd != null ? progressOpts.rowEnd : 90;
         var rowSpan = Math.max(1, rowEnd - rowStart);
@@ -1925,6 +1953,8 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
 
             // Stamp parents with locked Tree Tier PG after all pages merge.
             allRows = prepareRowsForUpsert(allRows, viewedPgCode, tierNameToPg);
+            // Skip the open dealer — full profile comes from Sync my frontline only.
+            allRows = skipViewedDealerFromRows(allRows, viewedPgCode);
 
             await setSync2State(userId, {
                 status: 'processing',
