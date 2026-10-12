@@ -5,7 +5,12 @@ import {
   describeCampaignAudienceFilters,
   resolveTagIdLabels,
 } from '@/app/lib/campaigns/audience-preview'
-import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
+import {
+  customerInCampaignAudienceScope,
+  customerMatchesFilters,
+  type CustomerForAudience,
+} from '@/app/lib/campaigns/audience'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import { computeSendAt, isScheduledSendTime, sendTimeDisplayLabel, sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { triggerScheduleDisplayLabel, triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
@@ -525,10 +530,19 @@ async function testSingleWorkflowNode(
         logs.push('Save campaign to see enrollment-based due times')
         logs.push(`If enrolled now, first slot anchor ≈ ${anchor.toLocaleString('en-MY', { timeZone: tz })}`)
 
+        const { data: sampleProfile } = await opts.supabase
+          .from('profiles')
+          .select('pgcode')
+          .eq('id', opts.userId)
+          .maybeSingle()
+        const sampleRootPg = normalizePgCodeValue(
+          (sampleProfile as { pgcode?: string | null } | null)?.pgcode
+        )
+
         const { data: sampleRows } = await opts.supabase
           .from('customers')
           .select(
-            `id, phone, name, first_name, sender_name, save_name, pg_code, prefix, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
+            `id, phone, name, first_name, sender_name, save_name, pg_code, parent_pg_code, prefix, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes,
              customer_tags ( tag_id, tags ( slug ) )`
           )
           .eq('user_id', opts.userId)
@@ -538,6 +552,7 @@ async function testSingleWorkflowNode(
         let shown = 0
         for (const raw of sampleRows ?? []) {
           const c = raw as unknown as CustomerForAudience
+          if (!customerInCampaignAudienceScope(c, sampleRootPg)) continue
           if (!customerMatchesFilters(c, filters)) continue
           const body = renderCampaignTemplateForCustomer(template, c as Record<string, unknown>)
           items.push({

@@ -1,7 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { countActiveDueEnrollments, fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
-import { customerMatchesFilters, type CustomerForAudience } from '@/app/lib/campaigns/audience'
+import {
+  applyRootFrontlineAudienceDbFilter,
+  customerInCampaignAudienceScope,
+  customerMatchesFilters,
+  type CustomerForAudience,
+} from '@/app/lib/campaigns/audience'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 
 const CUSTOMER_PAGE = 250
 const SAMPLE_CAP = 40
@@ -131,8 +137,11 @@ export function describeCampaignAudienceFilters(
     if (bits.length) lines.push(`Segment fields: ${bits.join('; ')}`)
   }
   if (lines.length === 0) {
-    lines.push('No audience filters — any customer with a valid Malaysian phone number in your CRM.')
+    lines.push(
+      'No audience filters — your root frontline customers with a valid Malaysian phone number.'
+    )
   }
+  lines.unshift('Scope: your frontline only (excludes nested Tree Tier / Mos downline)')
   return lines
 }
 
@@ -149,15 +158,25 @@ export async function computeEligibleAudiencePreview(
   let offset = 0
   let scanned = 0
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('pgcode')
+    .eq('id', userId)
+    .maybeSingle()
+  const rootPgCode = normalizePgCodeValue(
+    (profile as { pgcode?: string | null } | null)?.pgcode
+  )
+
   while (true) {
-    const { data: batch, error } = await supabase
+    let query = supabase
       .from('customers')
       .select(
-        `id, phone, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status,
+        `id, phone, name, first_name, pg_code, parent_pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status,
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', userId)
-      .range(offset, offset + CUSTOMER_PAGE - 1)
+    query = applyRootFrontlineAudienceDbFilter(query, rootPgCode)
+    const { data: batch, error } = await query.range(offset, offset + CUSTOMER_PAGE - 1)
 
     if (error) throw error
     const rows = batch ?? []
@@ -166,6 +185,7 @@ export async function computeEligibleAudiencePreview(
     for (const raw of rows) {
       const c = raw as unknown as CustomerForAudience
       scanned++
+      if (!customerInCampaignAudienceScope(c, rootPgCode)) continue
       if (!customerMatchesFilters(c, filters)) continue
       matching_total++
       if (sample.length < SAMPLE_CAP) {

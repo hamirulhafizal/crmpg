@@ -22,10 +22,13 @@ import {
 } from '@/app/lib/campaigns/enrollment-lifecycle'
 import { fetchActiveDueEnrollmentsMerged } from '@/app/lib/campaigns/due-enrollments-query'
 import {
+  applyRootFrontlineAudienceDbFilter,
   CUSTOMER_EMBED_FOR_AUDIENCE_MATCH,
+  customerInCampaignAudienceScope,
   customerMatchesFilters,
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import { isWhatsAppSendAllowed, getPhoneContactStatusFromRow } from '@/app/lib/customer-phone-contact-status'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
 import {
@@ -946,6 +949,15 @@ async function syncEnrollmentsForCampaign(
     return
   }
 
+  const { data: ownerProfile } = await supabase
+    .from('profiles')
+    .select('pgcode')
+    .eq('id', campaign.user_id)
+    .maybeSingle()
+  const rootPgCode = normalizePgCodeValue(
+    (ownerProfile as { pgcode?: string | null } | null)?.pgcode
+  )
+
   const { data: existing } = await supabase
     .from('campaign_enrollments')
     .select('id, customer_id, status, completed_at, metadata, enrolled_at')
@@ -977,11 +989,12 @@ async function syncEnrollmentsForCampaign(
 
   let offset = 0
   while (true) {
-    const { data: batch, error } = await supabase
+    let customersQuery = supabase
       .from('customers')
       .select(CUSTOMER_EMBED_FOR_AUDIENCE_MATCH)
       .eq('user_id', campaign.user_id)
-      .range(offset, offset + CUSTOMER_PAGE - 1)
+    customersQuery = applyRootFrontlineAudienceDbFilter(customersQuery, rootPgCode)
+    const { data: batch, error } = await customersQuery.range(offset, offset + CUSTOMER_PAGE - 1)
 
     if (error) {
       cronLog(debugLines, `enrollment sync customers query error campaign=${campaign.id}: ${error.message}`)
@@ -998,6 +1011,10 @@ async function syncEnrollmentsForCampaign(
       const c = raw as unknown as CustomerForAudience
       if (!isValidCampaignPhone(c.phone)) {
         skipNoPhone++
+        continue
+      }
+      if (!customerInCampaignAudienceScope(c, rootPgCode)) {
+        skipFilters++
         continue
       }
       if (!customerMatchesFilters(c, filters)) {
@@ -1098,6 +1115,23 @@ async function reconcileEnrollmentsToAudience(
   if (!plan.audienceNodeId) return 0
 
   const filters = plan.compiled.audience_filters
+  const { data: campaignOwner } = await supabase
+    .from('campaigns')
+    .select('user_id')
+    .eq('id', campaignId)
+    .maybeSingle()
+  const ownerId = (campaignOwner as { user_id?: string } | null)?.user_id
+  let rootPgCode = ''
+  if (ownerId) {
+    const { data: ownerProfile } = await supabase
+      .from('profiles')
+      .select('pgcode')
+      .eq('id', ownerId)
+      .maybeSingle()
+    rootPgCode = normalizePgCodeValue(
+      (ownerProfile as { pgcode?: string | null } | null)?.pgcode
+    )
+  }
   let offset = 0
   let paused = 0
 
@@ -1124,7 +1158,11 @@ async function reconcileEnrollmentsToAudience(
       }
       const custRaw = row.customer
       const customer = (Array.isArray(custRaw) ? custRaw[0] : custRaw) as CustomerForAudience | null
-      if (!customer || customerMatchesFilters(customer, filters)) continue
+      const stillInAudience =
+        customer &&
+        customerInCampaignAudienceScope(customer, rootPgCode) &&
+        customerMatchesFilters(customer, filters)
+      if (!customer || stillInAudience) continue
 
       if (filters.dob_is_today && isQueueWaiting(row.metadata)) {
         cronLog(
@@ -1317,6 +1355,7 @@ async function processDueEnrollmentRows(
   const total = due.length
   let sendIndex = 0
   const sessionPickByUser = new Map<string, WhatsAppSessionPick | null>()
+  const rootPgByUser = new Map<string, string>()
 
   const getSessionPick = async (userId: string, forCampaign: CampaignRow): Promise<WhatsAppSessionPick | null> => {
     const cacheKey = userId
@@ -1327,6 +1366,18 @@ async function processDueEnrollmentRows(
       )
     }
     return sessionPickByUser.get(cacheKey) ?? null
+  }
+
+  const getRootPgCode = async (userId: string): Promise<string> => {
+    if (rootPgByUser.has(userId)) return rootPgByUser.get(userId) ?? ''
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('pgcode')
+      .eq('id', userId)
+      .maybeSingle()
+    const root = normalizePgCodeValue((profile as { pgcode?: string | null } | null)?.pgcode)
+    rootPgByUser.set(userId, root)
+    return root
   }
 
   for (const row of due) {
@@ -1368,22 +1419,29 @@ async function processDueEnrollmentRows(
       continue
     }
 
-    if (plan.audienceNodeId && !customerMatchesFilters(customer, plan.compiled.audience_filters)) {
-      const label = customerWorkflowLabel(customer)
-      await completeEnrollmentAndReleaseQueue({
-        supabase,
-        row,
-        campaign,
-        plan,
-        audienceFilters,
-        reason: 'customer no longer matches audience filters',
-        metaKey: 'skip_audience_mismatch',
-        metaExtra: { customer_id: customer.id },
-        debugLines,
-        onProgress,
-        progressMessage: `Skipped ${label} — not in target audience`,
-      })
-      continue
+    if (plan.audienceNodeId) {
+      const rootPgCode = await getRootPgCode(campaign.user_id)
+      const inScope = customerInCampaignAudienceScope(customer, rootPgCode)
+      const matches = customerMatchesFilters(customer, plan.compiled.audience_filters)
+      if (!inScope || !matches) {
+        const label = customerWorkflowLabel(customer)
+        await completeEnrollmentAndReleaseQueue({
+          supabase,
+          row,
+          campaign,
+          plan,
+          audienceFilters,
+          reason: !inScope
+            ? 'customer outside root frontline (nested Tree Tier)'
+            : 'customer no longer matches audience filters',
+          metaKey: 'skip_audience_mismatch',
+          metaExtra: { customer_id: customer.id, outside_root_frontline: !inScope },
+          debugLines,
+          onProgress,
+          progressMessage: `Skipped ${label} — not in target audience`,
+        })
+        continue
+      }
     }
 
     const dailyLimit = plan.compiled.daily_send_limit

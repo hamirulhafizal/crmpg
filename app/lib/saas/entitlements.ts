@@ -33,6 +33,12 @@ import {
   loadUserWhatsAppAccess,
   whatsAppProviderDisplayLabel,
 } from '@/app/lib/saas/whatsapp-access'
+import {
+  parseSaasPlanAllowedPaymentMethods,
+  planAllowsAutoDebitPayment,
+  planAllowsOneOffPayment,
+  type SaasPlanAllowedPaymentMethods,
+} from '@/app/lib/saas/payment-method'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export type SaasMePayload = {
@@ -56,6 +62,8 @@ export type SaasMePayload = {
     can_checkout: boolean
     bayarcash_checkout_enabled: boolean
     bayarcash_direct_debit_enabled: boolean
+    /** Pro plan admin setting: both | one_off | auto_debit */
+    allowed_payment_methods: SaasPlanAllowedPaymentMethods
     trial_days: number
     free_trial_days: number
     renewal_price: number
@@ -324,6 +332,14 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
     (subscription.status === 'expired' ||
       (planRow.slug === 'free' && !isFreeTrialActiveNow && subscription.status !== 'cancelled'))
 
+  const allowedPaymentMethods = parseSaasPlanAllowedPaymentMethods(proPlan?.marketing_details)
+  const envCheckout =
+    isGoogleAdsBayarcashRenewalEnabled() && isBayarcashConfiguredForCheckout()
+  const envDirectDebit =
+    isGoogleAdsBayarcashRenewalEnabled() &&
+    isGoogleAdsBayarcashDirectDebitEnabled() &&
+    isBayarcashConfiguredForDirectDebit()
+
   return {
     subscription: {
       ...subscription,
@@ -342,11 +358,10 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
       can_start_trial: platformAdmin ? false : canStartTrial,
       can_checkout: platformAdmin ? false : canCheckout && (proPlan?.price_amount ?? 0) > 0,
       bayarcash_checkout_enabled:
-        isGoogleAdsBayarcashRenewalEnabled() && isBayarcashConfiguredForCheckout(),
+        envCheckout && planAllowsOneOffPayment(allowedPaymentMethods),
       bayarcash_direct_debit_enabled:
-        isGoogleAdsBayarcashRenewalEnabled() &&
-        isGoogleAdsBayarcashDirectDebitEnabled() &&
-        isBayarcashConfiguredForDirectDebit(),
+        envDirectDebit && planAllowsAutoDebitPayment(allowedPaymentMethods),
+      allowed_payment_methods: allowedPaymentMethods,
       trial_days: proPlan?.trial_days ?? 0,
       free_trial_days: freePlanRow?.trial_days ?? 0,
       renewal_price: Number(subscription.locked_price_amount) || Number(proPlan?.price_amount ?? 0),

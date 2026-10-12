@@ -7,6 +7,8 @@ import {
 } from '@/app/lib/customer-account-status'
 import { isWhatsAppSendAllowed } from '@/app/lib/customer-phone-contact-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
+import { isRootFrontlineCustomer } from '@/app/lib/customers/frontline-parent'
+import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { isValidCampaignPhone } from '@/app/lib/phone-msisdn'
 
@@ -19,6 +21,7 @@ export type CustomerForAudience = {
   name: string | null
   first_name: string | null
   pg_code: string | null
+  parent_pg_code?: string | null
   save_name: string | null
   gender: string | null
   ethnicity: string | null
@@ -81,6 +84,27 @@ export function customerTagIds(c: CustomerForAudience): Set<string> {
     if (id) s.add(String(id))
   }
   return s
+}
+
+/**
+ * Campaigns only target the dealer's own frontline (same as Workspace),
+ * not nested Tree Tier syncs (e.g. Mos downline).
+ */
+export function customerInCampaignAudienceScope(
+  c: CustomerForAudience,
+  rootPgCode: string
+): boolean {
+  const root = normalizePgCodeValue(rootPgCode)
+  if (!root) return true
+  return isRootFrontlineCustomer(
+    {
+      pg_code: c.pg_code,
+      name: c.name,
+      parent_pg_code: c.parent_pg_code ?? null,
+      original_data: c.original_data,
+    },
+    root
+  )
 }
 
 export function customerMatchesFilters(c: CustomerForAudience, filters: CampaignAudienceFilters): boolean {
@@ -227,6 +251,15 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
 
 /** PostgREST embed for audience matching (tags + fields used by {@link customerMatchesFilters}). */
 export const CUSTOMER_EMBED_FOR_AUDIENCE_MATCH = `
-  id, phone, email, name, first_name, pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status, prefix, age, sender_name,
+  id, phone, email, name, first_name, pg_code, parent_pg_code, save_name, gender, ethnicity, location, last_purchase_at, dob, created_at, original_data, is_monthly_buyer, is_friend, segment_attributes, phone_contact_status, prefix, age, sender_name,
   customer_tags ( tag_id, tags ( slug ) )
 `
+
+/** Narrow DB fetch to root frontline (+ legacy null parent) before JS scope filter. */
+export function applyRootFrontlineAudienceDbFilter<
+  T extends { or: (filters: string) => T },
+>(query: T, rootPgCode: string): T {
+  const root = normalizePgCodeValue(rootPgCode)
+  if (!root) return query
+  return query.or(`parent_pg_code.is.null,parent_pg_code.eq.${root}`)
+}

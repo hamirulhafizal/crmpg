@@ -4,6 +4,10 @@ import { createPaymentIntent } from '@/app/lib/bayarcash/payment-intent'
 import { isGoogleAdsBayarcashRenewalEnabled } from '@/app/lib/bayarcash/config'
 import { checkoutPriceAmount, canCheckoutPro } from '@/app/lib/saas/billing'
 import { buildSaasMePayload } from '@/app/lib/saas/entitlements'
+import {
+  parseSaasPlanAllowedPaymentMethods,
+  planAllowsOneOffPayment,
+} from '@/app/lib/saas/payment-method'
 import { requireUserApi } from '@/app/lib/auth/require-user'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
@@ -39,6 +43,14 @@ export async function POST(request: Request) {
     const proPlan = me.plans.find((p) => p.slug === 'pro')
     if (!proPlan?.is_active) {
       return NextResponse.json({ error: 'Pro plan is not available' }, { status: 400 })
+    }
+
+    const allowed = parseSaasPlanAllowedPaymentMethods(proPlan.marketing_details)
+    if (!planAllowsOneOffPayment(allowed)) {
+      return NextResponse.json(
+        { error: 'This plan only accepts auto debit. Please enroll Direct Debit instead.' },
+        { status: 403 }
+      )
     }
 
     const sub = me.subscription

@@ -9,6 +9,15 @@ import {
   type SaasPlanWithFeatures,
   type SaasSubscriptionStatus,
 } from '@/app/lib/saas/types'
+import {
+  SAAS_PAYMENT_METHOD_LABELS,
+  SAAS_PAYMENT_METHOD_STATUSES,
+  SAAS_PLAN_ALLOWED_PAYMENT_METHOD_LABELS,
+  SAAS_PLAN_ALLOWED_PAYMENT_METHODS,
+  parseSaasPlanAllowedPaymentMethods,
+  type SaasPaymentMethodStatus,
+  type SaasPlanAllowedPaymentMethods,
+} from '@/app/lib/saas/payment-method'
 
 type UserOption = {
   id: string
@@ -26,6 +35,9 @@ type SubscriptionRow = {
   trial_ends_at: string | null
   current_period_end: string | null
   admin_assigned_at: string | null
+  payment_method_status?: SaasPaymentMethodStatus
+  mandate_status?: string | null
+  mandate_order_number?: string | null
   plan?: { id: string; name: string; slug: string } | null
   profile?: { id: string; full_name: string | null; role: string } | null
 }
@@ -51,7 +63,23 @@ function formatDate(iso: string | null) {
 }
 
 const SUB_STATUSES: SaasSubscriptionStatus[] = ['active', 'trialing', 'expired', 'cancelled']
+const PAYMENT_METHOD_FILTERS: SaasPaymentMethodStatus[] = [...SAAS_PAYMENT_METHOD_STATUSES]
 const TAB_ORDER = ['subscribers', 'plans'] as const
+
+function paymentMethodBadgeClass(status: SaasPaymentMethodStatus): string {
+  switch (status) {
+    case 'direct_debit_active':
+      return 'bg-emerald-100 text-emerald-800'
+    case 'direct_debit_pending':
+      return 'bg-amber-100 text-amber-900'
+    case 'direct_debit_failed':
+      return 'bg-red-100 text-red-800'
+    case 'fpx':
+      return 'bg-sky-100 text-sky-800'
+    default:
+      return 'bg-slate-100 text-slate-600'
+  }
+}
 
 function toggleInList<T extends string>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
@@ -78,6 +106,8 @@ export default function AdminSaasPlansPage() {
   const [formActive, setFormActive] = useState(true)
   const [formSort, setFormSort] = useState('0')
   const [formBullets, setFormBullets] = useState('')
+  const [formPaymentMethods, setFormPaymentMethods] =
+    useState<SaasPlanAllowedPaymentMethods>('both')
   const [formFeatures, setFormFeatures] = useState<Record<SaasFeatureKey, string>>({ ...SAAS_FEATURE_DEFAULTS })
 
   const [assignModal, setAssignModal] = useState(false)
@@ -92,6 +122,7 @@ export default function AdminSaasPlansPage() {
   const [filterStatuses, setFilterStatuses] = useState<SaasSubscriptionStatus[]>([])
   const [filterPrice, setFilterPrice] = useState<Array<'free' | 'paid'>>([])
   const [filterTrial, setFilterTrial] = useState<Array<'on_trial' | 'no_trial'>>([])
+  const [filterPaymentMethods, setFilterPaymentMethods] = useState<SaasPaymentMethodStatus[]>([])
 
   const loadPlans = useCallback(async () => {
     setLoadingPlans(true)
@@ -171,22 +202,40 @@ export default function AdminSaasPlansPage() {
         if (!matchOn && !matchOff) return false
       }
 
+      const paymentMethod = sub.payment_method_status ?? 'none'
+      if (filterPaymentMethods.length > 0 && !filterPaymentMethods.includes(paymentMethod)) {
+        return false
+      }
+
       if (!q) return true
       const name = (sub.profile?.full_name ?? '').toLowerCase()
       const uid = sub.user_id.toLowerCase()
       const planName = (sub.plan?.name ?? '').toLowerCase()
       return name.includes(q) || uid.includes(q) || planName.includes(q)
     })
-  }, [subscriptions, subSearch, filterPlanIds, filterStatuses, filterPrice, filterTrial])
+  }, [
+    subscriptions,
+    subSearch,
+    filterPlanIds,
+    filterStatuses,
+    filterPrice,
+    filterTrial,
+    filterPaymentMethods,
+  ])
 
   const activeFilterCount =
-    filterPlanIds.length + filterStatuses.length + filterPrice.length + filterTrial.length
+    filterPlanIds.length +
+    filterStatuses.length +
+    filterPrice.length +
+    filterTrial.length +
+    filterPaymentMethods.length
 
   function clearSubscriberFilters() {
     setFilterPlanIds([])
     setFilterStatuses([])
     setFilterPrice([])
     setFilterTrial([])
+    setFilterPaymentMethods([])
     setSubSearch('')
   }
 
@@ -203,6 +252,7 @@ export default function AdminSaasPlansPage() {
       setFormSort(String(row.sort_order))
       const bullets = row.marketing_details?.bullets
       setFormBullets(Array.isArray(bullets) ? bullets.map(String).join('\n') : '')
+      setFormPaymentMethods(parseSaasPlanAllowedPaymentMethods(row.marketing_details))
       setFormFeatures(featuresRecord(row.features))
     } else {
       setEditingPlanId(null)
@@ -215,6 +265,7 @@ export default function AdminSaasPlansPage() {
       setFormActive(true)
       setFormSort(String(plans.length + 1))
       setFormBullets('')
+      setFormPaymentMethods('both')
       setFormFeatures({ ...SAAS_FEATURE_DEFAULTS })
     }
     setPlanModal(true)
@@ -240,10 +291,14 @@ export default function AdminSaasPlansPage() {
         is_active: formActive,
         sort_order: parseInt(formSort, 10) || 0,
         marketing_details: {
+          ...(editingPlanId
+            ? plans.find((p) => p.id === editingPlanId)?.marketing_details ?? {}
+            : {}),
           bullets: formBullets
             .split('\n')
             .map((s) => s.trim())
             .filter(Boolean),
+          allowed_payment_methods: formPaymentMethods,
         },
         features: formFeatures,
       }
@@ -430,6 +485,16 @@ export default function AdminSaasPlansPage() {
 
                   <dl className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-600">
                     <div>
+                      <dt className="font-medium text-slate-500">Payment</dt>
+                      <dd>
+                        {Number(plan.price_amount) > 0
+                          ? SAAS_PLAN_ALLOWED_PAYMENT_METHOD_LABELS[
+                              parseSaasPlanAllowedPaymentMethods(plan.marketing_details)
+                            ]
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
                       <dt className="font-medium text-slate-500">Trial</dt>
                       <dd>{plan.trial_days} days</dd>
                     </div>
@@ -609,6 +674,31 @@ export default function AdminSaasPlansPage() {
                   )
                 })}
               </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Pay
+                </span>
+                {PAYMENT_METHOD_FILTERS.map((status) => {
+                  const on = filterPaymentMethods.includes(status)
+                  return (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() =>
+                        setFilterPaymentMethods((prev) => toggleInList(prev, status))
+                      }
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        on
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {SAAS_PAYMENT_METHOD_LABELS[status]}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <p className="text-xs text-slate-500">
@@ -625,6 +715,7 @@ export default function AdminSaasPlansPage() {
                   <th className="px-4 py-3">Dealer</th>
                   <th className="px-4 py-3">Plan</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Payment</th>
                   <th className="px-4 py-3">Locked price</th>
                   <th className="px-4 py-3">Trial ends</th>
                   <th className="px-4 py-3">Period end</th>
@@ -634,20 +725,22 @@ export default function AdminSaasPlansPage() {
               <tbody className="divide-y divide-slate-100">
                 {loadingSubs ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                       Loading…
                     </td>
                   </tr>
                 ) : filteredSubscriptions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                       {subscriptions.length === 0
                         ? 'No subscriptions yet.'
                         : 'No dealers match the selected filters.'}
                     </td>
                   </tr>
                 ) : (
-                  filteredSubscriptions.map((sub) => (
+                  filteredSubscriptions.map((sub) => {
+                    const paymentMethod = sub.payment_method_status ?? 'none'
+                    return (
                     <tr key={sub.id} className="hover:bg-slate-50/80">
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">
@@ -670,6 +763,20 @@ export default function AdminSaasPlansPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentMethodBadgeClass(paymentMethod)}`}
+                          title={
+                            sub.mandate_order_number
+                              ? `Mandate ${sub.mandate_order_number}${
+                                  sub.mandate_status ? ` · ${sub.mandate_status}` : ''
+                                }`
+                              : undefined
+                          }
+                        >
+                          {SAAS_PAYMENT_METHOD_LABELS[paymentMethod]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         {formatMoney(Number(sub.locked_price_amount), sub.locked_currency)}
                       </td>
                       <td className="px-4 py-3">{formatDate(sub.trial_ends_at)}</td>
@@ -684,7 +791,8 @@ export default function AdminSaasPlansPage() {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -772,6 +880,26 @@ export default function AdminSaasPlansPage() {
                     className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Payment methods</label>
+                <select
+                  value={formPaymentMethods}
+                  onChange={(e) =>
+                    setFormPaymentMethods(e.target.value as SaasPlanAllowedPaymentMethods)
+                  }
+                  disabled={formBilling === 'none' || Number(formPrice) === 0}
+                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  {SAAS_PLAN_ALLOWED_PAYMENT_METHODS.map((value) => (
+                    <option key={value} value={value}>
+                      {SAAS_PLAN_ALLOWED_PAYMENT_METHOD_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Controls what dealers see on Billing: FPX one-off, auto debit, or both.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700">Marketing bullets (one per line)</label>

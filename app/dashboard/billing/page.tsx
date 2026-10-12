@@ -126,34 +126,36 @@ function PaymentMethodPicker({
   payerPhone: string
   onPayerPhoneChange: (value: string) => void
 }) {
-  if (!checkoutEnabled) return null
+  if (!checkoutEnabled && !ddEnabled) return null
 
   return (
     <div className="space-y-3">
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium text-slate-700">Payment method</legend>
-        <label
-          className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
-            paymentMethod === 'fpx'
-              ? 'border-violet-600 bg-violet-50/60'
-              : 'border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <input
-            type="radio"
-            name="billing-payment-method"
-            value="fpx"
-            checked={paymentMethod === 'fpx'}
-            onChange={() => onPaymentMethodChange('fpx')}
-            className="mt-1"
-          />
-          <span>
-            <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
-            <span className="mt-0.5 block text-xs text-slate-600">
-              Pay once now via online banking. Renew again next period.
+        {checkoutEnabled ? (
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
+              paymentMethod === 'fpx'
+                ? 'border-violet-600 bg-violet-50/60'
+                : 'border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <input
+              type="radio"
+              name="billing-payment-method"
+              value="fpx"
+              checked={paymentMethod === 'fpx'}
+              onChange={() => onPaymentMethodChange('fpx')}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">One-time FPX</span>
+              <span className="mt-0.5 block text-xs text-slate-600">
+                Pay once now via online banking. Renew again next period.
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        ) : null}
         {ddEnabled ? (
           <label
             className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition ${
@@ -261,6 +263,14 @@ export default function DashboardBillingPage() {
     }
   }, [data?.profile_phone, payerPhone])
 
+  useEffect(() => {
+    if (!data) return
+    const fpx = Boolean(data.flags.bayarcash_checkout_enabled)
+    const dd = Boolean(data.flags.bayarcash_direct_debit_enabled)
+    if (dd && !fpx) setPaymentMethod('direct_debit')
+    else if (fpx && !dd) setPaymentMethod('fpx')
+  }, [data?.flags.bayarcash_checkout_enabled, data?.flags.bayarcash_direct_debit_enabled])
+
   const freePlan = useMemo(() => data?.plans.find((p) => p.slug === 'free'), [data])
   const proPlan = useMemo(() => data?.plans.find((p) => p.slug === 'pro'), [data])
 
@@ -349,6 +359,8 @@ export default function DashboardBillingPage() {
 
   const ddEnabled = Boolean(data.flags.bayarcash_direct_debit_enabled)
   const checkoutEnabled = data.flags.bayarcash_checkout_enabled
+  const paymentReady =
+    paymentMethod === 'direct_debit' ? ddEnabled : checkoutEnabled
   const activeMandate = data.mandate
 
   const submitLabel =
@@ -359,6 +371,11 @@ export default function DashboardBillingPage() {
       : paymentMethod === 'direct_debit'
         ? `Set up auto debit — ${fmtMoney(checkoutAmount, proPlan?.currency || 'MYR')}/mo`
         : checkoutLabel
+
+  const paymentUnavailableHint =
+    !checkoutEnabled && !ddEnabled ? (
+      <p className="text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
+    ) : null
 
   const paymentMethodPickerEl = (
     <PaymentMethodPicker
@@ -460,14 +477,12 @@ export default function DashboardBillingPage() {
             <button
               type="button"
               onClick={() => void checkout()}
-              disabled={checkoutLoading || !checkoutEnabled}
+              disabled={checkoutLoading || !paymentReady}
               className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 sm:w-auto sm:min-w-[220px]"
             >
               {submitLabel}
             </button>
-            {!checkoutEnabled ? (
-              <p className="text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
-            ) : null}
+            {paymentUnavailableHint}
           </div>
         ) : null}
       </section>
@@ -528,16 +543,14 @@ export default function DashboardBillingPage() {
                       <button
                         type="button"
                         onClick={() => void checkout()}
-                        disabled={checkoutLoading || trialLoading || !checkoutEnabled}
+                        disabled={checkoutLoading || trialLoading || !paymentReady}
                         className="w-full rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
                       >
                         {submitLabel}
                       </button>
                     </>
                   ) : null}
-                  {!checkoutEnabled && data.flags.can_checkout ? (
-                    <p className="text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
-                  ) : null}
+                  {data.flags.can_checkout ? paymentUnavailableHint : null}
                 </div>
               ) : null}
 
@@ -547,15 +560,13 @@ export default function DashboardBillingPage() {
                   <button
                     type="button"
                     onClick={() => void checkout()}
-                    disabled={checkoutLoading || !checkoutEnabled}
+                    disabled={checkoutLoading || !paymentReady}
                     className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                   >
                     {submitLabel}
                   </button>
+                  {paymentUnavailableHint}
                 </div>
-              ) : null}
-              {!checkoutEnabled && isPro && showCheckout ? (
-                <p className="mt-2 text-xs text-amber-700">Online payment is not configured. Contact admin.</p>
               ) : null}
             </div>
           )

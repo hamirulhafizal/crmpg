@@ -9,6 +9,10 @@ import { createMandateEnrollment } from '@/app/lib/bayarcash/mandate'
 import { requireUserApi } from '@/app/lib/auth/require-user'
 import { canCheckoutPro, checkoutPriceAmount } from '@/app/lib/saas/billing'
 import { buildSaasMePayload } from '@/app/lib/saas/entitlements'
+import {
+  parseSaasPlanAllowedPaymentMethods,
+  planAllowsAutoDebitPayment,
+} from '@/app/lib/saas/payment-method'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 type Body = {
@@ -79,6 +83,14 @@ export async function POST(request: Request) {
     const proPlan = me.plans.find((p) => p.slug === 'pro')
     if (!proPlan?.is_active) {
       return NextResponse.json({ error: 'Pro plan is not available' }, { status: 400 })
+    }
+
+    const allowed = parseSaasPlanAllowedPaymentMethods(proPlan.marketing_details)
+    if (!planAllowsAutoDebitPayment(allowed)) {
+      return NextResponse.json(
+        { error: 'This plan only accepts one-off FPX payment.' },
+        { status: 403 }
+      )
     }
 
     const sub = me.subscription
