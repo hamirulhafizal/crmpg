@@ -87,16 +87,35 @@ export function GlobalCustomerSearch() {
     return () => window.clearTimeout(t)
   }, [query, open])
 
+  const focusSearchInput = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    // Mobile Safari only reliably opens the keyboard when focus lands on a
+    // visible, interactive field (after the sheet has painted).
+    el.focus({ preventScroll: true })
+    try {
+      const len = el.value.length
+      el.setSelectionRange(len, len)
+    } catch {
+      /* some input types reject selection */
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 50)
+    // Retry across paint + sheet animation so iOS/Android keyboards open.
+    const t0 = window.requestAnimationFrame(() => focusSearchInput())
+    const t1 = window.setTimeout(focusSearchInput, 120)
+    const t2 = window.setTimeout(focusSearchInput, 280)
     return () => {
       document.body.style.overflow = previous
-      window.clearTimeout(focusTimer)
+      window.cancelAnimationFrame(t0)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
     }
-  }, [open])
+  }, [open, focusSearchInput])
 
   useEffect(() => {
     if (!open) return
@@ -200,6 +219,9 @@ export function GlobalCustomerSearch() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 16, opacity: 0 }}
               transition={{ type: 'tween', duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              onAnimationComplete={() => {
+                if (open) focusSearchInput()
+              }}
             >
               <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
                 <div className="min-w-0">
@@ -237,10 +259,15 @@ export function GlobalCustomerSearch() {
                     ref={inputRef}
                     id="global-customer-search-input"
                     type="search"
+                    inputMode="search"
+                    enterKeyHint="search"
+                    autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="PG00104897 - Tn Hamirul, phone, or email"
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
                     spellCheck={false}
                     className="w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
                   />
@@ -307,7 +334,11 @@ export function GlobalCustomerSearch() {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true)
+          // Keep the user-gesture chain warm for mobile keyboards.
+          window.requestAnimationFrame(() => focusSearchInput())
+        }}
         className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
         aria-label="Search customers"
         title="Search customers"
