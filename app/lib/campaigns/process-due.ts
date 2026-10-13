@@ -154,6 +154,8 @@ const CUSTOMER_PAGE = 250
 const SEND_BATCH = 10
 const STEP_SEND_FAILURE_WINDOW_MS = 2 * 60 * 60 * 1000
 const MAX_STEP_SEND_FAILURES_BEFORE_SKIP = 1
+/** Sequential queue: stop retrying a stuck image step so the next customer can send. */
+const MAX_IMAGE_STEP_RETRIES_BEFORE_RELEASE = 5
 const STALE_PENDING_LOG_MS = 15 * 60 * 1000
 
 // Keep below Vercel maxDuration (~300s) so a killed run does not block the next cron tick.
@@ -527,8 +529,8 @@ async function advanceEnrollmentPastAbandonedStep(params: {
   const failedNode = whatsAppNodeForStep(plan, failedStep.step_order)
   const failedIsImage = isImageStepNode(failedNode)
 
-  // Image steps: keep enrollment on the same step and reschedule — never mark completed
-  // after a failed birthday card (that was skipping the customer forever).
+  // Image steps: reschedule retries. On sequential (loop batch=1) queues, release the slot
+  // after enough failures so one bad LID/WAHA recipient cannot block everyone else forever.
   if (failedIsImage) {
     const prevMeta =
       row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
@@ -539,6 +541,29 @@ async function advanceEnrollmentPastAbandonedStep(params: {
         ? (prevMeta.image_step_retry as Record<string, unknown>)
         : {}
     const retryCount = (typeof prevRetry.count === 'number' ? prevRetry.count : 0) + 1
+    const sequential = usesSequentialCustomerQueue(plan, plan.compiled.audience_filters)
+
+    if (sequential && retryCount >= MAX_IMAGE_STEP_RETRIES_BEFORE_RELEASE) {
+      await completeEnrollmentAndReleaseQueue({
+        supabase,
+        row,
+        campaign,
+        plan,
+        audienceFilters: plan.compiled.audience_filters,
+        reason: `image step ${failedStep.step_order} failed ${retryCount} times: ${reason}`,
+        metaKey: 'skip_image_step_exhausted',
+        metaExtra: {
+          step_order: failedStep.step_order,
+          step_id: failedStep.id,
+          retry_count: retryCount,
+        },
+        debugLines,
+        onProgress,
+        progressMessage: `Skipped image step ${failedStep.step_order} after ${retryCount} failures — next customer in queue`,
+      })
+      return
+    }
+
     const backoffMs =
       retryCount >= 8
         ? 24 * 60 * 60 * 1000
