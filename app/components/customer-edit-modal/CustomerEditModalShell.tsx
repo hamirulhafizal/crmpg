@@ -7,6 +7,7 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import CustomerLocationCombobox from '@/app/components/CustomerLocationCombobox'
 import { getAccountStatusLabel } from '@/app/lib/customer-account-status'
@@ -35,10 +36,13 @@ import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { fetchCustomerAvatarUrl } from '@/app/lib/customers/fetch-customers'
 import { CustomerChecklistPanel } from '@/app/components/customer-edit-modal/CustomerChecklistPanel'
 
-/** Above full-screen shells (e.g. schedule calendar z-[60]) and typical z-50 modals. */
-const Z_CUSTOMER_MODAL_OVERLAY = 'z-[1000]'
-const Z_CUSTOMER_MODAL_NESTED = 'z-[1010]'
-const Z_CUSTOMER_MODAL_TOAST = 'z-[1020]'
+/**
+ * Always above page chrome and nested shells (Direct frontline / PG sync z-[1100],
+ * sync preview z-[1200], follow-up queue override z-[1300]).
+ */
+const Z_CUSTOMER_MODAL_OVERLAY = 'z-[2000]'
+const Z_CUSTOMER_MODAL_NESTED = 'z-[2010]'
+const Z_CUSTOMER_MODAL_TOAST = 'z-[2020]'
 
 function defaultFollowUpOccurredAtLocal(): string {
   const d = new Date()
@@ -259,6 +263,7 @@ export function CustomerEditModalShell({
   const [toasts, setToasts] = useState<Array<{ id: number; type: 'success' | 'error'; text: string }>>([])
 
   const [isNarrowViewport, setIsNarrowViewport] = useState(false)
+  const [portalReady, setPortalReady] = useState(false)
 
   const pushToast = useCallback((type: 'success' | 'error', text: string) => {
     const id = Date.now() + Math.floor(Math.random() * 1000)
@@ -272,6 +277,10 @@ export function CustomerEditModalShell({
     return () => {
       isMountedRef.current = false
     }
+  }, [])
+
+  useEffect(() => {
+    setPortalReady(true)
   }, [])
 
   useEffect(() => {
@@ -784,7 +793,8 @@ export function CustomerEditModalShell({
   const shellEnterExit = narrow
     ? { initial: { y: '100%', opacity: 1 }, animate: { y: 0, opacity: 1 }, exit: { y: '100%', opacity: 1 } }
     : { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
-  return (
+
+  const shell = (
     <>
       {open
         ? toasts.map((t) => (
@@ -1994,4 +2004,7 @@ export function CustomerEditModalShell({
       </AnimatePresence>
     </>
   )
+
+  if (!portalReady || typeof document === 'undefined') return null
+  return createPortal(shell, document.body)
 }

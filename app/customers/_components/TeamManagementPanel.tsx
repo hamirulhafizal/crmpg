@@ -368,6 +368,7 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
                         openCustomerById(customer.id, {
                           tab: 'details',
                           initialCustomer: customer as unknown as Record<string, unknown>,
+                          overlayZIndexClassName: 'z-[2000]',
                         })
                       }
                       className={`cursor-pointer transition-colors ${ACCOUNT_STATUS_ROW_CLASSES[accountKey]}`}
@@ -442,6 +443,7 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
                               openCustomerById(customer.id, {
                                 tab: 'details',
                                 initialCustomer: customer as unknown as Record<string, unknown>,
+                                overlayZIndexClassName: 'z-[2000]',
                               })
                             }
                             className="min-w-0 truncate font-medium text-blue-600 underline underline-offset-2 transition-colors hover:text-blue-800 focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-500/40"

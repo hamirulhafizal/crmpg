@@ -1316,7 +1316,7 @@ function CustomersPage() {
         page,
         viewMode,
       },
-      overlayZIndexClassName: followUpQueueOpen ? 'z-[1300]' : undefined,
+      overlayZIndexClassName: followUpQueueOpen ? 'z-[2000]' : undefined,
     })
   }
 

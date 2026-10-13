@@ -246,7 +246,7 @@ export function DealerFrontlineModal({ open, dealer, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[1100] flex items-end justify-center overflow-hidden overscroll-none sm:items-center sm:p-4"
+      className="top-[-2rem] fixed inset-0 z-[1100] flex items-end justify-center overflow-hidden overscroll-none sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dealer-frontline-title"
@@ -541,6 +541,7 @@ export function DealerFrontlineModal({ open, dealer, onClose }: Props) {
                                   openCustomerById(customer.id, {
                                     tab: 'details',
                                     initialCustomer: customer as unknown as Record<string, unknown>,
+                                    overlayZIndexClassName: 'z-[2000]',
                                   })
                                 }
                                 className="min-w-0 truncate font-medium text-primary underline underline-offset-2 hover:opacity-90"
