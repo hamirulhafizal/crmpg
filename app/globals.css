@@ -591,6 +591,13 @@
   display: var(--theme-icon-moon-display);
 }
 
+.theme-toggle-btn--menu {
+  height: 2rem;
+  width: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: none;
+}
+
 /*
  * Customer table status rows — tint follows color-scheme so dark mode
  * keeps readable contrast with remapped slate text colors.

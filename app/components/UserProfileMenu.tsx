@@ -6,6 +6,7 @@ import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
 import { AccountAvatar } from '@/app/components/accounts/AccountAvatar'
 import { RemoveSavedAccountDialog } from '@/app/components/accounts/RemoveSavedAccountDialog'
+import { ThemeToggle } from '@/app/components/ThemeToggle'
 import {
   accountCanAutoSwitch,
   loadSavedAccounts,
@@ -125,6 +126,7 @@ export function UserProfileMenu({ elevated = false }: UserProfileMenuProps) {
               >
                 Profile settings
               </Link>
+              <ThemeToggle variant="menu" />
               <a
                 href="/logout"
                 role="menuitem"

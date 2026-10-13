@@ -11,7 +11,6 @@ import {
   type SVGProps,
 } from 'react'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
-import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { WhatsAppConnectHost } from '@/app/components/WhatsAppConnectHost'
 
 export type AppNavItem = {
@@ -381,7 +380,6 @@ export function AppShell({
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
               {headerExtra ?? null}
-              <ThemeToggle />
               <UserProfileMenu />
             </div>
           </div>
