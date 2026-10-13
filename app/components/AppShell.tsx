@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type SVGProps,
 } from 'react'
+import { GlobalCustomerSearch } from '@/app/components/GlobalCustomerSearch'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { WhatsAppConnectHost } from '@/app/components/WhatsAppConnectHost'
 
@@ -380,6 +381,7 @@ export function AppShell({
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
               {headerExtra ?? null}
+              <GlobalCustomerSearch />
               <UserProfileMenu />
             </div>
           </div>
