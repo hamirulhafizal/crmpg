@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+
+/* Keep the viewport from scrolling sideways when wide tables/tabs overflow */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 /*
  ---break---
  */

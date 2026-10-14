@@ -323,7 +323,7 @@ export function AppShell({
   )
 
   return (
-    <div className={`min-h-screen bg-background text-foreground ${className}`.trim()}>
+    <div className={`min-h-screen w-full bg-background text-foreground ${className}`.trim()}>
       {/* Mobile drawer backdrop */}
       <div
         className={`fixed inset-0 z-[80] bg-black/40 transition-opacity lg:hidden ${
@@ -362,13 +362,14 @@ export function AppShell({
       </aside>
 
       {/* Main column — flex column so page content can grow and footer stick to bottom */}
-      <div className="flex min-h-screen flex-col lg:pl-64">
-        <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80">
-          <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
+        {/* Fixed to viewport so wide page content cannot drag the header sideways */}
+        <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80 lg:left-64">
+          <div className="flex h-14 w-full min-w-0 items-center gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               <button
                 type="button"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition hover:bg-muted lg:hidden"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground shadow-sm transition hover:bg-muted sm:h-10 sm:w-10 lg:hidden"
                 onClick={() => setMobileOpen(true)}
                 aria-expanded={mobileOpen}
                 aria-controls={panelId}
@@ -376,18 +377,24 @@ export function AppShell({
               >
                 <IconMenu className="h-5 w-5" />
               </button>
-              <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">{title}</h1>
+              <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground sm:text-xl">
+                {title}
+              </h1>
             </div>
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
-              {headerExtra ?? null}
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
               <GlobalCustomerSearch />
+              <WhatsAppConnectHost deferPrompt={deferWhatsAppPrompt} />
+              {headerExtra ? (
+                <div className="hidden items-center sm:flex">{headerExtra}</div>
+              ) : null}
               <UserProfileMenu />
             </div>
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden pt-14">
+          {children}
+        </main>
       </div>
     </div>
   )

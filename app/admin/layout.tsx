@@ -23,7 +23,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <AppShell title="Admin">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">{children}</div>
+      <div className="mx-auto w-full min-w-0 max-w-7xl overflow-x-hidden px-4 py-8 sm:px-6 lg:px-8">
+        {children}
+      </div>
     </AppShell>
   )
 }

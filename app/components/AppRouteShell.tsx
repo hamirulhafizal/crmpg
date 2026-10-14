@@ -91,8 +91,8 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
       showGoogleAds={ready ? showGoogleAds : false}
       deferWhatsAppPrompt={ready ? deferWhatsAppPrompt : true}
     >
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+        <div className="min-w-0 flex-1">
           {ready ? children : <PageContentSkeleton />}
         </div>
         <div className="mt-auto shrink-0">

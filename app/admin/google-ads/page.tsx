@@ -418,16 +418,22 @@ export default function AdminGoogleAdsPage() {
 
   const USER_LIST_PREVIEW = 100
 
+  /** Users not yet in google_ads_participants (eligible to add). */
+  const unparticipatedUsers = useMemo(() => {
+    const enrolled = new Set(participants.map((p) => p.user_id))
+    return users.filter((u) => !enrolled.has(u.id))
+  }, [users, participants])
+
   const filteredUsers = useMemo(() => {
     const q = userSearchQuery.trim().toLowerCase()
-    if (!q) return users.slice(0, USER_LIST_PREVIEW)
-    return users.filter(
+    if (!q) return unparticipatedUsers.slice(0, USER_LIST_PREVIEW)
+    return unparticipatedUsers.filter(
       (u) =>
         (u.email && u.email.toLowerCase().includes(q)) ||
         (u.full_name && u.full_name.toLowerCase().includes(q)) ||
         u.id.toLowerCase().includes(q)
     )
-  }, [users, userSearchQuery])
+  }, [unparticipatedUsers, userSearchQuery])
 
   const selectedParticipantsResolved = useMemo(() => {
     const map = new Map(users.map((u) => [u.id, u]))
@@ -1838,13 +1844,17 @@ export default function AdminGoogleAdsPage() {
                     aria-multiselectable="true"
                     className="absolute z-[60] mt-1 max-h-52 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg ring-1 ring-slate-900/5"
                   >
-                    {!userSearchQuery.trim() && users.length > USER_LIST_PREVIEW ? (
+                    {!userSearchQuery.trim() && unparticipatedUsers.length > USER_LIST_PREVIEW ? (
                       <li className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500">
-                        Showing first {USER_LIST_PREVIEW} users — type to search all.
+                        Showing first {USER_LIST_PREVIEW} non-participants — type to search all.
                       </li>
                     ) : null}
                     {filteredUsers.length === 0 ? (
-                      <li className="px-3 py-2.5 text-sm text-slate-500">No users match your search.</li>
+                      <li className="px-3 py-2.5 text-sm text-slate-500">
+                        {unparticipatedUsers.length === 0
+                          ? 'All users are already participants.'
+                          : 'No non-participant users match your search.'}
+                      </li>
                     ) : (
                       filteredUsers.map((u, idx) => {
                         const isSel = selectedParticipantUserIds.includes(u.id)

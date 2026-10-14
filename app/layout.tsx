@@ -61,7 +61,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
       </head>
       <body
-        className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
+        className={`${GeistSans.variable} ${GeistMono.variable} min-w-0 overflow-x-hidden antialiased`}
         suppressHydrationWarning
       >
         {/* Pure CSS theme control — default follows system; checked inverts (no JS). */}

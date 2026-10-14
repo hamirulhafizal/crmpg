@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/app/lib/supabase/client'
 import {
   PROFILE_COMPLETION_STEPS,
@@ -61,6 +62,12 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
     () => snapshotFromForm(fullName, pgcode, usernamePbo, phone, gmailAppPassword, gmailMessage),
     [fullName, pgcode, usernamePbo, phone, gmailAppPassword, gmailMessage]
   )
+
+  const [portalReady, setPortalReady] = useState(false)
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -261,7 +268,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
 
   const renderFieldInput = (field: RequiredProfileField) => {
     const commonClass =
-      'w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-lg text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:opacity-50'
+      'w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-lg text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 disabled:opacity-50'
     const placeholder =
       PROFILE_COMPLETION_STEPS.find((s) => s.field === field)?.placeholder ?? ''
 
@@ -298,8 +305,8 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
         )
       case 'username_pbo':
         return (
-          <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
-            <span className="shrink-0 text-slate-500">pg2u.my/</span>
+          <div className="flex items-center rounded-2xl border border-border bg-muted/60 px-4 py-3.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/20">
+            <span className="shrink-0 text-muted-foreground">pg2u.my/</span>
             <input
               id="profile-step-username-pgo"
               type="text"
@@ -308,7 +315,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               onChange={(e) => handleFieldChange('username_pbo', e.target.value)}
               placeholder="your-username"
               disabled={saving}
-              className="min-w-0 flex-1 bg-transparent text-lg text-slate-900 outline-none placeholder:text-slate-400"
+              className="min-w-0 flex-1 bg-transparent text-lg text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
         )
@@ -345,7 +352,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               <button
                 type="button"
                 onClick={() => setShowGmailPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-blue-600 hover:text-blue-700"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"
               >
                 {showGmailPassword ? 'Hide' : 'Show'}
               </button>
@@ -354,7 +361,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               href="https://myaccount.google.com/apppasswords"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 active:scale-[0.98]"
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-500/15 active:scale-[0.98] dark:text-blue-300"
             >
               <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path
@@ -366,7 +373,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               </svg>
               Generate Gmail app password
             </a>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Requires 2-Step Verification on your Google Account. Copy the 16-character password and paste it above.
             </p>
           </div>
@@ -382,17 +389,17 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               onChange={(e) => handleFieldChange('gmail_message', e.target.value)}
               placeholder={placeholder}
               disabled={saving}
-              className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm leading-relaxed text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:opacity-50 font-mono"
+              className="w-full resize-y rounded-2xl border border-border bg-card px-4 py-3.5 font-mono text-sm leading-relaxed text-foreground outline-none transition-all duration-200 placeholder:text-muted-foreground focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 disabled:opacity-50"
             />
             <button
               type="button"
               onClick={applyDefaultGmailTemplate}
               disabled={saving}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              className="text-sm font-medium text-blue-600 hover:text-blue-500 disabled:opacity-50 dark:text-blue-400"
             >
               Reset to default template (uses your name &amp; phone)
             </button>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               {'{SenderName}'} is replaced with each customer&apos;s name when email is sent.
             </p>
           </div>
@@ -417,20 +424,20 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
     }
   }
 
-  return (
+  const shell = (
     <div
-      className="fixed inset-0 z-[200] flex flex-col bg-gradient-to-br from-slate-50 via-white to-blue-50/30"
+      className="fixed inset-0 z-[2400] flex flex-col bg-background text-foreground"
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-completion-title"
     >
-      <header className="shrink-0 border-b border-slate-200/80 bg-white/80 px-4 py-4 backdrop-blur-md sm:px-8">
+      <header className="shrink-0 border-b border-border bg-card px-4 py-4 sm:px-8">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
+            <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-400">
               Profile setup
             </p>
-            <h1 id="profile-completion-title" className="truncate text-lg font-semibold text-slate-900">
+            <h1 id="profile-completion-title" className="truncate text-lg font-semibold text-foreground">
               Complete your dealer profile
             </h1>
           </div>
@@ -454,7 +461,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
                         ? 'scale-110 bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                         : done
                           ? 'bg-emerald-500 text-white'
-                          : 'bg-slate-200 text-slate-500'
+                          : 'bg-muted text-muted-foreground'
                     }`}
                     aria-current={active ? 'step' : undefined}
                   >
@@ -468,7 +475,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
                   </div>
                   <span
                     className={`hidden text-[9px] font-medium sm:block ${
-                      active ? 'text-blue-600' : 'text-slate-400'
+                      active ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'
                     }`}
                   >
                     {stepShortLabel(step.field)}
@@ -477,7 +484,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               )
             })}
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
               style={{
@@ -485,7 +492,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
               }}
             />
           </div>
-          <p className="mt-2 text-center text-xs text-slate-500">
+          <p className="mt-2 text-center text-xs text-muted-foreground">
             Step {stepIndex + 1} of {PROFILE_COMPLETION_STEPS.length}
           </p>
         </div>
@@ -495,22 +502,22 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
         <div className="mx-auto flex w-full max-w-lg flex-1 flex-col py-2">
           {loading ? (
             <div className="flex flex-1 flex-col justify-center space-y-4" aria-busy="true">
-              <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-200" />
-              <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
-              <div className="h-14 animate-pulse rounded-2xl bg-slate-100" />
+              <div className="h-8 w-48 animate-pulse rounded-lg bg-muted" />
+              <div className="h-4 w-full animate-pulse rounded bg-muted/70" />
+              <div className="h-14 animate-pulse rounded-2xl bg-muted/70" />
             </div>
           ) : currentStep ? (
             <div key={currentStep.field} className="flex flex-1 flex-col">
-              <h2 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
                 {currentStep.title}
               </h2>
-              <p className="mt-2 text-base text-slate-600">{currentStep.description}</p>
+              <p className="mt-2 text-base text-muted-foreground">{currentStep.description}</p>
 
               <div className="mt-6">{renderFieldInput(currentStep.field)}</div>
 
               {error && (
                 <div
-                  className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                  className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300"
                   role="alert"
                 >
                   {error}
@@ -521,7 +528,7 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
                 getMissingProfileFields(snapshot, userMetadata?.phone, userMetadata?.full_name)
                   .length === 0 &&
                 isLastStep && (
-                  <p className="mt-4 text-sm text-emerald-700">
+                  <p className="mt-4 text-sm text-emerald-700 dark:text-emerald-400">
                     All required fields are filled. Tap finish to access your dashboard.
                   </p>
                 )}
@@ -530,13 +537,13 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-slate-200/80 bg-white/90 px-4 py-4 backdrop-blur-md sm:px-8">
+      <footer className="shrink-0 border-t border-border bg-card px-4 py-4 sm:px-8">
         <div className="mx-auto flex max-w-lg gap-3">
           <button
             type="button"
             onClick={handleBack}
             disabled={stepIndex === 0 || saving || loading}
-            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.98]"
+            className="flex-1 rounded-2xl border border-border bg-background px-4 py-3.5 text-sm font-semibold text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.98]"
           >
             Back
           </button>
@@ -549,10 +556,14 @@ export function ProfileCompletionDialog({ userId, userEmail, userMetadata, onCom
             {saving ? 'Saving…' : isLastStep ? 'Finish setup' : 'Continue'}
           </button>
         </div>
-        <p className="mx-auto mt-3 max-w-lg text-center text-xs text-slate-500">
+        <p className="mx-auto mt-3 max-w-lg text-center text-xs text-muted-foreground">
           You must complete your profile before using the dashboard.
         </p>
       </footer>
     </div>
   )
+
+  // Portal to body so AppShell stacking cannot let WhatsApp sheet paint over onboarding.
+  if (!portalReady || typeof document === 'undefined') return null
+  return createPortal(shell, document.body)
 }

@@ -255,10 +255,21 @@ export default function DashboardPage() {
   const showPasswordGate = needsPasswordSetup
   const showProfileGate = !needsPasswordSetup && needsProfileSetup
 
+  // Defer as early as profile/password needs are known (not only after gates resolve),
+  // so WhatsApp never auto-opens during onboarding.
   useEffect(() => {
-    setDeferWhatsAppPrompt(showPasswordGate || accountChecksLoading)
+    const defer =
+      accountChecksLoading || needsPasswordSetup || needsProfileSetup || showPasswordGate || showProfileGate
+    setDeferWhatsAppPrompt(defer)
     return () => setDeferWhatsAppPrompt(false)
-  }, [showPasswordGate, accountChecksLoading, setDeferWhatsAppPrompt])
+  }, [
+    accountChecksLoading,
+    needsPasswordSetup,
+    needsProfileSetup,
+    showPasswordGate,
+    showProfileGate,
+    setDeferWhatsAppPrompt,
+  ])
 
   if (loading || !user || accountChecksLoading) {
     return <PageContentSkeleton />

@@ -900,84 +900,88 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="min-w-0 space-y-8">
-      <div>
+    <div className="min-w-0 max-w-full space-y-8 overflow-x-hidden">
+      <div className="min-w-0">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Web app settings</h1>
         <p className="mt-1 text-sm text-slate-600">
           Manage users, WAHA, tags, and payment gateway (Bayarcash) from one place.
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1">
-        <button
-          type="button"
-          onClick={() => setTab('users')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          User Management
-        </button>
+      <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1">
+        <div className="inline-flex min-w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:flex sm:flex-wrap">
+          <button
+            type="button"
+            onClick={() => setTab('users')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'users' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            User Management
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setTab('servers')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          WhatsApp Servers
-        </button>
+          <button
+            type="button"
+            onClick={() => setTab('servers')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'servers' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            WhatsApp Servers
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setTab('tags')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'tags' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          Tags
-        </button>
+          <button
+            type="button"
+            onClick={() => setTab('tags')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'tags' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            Tags
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setTab('payment')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'payment' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          Payment gateway
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('automation_templates')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'automation_templates' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          Automation templates
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('campaign_workflow_defaults')}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === 'campaign_workflow_defaults' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
-        >
-          Default workflow
-        </button>
+          <button
+            type="button"
+            onClick={() => setTab('payment')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'payment' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            Payment gateway
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('automation_templates')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'automation_templates' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            Automation templates
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('campaign_workflow_defaults')}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition sm:px-4 ${tab === 'campaign_workflow_defaults' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+          >
+            Default workflow
+          </button>
+        </div>
       </div>
 
       {tab === 'users' && (
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
+        <section className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xl shadow-slate-900/5 sm:p-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <h2 className="text-lg font-semibold text-slate-900">User management</h2>
               <p className="text-sm text-slate-600">Create users, edit profile details, and manage WAHA sessions/server assignment.</p>
             </div>
-            <button
-              type="button"
-              onClick={openCreateUser}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              Add user
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSyncLatestSessions()}
-              disabled={syncingSessions}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {syncingSessions ? 'Syncing...' : 'Fetch latest sessions'}
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:shrink-0">
+              <button
+                type="button"
+                onClick={openCreateUser}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Add user
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSyncLatestSessions()}
+                disabled={syncingSessions}
+                className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {syncingSessions ? 'Syncing...' : 'Fetch latest sessions'}
+              </button>
+            </div>
           </div>
 
           <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-5">
@@ -1138,16 +1142,16 @@ export default function AdminSettingsPage() {
       )}
 
       {tab === 'servers' && (
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
+        <section className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xl shadow-slate-900/5 sm:p-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <h2 className="text-lg font-semibold text-slate-900">WhatsApp servers</h2>
               <p className="text-sm text-slate-600">Manage WAHA and WasenderAPI connections for dealers.</p>
-            </div>    
+            </div>
             <button
               type="button"
               onClick={openCreateServer}
-              className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
             >
               Add server
             </button>
@@ -1160,16 +1164,16 @@ export default function AdminSettingsPage() {
           {loadingServers ? (
             <p className="text-sm text-slate-500">Loading...</p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-full text-left text-sm">
+            <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200">
+              <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Provider</th>
                     <th className="px-4 py-3">Base URL</th>
                     <th className="px-4 py-3">API key</th>
                     <th className="px-4 py-3">Dashboard pass</th>
-                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Default</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
@@ -1178,6 +1182,22 @@ export default function AdminSettingsPage() {
                   {servers.map((s) => (
                     <tr key={s.id}>
                       <td className="px-4 py-3 font-medium text-slate-900">{s.name}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+                            s.status === 'online'
+                              ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                              : 'bg-slate-100 text-slate-600 ring-slate-200'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              s.status === 'online' ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
+                          />
+                          {s.status === 'online' ? 'Online' : 'Offline'}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ring-1 ${
@@ -1189,12 +1209,15 @@ export default function AdminSettingsPage() {
                           {s.provider_type === 'wasender' ? 'Wasender' : 'WAHA'}
                         </span>
                       </td>
-                      <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-700">{s.api_base_url}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-700">{s.api_key || '—'}</td>
+                      <td className="max-w-[200px] truncate px-4 py-3 font-mono text-xs text-slate-700" title={s.api_base_url}>
+                        {s.api_base_url}
+                      </td>
+                      <td className="max-w-[160px] truncate px-4 py-3 font-mono text-xs text-slate-700" title={s.api_key || undefined}>
+                        {s.api_key || '—'}
+                      </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
                         {s.dashboard_pass && String(s.dashboard_pass).trim() ? '••••••••' : '—'}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{s.status === 'online' ? 'Online' : 'Offline'}</td>
                       <td className="px-4 py-3 text-slate-700">{s.is_default ? 'Yes' : '—'}</td>
                       <td className="px-4 py-3 text-right">
                         <button onClick={() => openEditServer(s)} className="mr-2 text-blue-600 hover:text-blue-800">Edit</button>

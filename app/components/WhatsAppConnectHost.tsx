@@ -92,15 +92,20 @@ function WahaStatusBadge({
   connected: boolean
   onConnectClick?: () => void
 }) {
+  /** Compact on phones (dot-only); full label from `md` (768px) up. */
+  const shell =
+    'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-xs font-medium transition md:h-auto md:w-auto md:gap-2 md:rounded-full md:px-3 md:py-1'
+
   if (checking) {
     return (
       <Link
         href="/ws-integration"
-        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
+        className={`${shell} border-border bg-muted text-muted-foreground hover:bg-muted/80`}
         title="WhatsApp integration"
+        aria-label="WhatsApp status loading"
       >
         <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-        WhatsApp…
+        <span className="hidden md:inline">WhatsApp…</span>
       </Link>
     )
   }
@@ -109,11 +114,12 @@ function WahaStatusBadge({
     return (
       <Link
         href="/ws-integration"
-        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100"
-        title="WhatsApp integration"
+        className={`${shell} border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400`}
+        title="WhatsApp connected"
+        aria-label="WhatsApp ON"
       >
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        WhatsApp ON
+        <span className="hidden md:inline">WhatsApp ON</span>
       </Link>
     )
   }
@@ -123,11 +129,12 @@ function WahaStatusBadge({
       <button
         type="button"
         onClick={onConnectClick}
-        className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
+        className={`${shell} border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400`}
         title="Connect WhatsApp"
+        aria-label="WhatsApp OFF — connect"
       >
         <span className="h-2 w-2 rounded-full bg-amber-500" />
-        WhatsApp OFF
+        <span className="hidden md:inline">WhatsApp OFF</span>
       </button>
     )
   }
@@ -135,11 +142,12 @@ function WahaStatusBadge({
   return (
     <Link
       href="/ws-integration"
-      className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
-      title="WhatsApp integration"
+      className={`${shell} border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400`}
+      title="WhatsApp offline"
+      aria-label="WhatsApp OFF"
     >
       <span className="h-2 w-2 rounded-full bg-amber-500" />
-      WhatsApp OFF
+      <span className="hidden md:inline">WhatsApp OFF</span>
     </Link>
   )
 }
@@ -346,6 +354,12 @@ export function WhatsAppConnectHost({ deferPrompt = false }: WhatsAppConnectHost
       cancelled = true
     }
   }, [userId, user, supabase])
+
+  // Password / profile onboarding owns the screen — never keep WA sheet open underneath.
+  useEffect(() => {
+    if (!deferPrompt) return
+    setDialogOpen(false)
+  }, [deferPrompt])
 
   // Auto-open create/reconnect when WhatsApp is offline.
   useEffect(() => {
