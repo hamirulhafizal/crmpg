@@ -4,7 +4,10 @@ import {
   getBayarcashPortalKey,
   getBayarcashSecret,
 } from '@/app/lib/bayarcash/config'
-import { createFpxDirectDebitEnrolmentChecksum } from '@/app/lib/bayarcash/checksum'
+import {
+  createFpxDirectDebitEnrolmentChecksum,
+  sanitizeBayarcashText,
+} from '@/app/lib/bayarcash/checksum'
 
 export type CreateMandateEnrollmentParams = {
   orderNumber: string
@@ -87,13 +90,16 @@ export async function createMandateEnrollment(
     return { ok: false, error: 'Valid phone number is required for Direct Debit' }
   }
 
-  const payerName = params.payerName.trim()
+  // Sanitize BEFORE checksum — profile names like "Dr Ummu | Hamirul" contain `|`,
+  // which is Bayarcash's checksum join delimiter and causes 422 "Data checksum mismatch".
+  const payerName = sanitizeBayarcashText(params.payerName, 150) || 'Customer'
   const payerEmail = truncateEmail(params.payerEmail)
-  const payerIdType = params.payerIdType ?? 1
+  const payerIdType = String(params.payerIdType ?? 1)
   const frequencyMode = params.frequencyMode
-  const applicationReason = params.applicationReason.trim().slice(0, 200)
+  const applicationReason = sanitizeBayarcashText(params.applicationReason, 200) || 'Subscription'
 
-  const checksum = createFpxDirectDebitEnrolmentChecksum(secret, {
+  // Build signed fields first (same values go in body + checksum), matching PHP SDK order.
+  const signed = {
     order_number: params.orderNumber,
     amount,
     payer_name: payerName,
@@ -103,19 +109,15 @@ export async function createMandateEnrollment(
     payer_id: payerId,
     application_reason: applicationReason,
     frequency_mode: frequencyMode,
-  })
+  }
+
+  const checksum = createFpxDirectDebitEnrolmentChecksum(secret, signed)
 
   const body: Record<string, unknown> = {
     portal_key: portalKey,
-    order_number: params.orderNumber,
-    amount,
-    payer_id_type: payerIdType,
-    payer_id: payerId,
-    payer_name: payerName,
-    payer_email: payerEmail,
-    payer_telephone_number: phone,
-    frequency_mode: frequencyMode,
-    application_reason: applicationReason,
+    ...signed,
+    // API accepts int; checksum was computed with string "1" (PHP implode cast).
+    payer_id_type: Number(payerIdType) || 1,
     return_url: params.returnUrl,
     checksum,
   }

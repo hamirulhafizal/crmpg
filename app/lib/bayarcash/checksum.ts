@@ -2,7 +2,7 @@ import { createHmac } from 'crypto'
 
 /**
  * Bayarcash checksum: sort field keys alphabetically, join values with `|`, HMAC-SHA256 hex.
- * @see bayarcash-rs / bayarcash npm SDKs
+ * Matches official PHP / Ruby / Rust SDKs (`createFpxDirectDebitEnrolmentChecksumValue`).
  */
 export function bayarcashHmacChecksum(
   secretKey: string,
@@ -10,7 +10,22 @@ export function bayarcashHmacChecksum(
 ): string {
   const keys = Object.keys(fields).sort()
   const payload = keys.map((k) => String(fields[k] ?? '')).join('|')
-  return createHmac('sha256', secretKey).update(payload).digest('hex')
+  return createHmac('sha256', secretKey).update(payload, 'utf8').digest('hex')
+}
+
+/**
+ * Strip characters that break Bayarcash's `|`-joined checksum recipe or get
+ * normalised away on their gateway before verification (e.g. `|` in display names).
+ */
+export function sanitizeBayarcashText(value: string, maxLen: number): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/[|]+/g, ' ')
+    .replace(/[—–−]/g, '-') // em/en dashes → ASCII hyphen
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen)
 }
 
 /** Checksum for FPX Direct Debit e-Mandate enrollment. */
@@ -35,7 +50,8 @@ export function createFpxDirectDebitEnrolmentChecksum(
     order_number: data.order_number,
     payer_email: data.payer_email,
     payer_id: data.payer_id,
-    payer_id_type: data.payer_id_type,
+    // Always string — matches PHP implode((string)$payer_id_type)
+    payer_id_type: String(data.payer_id_type),
     payer_name: data.payer_name,
     payer_telephone_number: data.payer_telephone_number,
   })

@@ -144,7 +144,13 @@ export async function POST(request: Request) {
     }
 
     const frequencyMode = pkg.billing_period === 'yearly' ? 'YR' : 'MT'
-    const applicationReason = `Google Ads ${pkg.name || 'subscription'}`.slice(0, 200)
+    // Avoid "Google Ads Google Ads — …" when package name already includes the brand.
+    const rawPkgName = String(pkg.name || '').trim()
+    const applicationReason = (
+      rawPkgName
+        ? rawPkgName.replace(/^Google Ads\s*[—–-]?\s*/i, 'Google Ads - ')
+        : 'Google Ads subscription'
+    ).slice(0, 200)
 
     const prevMeta = (subscription.payment_metadata as Record<string, unknown>) || {}
     const payment_metadata = {
