@@ -76,6 +76,8 @@ export function GlobalCustomerSearch() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<GlobalSearchCustomer[]>([])
+  /** Keep the sheet inside the visible area when the mobile keyboard opens. */
+  const [vv, setVv] = useState<{ top: number; height: number } | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -86,6 +88,28 @@ export function GlobalCustomerSearch() {
     const t = window.setTimeout(() => setDebounced(query.trim()), 300)
     return () => window.clearTimeout(t)
   }, [query, open])
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    const sync = () => {
+      if (!viewport) {
+        setVv({ top: 0, height: window.innerHeight })
+        return
+      }
+      setVv({ top: viewport.offsetTop, height: viewport.height })
+    }
+    sync()
+    viewport?.addEventListener('resize', sync)
+    viewport?.addEventListener('scroll', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      viewport?.removeEventListener('resize', sync)
+      viewport?.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+      setVv(null)
+    }
+  }, [open])
 
   const focusSearchInput = useCallback(() => {
     const el = inputRef.current
@@ -190,6 +214,15 @@ export function GlobalCustomerSearch() {
     setDebounced(query.trim())
   }
 
+  const overlayStyle =
+    vv != null
+      ? {
+          top: vv.top,
+          height: Math.max(vv.height, 240),
+          bottom: 'auto' as const,
+        }
+      : undefined
+
   const dialog =
     mounted &&
     createPortal(
@@ -197,7 +230,8 @@ export function GlobalCustomerSearch() {
         {open ? (
           <motion.div
             key="global-customer-search"
-            className="fixed inset-0 z-[2050] flex items-end justify-center overflow-hidden overscroll-none sm:items-center sm:p-4"
+            className="fixed inset-x-0 z-[2050] flex items-stretch justify-center overflow-hidden overscroll-none sm:inset-0 sm:items-center sm:p-4"
+            style={overlayStyle ?? { top: 0, bottom: 0 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -214,10 +248,10 @@ export function GlobalCustomerSearch() {
               role="dialog"
               aria-modal="true"
               aria-labelledby={titleId}
-              className="relative flex max-h-[min(88vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-border bg-card text-card-foreground shadow-2xl sm:rounded-2xl"
-              initial={{ y: 24, opacity: 0 }}
+              className="relative flex h-full max-h-full w-full max-w-lg flex-col overflow-hidden border-border bg-card text-card-foreground shadow-2xl sm:h-auto sm:max-h-[min(88vh,640px)] sm:rounded-2xl sm:border"
+              initial={{ y: -12, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 16, opacity: 0 }}
+              exit={{ y: -8, opacity: 0 }}
               transition={{ type: 'tween', duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               onAnimationComplete={() => {
                 if (open) focusSearchInput()
