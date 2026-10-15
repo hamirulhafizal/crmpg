@@ -1,6 +1,6 @@
 # PWA Setup
 
-Progressive Web App features for Public Gold CRM at **https://publicgolds.com**.
+Progressive Web App features for Public Gold CRM at **https://crmpg.vercel.app**.
 
 ## Environment variables
 
@@ -8,12 +8,13 @@ Add to `.env` (local) and Vercel production:
 
 ```bash
 # Site URL (required for notification icons and tap-through links)
-NEXT_PUBLIC_SITE_URL=https://publicgolds.com
+NEXT_PUBLIC_APP_URL=https://crmpg.vercel.app
+NEXT_PUBLIC_SITE_URL=https://crmpg.vercel.app
 
 # VAPID keys for Web Push — generate once and keep stable
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
-VAPID_SUBJECT=mailto:support@publicgolds.com
+VAPID_SUBJECT=mailto:support@crmpg.vercel.app
 ```
 
 Generate keys:

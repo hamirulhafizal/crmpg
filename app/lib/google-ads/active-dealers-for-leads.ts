@@ -70,19 +70,48 @@ function normalizeSub(raw: ParticipantRow) {
   return Array.isArray(s) ? s[0] : s
 }
 
+/**
+ * Resolve auth emails without N parallel getUserById calls (those stampede Auth
+ * when the landing page hits /api/get-all-agents during Auth/DB degradation).
+ */
 async function authEmailsAndPhones(
   admin: SupabaseClient,
   userIds: string[]
 ): Promise<Map<string, { email: string; phone?: string }>> {
   const map = new Map<string, { email: string; phone?: string }>()
-  const unique = [...new Set(userIds)]
-  await Promise.all(
-    unique.map(async (id) => {
-      const { data, error } = await admin.auth.admin.getUserById(id)
-      if (error || !data.user?.email) return
-      map.set(id, { email: data.user.email, phone: data.user.phone ?? undefined })
-    })
-  )
+  const needed = new Set(userIds)
+  if (needed.size === 0) return map
+
+  let page = 1
+  const perPage = 200
+  // Cap pages so a huge auth.users table cannot hang this endpoint forever.
+  const maxPages = 25
+  while (page <= maxPages && map.size < needed.size) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage })
+    if (error) throw new Error(error.message)
+    const users = data?.users ?? []
+    for (const u of users) {
+      if (!needed.has(u.id) || !u.email) continue
+      map.set(u.id, { email: u.email, phone: u.phone ?? undefined })
+    }
+    if (users.length < perPage) break
+    page += 1
+  }
+
+  // Fill any remaining ids with a small concurrency limit (avoids Auth stampede).
+  const missing = [...needed].filter((id) => !map.has(id))
+  const concurrency = 4
+  for (let i = 0; i < missing.length; i += concurrency) {
+    const chunk = missing.slice(i, i + concurrency)
+    await Promise.all(
+      chunk.map(async (id) => {
+        const { data, error } = await admin.auth.admin.getUserById(id)
+        if (error || !data.user?.email) return
+        map.set(id, { email: data.user.email, phone: data.user.phone ?? undefined })
+      })
+    )
+  }
+
   return map
 }
 

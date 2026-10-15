@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { appUrl, getAppBaseUrl, getAppHostLabel } from '@/app/lib/push/site-url'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | CRMPG by KEM',
   description:
     'Privacy policy for CRMPG by KEM, including the Chrome extension used by Public Gold dealers to sync Business Center customer data.',
   alternates: {
-    canonical: 'https://publicgolds.com/privacy',
+    canonical: appUrl('/privacy'),
   },
 }
 
@@ -39,7 +40,7 @@ export default function PrivacyPage() {
           <h1 className="text-3xl font-semibold text-slate-900 mt-0">Privacy Policy</h1>
           <p className="text-slate-600 text-lg">
             This policy describes how <strong>CRMPG by KEM</strong> (the web application at{' '}
-            <a href="https://publicgolds.com">publicgolds.com</a> and the related Chrome extension)
+            <a href={getAppBaseUrl()}>{getAppHostLabel()}</a> and the related Chrome extension)
             collects, uses, and protects information.
           </p>
 

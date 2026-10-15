@@ -18,7 +18,7 @@ type Body = {
 }
 
 function getAppOrigin(request: Request): string {
-  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || '')
+  const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || '')
     .trim()
     .replace(/\/+$/, '')
   if (fromEnv) return fromEnv

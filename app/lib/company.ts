@@ -1,11 +1,16 @@
+import { getAppBaseUrl, getAppHostLabel } from '@/app/lib/push/site-url'
+
+const appBase = getAppBaseUrl()
+const appHost = getAppHostLabel()
+
 /** Public company details used on About / Contact / legal pages. */
 export const COMPANY = {
   name: 'RAKAN AUTOMASI MARKETING',
   tradingAs: 'RAKAN AUTOMASI MARKETING',
   registrationNumber: '202603241560 (CA0427505-X)',
   address: '149 JALAN TERATAI HIJAU KG DATO HJ HASNAH, AHMAD , 81100 JOHOR BAHRU, JOHOR',
-  website: 'https://publicgolds.com/',
-  websiteLabel: 'publicgolds.com',
+  website: `${appBase}/`,
+  websiteLabel: appHost,
   supportEmail: 'hamirulhafizal.pg@gmail.com',
   productName: 'Public Gold CRM',
 } as const

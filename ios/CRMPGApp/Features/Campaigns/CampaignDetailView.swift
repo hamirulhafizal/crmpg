@@ -249,7 +249,7 @@ struct CampaignDetailView: View {
         .sheet(isPresented: $showEditWeb) {
             CampaignWebEditorSheet(
                 title: "Edit campaign",
-                url: URL(string: "https://www.publicgolds.com/dashboard/campaigns/\(viewModel.campaignId.uuidString)/edit")!
+                url: URL(string: "/dashboard/campaigns/\(viewModel.campaignId.uuidString)/edit", relativeTo: AppConfig.apiBaseURL)!.absoluteURL
             )
         }
         .overlay {

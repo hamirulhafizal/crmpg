@@ -169,7 +169,7 @@ struct CampaignListView: View {
         .sheet(isPresented: $showCreateWeb) {
             CampaignWebEditorSheet(
                 title: "New campaign",
-                url: URL(string: "https://www.publicgolds.com/dashboard/campaigns/new")!
+                url: URL(string: "/dashboard/campaigns/new", relativeTo: AppConfig.apiBaseURL)!.absoluteURL
             )
         }
         .overlay(alignment: .bottom) {

@@ -104,9 +104,9 @@ struct ProfileView: View {
                 } label: {
                     Label("CRM keyboard setup", systemImage: "keyboard")
                 }
-                Link("Privacy policy", destination: URL(string: "https://www.publicgolds.com/privacy")!)
-                Link("Chrome extension", destination: URL(string: "https://www.publicgolds.com/extension-download")!)
-                Link("Manage on web", destination: URL(string: "https://www.publicgolds.com/profile")!)
+                Link("Privacy policy", destination: URL(string: "/privacy", relativeTo: AppConfig.apiBaseURL)!.absoluteURL)
+                Link("Chrome extension", destination: URL(string: "/extension-download", relativeTo: AppConfig.apiBaseURL)!.absoluteURL)
+                Link("Manage on web", destination: URL(string: "/profile", relativeTo: AppConfig.apiBaseURL)!.absoluteURL)
             }
 
             Section {

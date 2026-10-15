@@ -2,12 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SitePublicChrome } from '@/app/components/SitePublicChrome'
 import { COMPANY } from '@/app/lib/company'
+import { appUrl } from '@/app/lib/push/site-url'
 
 export const metadata: Metadata = {
   title: `Contact us | ${COMPANY.name}`,
   description: `Contact ${COMPANY.name} for support, orders, privacy requests, and general enquiries.`,
   alternates: {
-    canonical: 'https://publicgolds.com/contact',
+    canonical: appUrl('/contact'),
   },
 }
 

@@ -69,7 +69,7 @@ final class BillingViewModel {
         } catch let error as APIError {
             errorMessage = error.localizedDescription
             // Fallback: open web billing page
-            checkoutURL = URL(string: "https://www.publicgolds.com/dashboard/billing")
+            checkoutURL = URL(string: "/dashboard/billing", relativeTo: AppConfig.apiBaseURL)!.absoluteURL
             infoMessage = "Opening web billing — native checkout needs the API deployed."
         } catch {
             errorMessage = error.localizedDescription

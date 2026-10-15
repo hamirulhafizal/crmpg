@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { SitePublicChrome } from '@/app/components/SitePublicChrome'
 import { POLICY_CATALOG, getPolicyMeta, isPolicySlug } from '@/app/lib/policy/catalog'
 import { loadPolicy } from '@/app/lib/policy/load-policy'
+import { appUrl } from '@/app/lib/push/site-url'
 import { PolicyDocument } from '@/app/policy/_components/PolicyDocument'
 import { PolicyNav } from '@/app/policy/_components/PolicyNav'
 
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${meta.title} | RAKAN AUTOMASI MARKETING`,
     description: meta.description,
     alternates: {
-      canonical: `https://publicgolds.com/policy/${meta.slug}`,
+      canonical: appUrl(`/policy/${meta.slug}`),
     },
   }
 }

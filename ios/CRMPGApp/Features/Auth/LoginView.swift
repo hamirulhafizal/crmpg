@@ -115,7 +115,7 @@ struct LoginView: View {
 
                             Link(
                                 "Forgot password?",
-                                destination: URL(string: "https://www.publicgolds.com/forgot-password")!
+                                destination: URL(string: "/forgot-password", relativeTo: AppConfig.apiBaseURL)!.absoluteURL
                             )
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(PGColors.brandPurple)

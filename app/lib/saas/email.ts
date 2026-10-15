@@ -1,7 +1,11 @@
 import nodemailer from 'nodemailer'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
-const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_URL || 'https://crmpg.vercel.app').replace(/\/$/, '')
+const APP_ORIGIN = (
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'http://localhost:3000'
+).replace(/\/$/, '')
 
 const BILLING_PATH = '/dashboard/billing'
 

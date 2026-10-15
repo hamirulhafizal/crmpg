@@ -1,6 +1,6 @@
 # Public Gold CRM — Native iOS App Roadmap
 
-End-to-end roadmap for building a **native iOS app** (Swift / SwiftUI) for [Public Gold CRM](https://www.publicgolds.com), backed by the existing Next.js + Supabase web platform.
+End-to-end roadmap for building a **native iOS app** (Swift / SwiftUI) for [Public Gold CRM](https://crmpg.vercel.app), backed by the existing Next.js + Supabase web platform.
 
 > **Stack decision:** Native iOS first. Android is a separate future phase (Kotlin / Jetpack Compose recommended for parity).
 >
@@ -71,7 +71,7 @@ Give Public Gold dealers a **first-class mobile experience** for daily CRM work:
 
 | Asset | Status |
 |-------|--------|
-| Web app (Next.js 15) | ✅ Production at `publicgolds.com` |
+| Web app (Next.js 15) | ✅ Production at `crmpg.vercel.app` |
 | Supabase Auth + Postgres + RLS | ✅ Shared backend |
 | 144+ REST API routes under `/api/*` | ✅ Primary integration surface |
 | PWA + Web Push (VAPID) | ✅ Web only — **not usable for native iOS** |
@@ -332,7 +332,7 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 - [ ] Foreground banner display
 - [x] Custom URL scheme deep links (`crmpg://customers?…`) from widgets
 - [ ] Tap push → deep link to route (match `PUSH_NAVIGATE_ROUTES`)
-- [ ] Universal Links: `https://www.publicgolds.com/customers` opens app if installed
+- [ ] Universal Links: `https://crmpg.vercel.app/customers` opens app if installed
 
 ### 3.3 Backend notification types
 
@@ -525,7 +525,7 @@ Web stores accounts in `localStorage` (`crmpg_saved_accounts_v1`). iOS equivalen
 - [ ] App Store Connect listing: name, subtitle, description, keywords
 - [ ] Screenshots (6.7", 6.5", 5.5" if supporting older)
 - [ ] App Preview video (optional)
-- [ ] Privacy policy URL: `https://www.publicgolds.com/privacy`
+- [ ] Privacy policy URL: `https://crmpg.vercel.app/privacy`
 - [ ] Support URL + contact email
 - [ ] Age rating questionnaire
 - [ ] Export compliance
@@ -598,7 +598,7 @@ Consolidated server-side tasks across all phases:
 
 ### Universal Links setup
 
-Host at `https://www.publicgolds.com/.well-known/apple-app-site-association`:
+Host at `https://crmpg.vercel.app/.well-known/apple-app-site-association`:
 
 ```json
 {
@@ -681,7 +681,7 @@ Core/
 |---------|-------------------|---------------|
 | Supabase Auth | supabase-swift | `NEXT_PUBLIC_SUPABASE_URL`, anon key |
 | Google Sign-In | GoogleSignIn-iOS | Google OAuth iOS client ID |
-| REST API | URLSession → `publicgolds.com` | Existing Vercel deployment |
+| REST API | URLSession → `crmpg.vercel.app` | Existing Vercel deployment |
 | APNs | UserNotifications | APNs .p8 key, Team ID, Key ID |
 | Bayarcash | Safari checkout + deep link | Existing webhook |
 | OpenAI | Via `/api/openai/*` only | Server-side key |

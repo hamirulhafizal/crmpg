@@ -79,7 +79,7 @@ export function parseWahaErrorBody(text: string, status: number): string {
   return `${oneLine.slice(0, 197)}…`
 }
 
-const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || 'https://api.publicgolds.com').replace(/\/$/, '')
+const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || '').replace(/\/$/, '')
 const ENV_API_KEY = process.env.WAHA_API_KEY || ''
 
 function normalizeBaseUrl(value: string): string {

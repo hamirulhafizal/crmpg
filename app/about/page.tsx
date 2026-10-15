@@ -2,12 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SitePublicChrome } from '@/app/components/SitePublicChrome'
 import { COMPANY } from '@/app/lib/company'
+import { appUrl, getAppHostLabel } from '@/app/lib/push/site-url'
 
 export const metadata: Metadata = {
   title: `About us | ${COMPANY.name}`,
-  description: `Learn about ${COMPANY.name} and Public Gold CRM on publicgolds.com.`,
+  description: `Learn about ${COMPANY.name} and Public Gold CRM on ${getAppHostLabel()}.`,
   alternates: {
-    canonical: 'https://publicgolds.com/about',
+    canonical: appUrl('/about'),
   },
 }
 

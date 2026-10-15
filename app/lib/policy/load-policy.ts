@@ -6,6 +6,7 @@ import {
   type PolicyMeta,
   type PolicySlug,
 } from '@/app/lib/policy/catalog'
+import { getAppBaseUrl } from '@/app/lib/push/site-url'
 
 export type PolicyBlock =
   | { type: 'heading'; level: 2 | 3; text: string }
@@ -80,10 +81,19 @@ export function parsePolicyBody(sectionText: string): PolicyBlock[] {
 
 let cachedRaw: string | null = null
 
+function applyAppUrl(raw: string): string {
+  const base = getAppBaseUrl()
+  return raw
+    .replaceAll('https://www.publicgolds.com', base)
+    .replaceAll('http://www.publicgolds.com', base)
+    .replaceAll('https://publicgolds.com', base)
+    .replaceAll('http://publicgolds.com', base)
+}
+
 async function readPolicySource(): Promise<string> {
   if (cachedRaw) return cachedRaw
   const filePath = path.join(process.cwd(), 'public', 'policy', 'content.txt')
-  cachedRaw = await readFile(filePath, 'utf8')
+  cachedRaw = applyAppUrl(await readFile(filePath, 'utf8'))
   return cachedRaw
 }
 

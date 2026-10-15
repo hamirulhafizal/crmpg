@@ -1,12 +1,12 @@
 import webpush from 'web-push'
 
-import { getSiteBaseUrl } from '@/app/lib/push/site-url'
+import { getAppHostLabel, getSiteBaseUrl } from '@/app/lib/push/site-url'
 
 export { getSiteBaseUrl }
 
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@publicgolds.com'
+const vapidSubject = process.env.VAPID_SUBJECT || `mailto:support@${getAppHostLabel()}`
 
 let initialized = false
 

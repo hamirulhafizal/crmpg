@@ -8,7 +8,7 @@ import {
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import type { WhatsAppProvider, WhatsAppServerConfig, UserWhatsAppSessionRow } from '@/app/lib/whatsapp/types'
 
-const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || 'https://api.publicgolds.com').replace(/\/$/, '')
+const ENV_BASE_URL = (process.env.WAHA_API_BASE_URL || '').replace(/\/$/, '')
 const ENV_API_KEY = process.env.WAHA_API_KEY || ''
 const ENV_WASENDER_BASE = (process.env.WASENDER_API_BASE_URL || 'https://wasenderapi.com').replace(/\/$/, '')
 const ENV_WASENDER_PAT = process.env.WASENDER_API_TOKEN || process.env.WASENDER_API_KEY || ''

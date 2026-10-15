@@ -1,12 +1,70 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/** Avoid hanging the whole request when Supabase Auth is 504 / slow. */
+const AUTH_GET_USER_TIMEOUT_MS = 4_000
+
+function isStaticOrPublicAsset(pathname: string): boolean {
+  if (
+    pathname === '/sw.js' ||
+    pathname === '/manifest.json' ||
+    pathname === '/robots.txt' ||
+    pathname === '/favicon.ico' ||
+    pathname === '/icon' ||
+    pathname === '/apple-icon'
+  ) {
+    return true
+  }
+  // Public marketing / policy pages — no session gate needed
+  if (
+    pathname === '/' ||
+    pathname === '/about' ||
+    pathname === '/contact' ||
+    pathname === '/privacy' ||
+    pathname.startsWith('/policy/')
+  ) {
+    return true
+  }
+  // Public APIs that must not block on Auth
+  if (pathname.startsWith('/api/get-all-agents') || pathname.startsWith('/api/public/')) {
+    return true
+  }
+  return false
+}
+
+async function getUserWithTimeout(
+  getUser: () => Promise<{ data: { user: unknown }; error: unknown }>
+): Promise<{ user: { id: string } | null; timedOut: boolean }> {
+  let timedOut = false
+  try {
+    const result = await Promise.race([
+      getUser(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          timedOut = true
+          reject(new Error('auth_get_user_timeout'))
+        }, AUTH_GET_USER_TIMEOUT_MS)
+      }),
+    ])
+    const user = (result.data?.user as { id: string } | null) ?? null
+    return { user, timedOut: false }
+  } catch {
+    return { user: null, timedOut }
+  }
+}
+
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Never call Supabase Auth for assets / public pages (prevents Auth stampede + 25s kills).
+  if (isStaticOrPublicAsset(pathname)) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   })
 
-  
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -16,7 +74,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -28,15 +86,10 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
+  // IMPORTANT: call getUser soon after createServerClient (cookie refresh).
+  // Fail fast on Auth 504 so middleware does not eat the full Vercel 25s budget.
+  const { user } = await getUserWithTimeout(() => supabase.auth.getUser())
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const pathname = request.nextUrl.pathname
   const isCustomerPortal =
     pathname.startsWith('/pg-gold-saver') ||
     pathname.startsWith('/customer') ||
@@ -89,19 +142,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
-  // creating a new response object with NextResponse.next() make sure to:
-  // 1. Pass the request in it, like so:
-  //    const myNewResponse = NextResponse.next({ request })
-  // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-  // 3. Change the myNewResponse object to fit your needs, but avoid changing
-  //    the cookies!
-  // 4. Finally:
-  //    return myNewResponse
-  // If this is not done, you may be causing the browser and server to go out
-  // of sync and terminate the user's session prematurely.
-
   return supabaseResponse
 }
-

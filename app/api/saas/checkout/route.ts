@@ -12,7 +12,7 @@ import { requireUserApi } from '@/app/lib/auth/require-user'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 function getAppOrigin(request: Request): string {
-  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+  const fromEnv = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '')
   if (fromEnv) return fromEnv
   const u = new URL(request.url)
   return `${u.protocol}//${u.host}`

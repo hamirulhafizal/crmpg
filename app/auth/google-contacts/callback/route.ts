@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   const clientId = process.env.GOOGLE_CONTACTS_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CONTACTS_CLIENT_SECRET
   const redirectUri = process.env.GOOGLE_CONTACTS_REDIRECT_URI || 
-    `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'}/auth/google-contacts/callback`
+    `${(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')}/auth/google-contacts/callback`
 
   try {
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {

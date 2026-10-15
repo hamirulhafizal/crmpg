@@ -30,7 +30,7 @@ Add these in GitHub → Settings → Secrets and variables → Actions:
 | `CHROME_REFRESH_TOKEN` | Refresh token for Web Store API |
 | `SUPABASE_URL` | Injected into extension `config.js` at build time |
 | `SUPABASE_ANON_KEY` | Injected into extension `config.js` at build time |
-| `WEBAPP_ORIGIN` | Production app URL, e.g. `https://publicgolds.com` |
+| `WEBAPP_ORIGIN` | Production app URL, e.g. `https://crmpg.vercel.app` |
 | `CHROME_WEB_STORE_EXTENSION_URL` | Full unlisted store URL |
 
 ## Privacy policy (Chrome Web Store)
@@ -38,7 +38,7 @@ Add these in GitHub → Settings → Secrets and variables → Actions:
 Use this URL in the store listing:
 
 ```
-https://publicgolds.com/privacy
+https://crmpg.vercel.app/privacy
 ```
 
 ## Chrome Web Store permission justifications

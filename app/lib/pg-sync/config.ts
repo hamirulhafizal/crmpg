@@ -1,8 +1,10 @@
-const DEFAULT_SYNC_API_BASE = 'https://crmpg-mmini.publicgolds.com'
 const DEFAULT_WEBHOOK_PATH = '/api/pg-sync/webhook'
 
 export function pgSyncApiBaseUrl(): string {
-  const raw = process.env.PG_SYNC_API_BASE_URL?.trim() || DEFAULT_SYNC_API_BASE
+  const raw = process.env.PG_SYNC_API_BASE_URL?.trim()
+  if (!raw) {
+    throw new Error('PG_SYNC_API_BASE_URL is not configured')
+  }
   return raw.replace(/\/$/, '')
 }
 
@@ -11,9 +13,9 @@ export function pgSyncWebhookUrl(): string {
   if (explicit) return explicit
 
   const site =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    'https://crmpg.vercel.app'
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    'http://localhost:3000'
 
   return `${site.replace(/\/$/, '')}${DEFAULT_WEBHOOK_PATH}`
 }

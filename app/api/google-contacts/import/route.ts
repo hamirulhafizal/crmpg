@@ -200,7 +200,7 @@ export async function POST(request: Request) {
     const oauthClientId = process.env.GOOGLE_CONTACTS_CLIENT_ID
     const oauthClientSecret = process.env.GOOGLE_CONTACTS_CLIENT_SECRET
     const redirectUri = process.env.GOOGLE_CONTACTS_REDIRECT_URI || 
-      `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'}/auth/google-contacts/callback`
+      `${(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '')}/auth/google-contacts/callback`
 
     // Method 1: Use OAuth tokens (user consent)
     if (accessToken || refreshToken) {

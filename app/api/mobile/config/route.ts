@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     user_id: auth.user.id,
     auth_mode: auth.accessToken ? 'bearer' : 'cookie',
     min_ios_version: '1.0.0',
-    api_base: process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || null,
+    api_base: process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || null,
     features: {
       customers: true,
       saas_me: true,

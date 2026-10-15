@@ -241,7 +241,7 @@ struct WhatsAppSessionsView: View {
             }
             .padding(.horizontal, 24)
 
-            Link(destination: URL(string: "https://www.publicgolds.com/waha-integration")!) {
+            Link(destination: URL(string: "/waha-integration", relativeTo: AppConfig.apiBaseURL)!.absoluteURL) {
                 Label("Open web dashboard", systemImage: "safari")
             }
             .font(PGTypography.caption)
