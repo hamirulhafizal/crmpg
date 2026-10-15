@@ -13,7 +13,7 @@ export function pgSyncWebhookUrl(): string {
   const site =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    'https://www.publicgolds.com'
+    'https://crmpg.vercel.app'
 
   return `${site.replace(/\/$/, '')}${DEFAULT_WEBHOOK_PATH}`
 }

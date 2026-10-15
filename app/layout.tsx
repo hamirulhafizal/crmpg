@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     title: "PG CRM",
   },
   keywords: "Publicgold, Publigoldofficial, PG Mall, PG Jewel, Aurora Italia, Emas, GAP, EPP, public gold, public gold malaysia, public gold indonesia, public gold brunei, public gold ampang, public gold bangi, public gold sunway, emas, emas public gold, dinar, gold bar, gold bars, gap, public gold gap",
-  metadataBase: new URL('https://publicgolds.com'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://crmpg.vercel.app'),
   icons: {
     icon: [{ url: '/icon', type: 'image/png' }],
     apple: [{ url: '/apple-icon', type: 'image/png' }],

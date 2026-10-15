@@ -471,7 +471,7 @@ async function sendWahaSessionExpiredNotice(userId: string, sessionName: string)
     return false
   }
 
-  const loginUrl = 'https://publicgolds.com/login?next=%2Fws-integration'
+  const loginUrl = `${(process.env.NEXT_PUBLIC_SITE_URL || 'https://crmpg.vercel.app').replace(/\/$/, '')}/login?next=%2Fws-integration`
 
   try {
     const transporter = nodemailer.createTransport({
