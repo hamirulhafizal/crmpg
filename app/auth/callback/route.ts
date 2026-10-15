@@ -33,8 +33,18 @@ export async function GET(request: Request) {
 
     if (exchangeError) {
       console.error('Error exchanging code for session:', exchangeError)
-      const errorUrl = new URL('/login', requestUrl.origin)
-      errorUrl.searchParams.set('error', exchangeError.message || 'exchange_failed')
+      // PKCE recovery often fails when the email is opened without the original
+      // browser verifier — send users to request a token_hash reset instead.
+      const msg = exchangeError.message || 'exchange_failed'
+      const isPkce =
+        /code verifier/i.test(msg) || /both auth code and code verifier/i.test(msg)
+      const errorUrl = new URL(isPkce ? '/forgot-password' : '/login', requestUrl.origin)
+      errorUrl.searchParams.set(
+        'error',
+        isPkce
+          ? 'Reset link needs a new email template (token_hash). Request a new reset link after updating the Supabase Reset password template.'
+          : msg
+      )
       return NextResponse.redirect(errorUrl)
     }
 
