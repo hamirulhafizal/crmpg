@@ -17,6 +17,8 @@ export default function ForgotPasswordPage() {
     setMessage(null)
 
     try {
+      // Prefer /auth/callback so the code is exchanged server-side; /reset-password
+      // also exchanges ?code= as a fallback when Supabase redirects there directly.
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`,
       })

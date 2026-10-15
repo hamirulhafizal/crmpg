@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -9,9 +9,76 @@ function ResetPasswordForm() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [sessionReady, setSessionReady] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
   const supabase = createClient()
+  const exchanged = useRef(false)
+
+  useEffect(() => {
+    if (exchanged.current) return
+    exchanged.current = true
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const code = params.get('code')
+        const hash = window.location.hash.startsWith('#')
+          ? new URLSearchParams(window.location.hash.slice(1))
+          : null
+        const hashError = hash?.get('error_description') || hash?.get('error')
+
+        if (hashError) {
+          setMessage({
+            type: 'error',
+            text: decodeURIComponent(hashError.replace(/\+/g, ' ')),
+          })
+          setReady(true)
+          return
+        }
+
+        // Email / verify redirects land here with ?code= — exchange before updateUser.
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) {
+            setMessage({
+              type: 'error',
+              text:
+                error.message ||
+                'This reset link is invalid or expired. Request a new one from Forgot password.',
+            })
+            setReady(true)
+            return
+          }
+          window.history.replaceState({}, '', '/reset-password')
+        }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!session) {
+          setMessage({
+            type: 'error',
+            text: 'Auth session missing. Open the latest reset link from your email (same browser you requested it from), or request a new one.',
+          })
+          setSessionReady(false)
+        } else {
+          setSessionReady(true)
+          setMessage(null)
+        }
+      } catch (err: unknown) {
+        setMessage({
+          type: 'error',
+          text: err instanceof Error ? err.message : 'Could not start password reset.',
+        })
+        setSessionReady(false)
+      } finally {
+        setReady(true)
+      }
+    })()
+  }, [supabase])
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +104,15 @@ function ResetPasswordForm() {
     }
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error(
+          'Auth session missing. Request a new reset link and open it in this browser.'
+        )
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: password,
       })
@@ -48,48 +124,76 @@ function ResetPasswordForm() {
         text: 'Password reset successfully! Redirecting to login...',
       })
 
-      // Redirect to login after 2 seconds
+      await supabase.auth.signOut()
       setTimeout(() => {
         router.push('/login')
-      }, 2000)
-    } catch (error: any) {
+      }, 1500)
+    } catch (error: unknown) {
+      const err = error as { message?: string }
       setMessage({
         type: 'error',
-        text: error.message || 'An error occurred. Please try again.',
+        text: err.message || 'An error occurred. Please try again.',
       })
     } finally {
       setLoading(false)
     }
   }
 
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white px-4 py-12">
+        <div className="text-center">
+          <svg
+            className="mx-auto h-8 w-8 animate-spin text-blue-600"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <p className="mt-4 text-slate-600">Verifying reset link…</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-white px-4 py-12">
       <div className="w-full max-w-md">
-        {/* Logo/Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold text-slate-900 mb-2">Reset Password</h1>
+        <div className="mb-8 text-center">
+          <h1 className="mb-2 text-3xl font-semibold text-slate-900">Reset Password</h1>
           <p className="text-slate-600">Enter your new password</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 space-y-6 border border-slate-200">
-          {/* Message Alert */}
+        <div className="space-y-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
           {message && (
             <div
-              className={`p-4 rounded-xl transition-all duration-300 ${
+              className={`rounded-xl p-4 transition-all duration-300 ${
                 message.type === 'success'
-                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                  : 'bg-red-50 text-red-800 border border-red-200'
+                  ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border border-red-200 bg-red-50 text-red-800'
               }`}
             >
               <p className="text-sm font-medium">{message.text}</p>
+              {message.type === 'error' && !sessionReady ? (
+                <p className="mt-2 text-sm">
+                  <Link href="/forgot-password" className="font-semibold underline">
+                    Request a new reset link
+                  </Link>
+                </p>
+              ) : null}
             </div>
           )}
 
-          {/* Reset Password Form */}
           <form onSubmit={handleResetPassword} className="space-y-4">
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
                 New Password
               </label>
               <input
@@ -100,14 +204,15 @@ function ResetPasswordForm() {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900 placeholder:text-slate-400"
+                disabled={!sessionReady || loading}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
               />
             </div>
 
             <div>
               <label
                 htmlFor="confirmPassword"
-                className="block text-sm font-medium text-slate-700 mb-2"
+                className="mb-2 block text-sm font-medium text-slate-700"
               >
                 Confirm New Password
               </label>
@@ -119,52 +224,26 @@ function ResetPasswordForm() {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all duration-200 text-slate-900 placeholder:text-slate-400"
+                disabled={!sessionReady || loading}
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40"
+              disabled={loading || !sessionReady}
+              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white shadow-lg shadow-blue-500/30 transition-all duration-200 hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Resetting...
-                </span>
-              ) : (
-                'Reset Password'
-              )}
+              {loading ? 'Resetting...' : 'Reset Password'}
             </button>
           </form>
 
-          {/* Back to Login Link */}
-          <div className="text-center pt-4 border-t border-slate-200">
+          <div className="border-t border-slate-200 pt-4 text-center">
             <p className="text-sm text-slate-600">
               Remember your password?{' '}
               <Link
                 href="/login"
-                className="font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                className="font-semibold text-blue-600 transition-colors hover:text-blue-700"
               >
                 Sign in
               </Link>
@@ -178,35 +257,14 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <svg
-            className="animate-spin h-8 w-8 text-blue-600 mx-auto"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            ></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p className="mt-4 text-slate-600">Loading...</p>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-white">
+          <p className="text-slate-600">Loading...</p>
         </div>
-      </div>
-    }>
+      }
+    >
       <ResetPasswordForm />
     </Suspense>
   )
 }
-

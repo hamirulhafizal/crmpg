@@ -46,13 +46,18 @@ export async function GET(request: Request) {
       return NextResponse.redirect(errorUrl)
     }
 
-    // Success - redirect to dashboard
-    return NextResponse.redirect(new URL(next, requestUrl.origin))
-  } catch (err: any) {
+    // Success — send recovery flows to reset-password; others to next/dashboard
+    const safeNext =
+      next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
+    return NextResponse.redirect(new URL(safeNext, requestUrl.origin))
+  } catch (err: unknown) {
     console.error('Unexpected error in auth callback:', err)
     const errorUrl = new URL('/login', requestUrl.origin)
     errorUrl.searchParams.set('error', 'internal_error')
-    errorUrl.searchParams.set('error_description', err.message || 'An unexpected error occurred')
+    errorUrl.searchParams.set(
+      'error_description',
+      err instanceof Error ? err.message : 'An unexpected error occurred'
+    )
     return NextResponse.redirect(errorUrl)
   }
 }
