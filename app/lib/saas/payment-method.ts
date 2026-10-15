@@ -78,9 +78,25 @@ function asMeta(value: unknown): Record<string, unknown> {
   return {}
 }
 
+function bayarcashMandateLooksActive(meta: Record<string, unknown>): boolean {
+  const nested = asMeta(meta.bayarcash_mandate)
+  const desc = String(nested.status_description || nested.status || '')
+    .trim()
+    .toLowerCase()
+  if (desc === 'active' || desc === 'approved' || desc.includes('active') || desc.includes('approved')) {
+    return true
+  }
+  const numeric = Number(nested.status)
+  // Bayarcash FpxDirectDebit: ACTIVE=3, APPROVED=5
+  if (numeric === 3 || numeric === 5) return true
+  if (meta.payment_confirmed_at && meta.bayarcash_mandate_order) return true
+  return false
+}
+
 /**
  * Derive how the dealer pays / is trying to pay.
- * Mandate row wins when present; otherwise fall back to payment_metadata.
+ * Mandate row wins when present; otherwise fall back to payment_metadata
+ * (including nested Bayarcash mandate Active/Approved — not always "Pending").
  */
 export function deriveSaasPaymentMethodStatus(args: {
   paymentMetadata?: unknown
@@ -115,8 +131,14 @@ export function deriveSaasPaymentMethodStatus(args: {
     .trim()
     .toLowerCase()
 
-  if (method === 'direct_debit') return 'direct_debit_pending'
+  if (method === 'direct_debit') {
+    return bayarcashMandateLooksActive(meta) ? 'direct_debit_active' : 'direct_debit_pending'
+  }
   if (method === 'fpx') return 'fpx'
+
+  if (meta.bayarcash_mandate && bayarcashMandateLooksActive(meta)) {
+    return 'direct_debit_active'
+  }
 
   if (meta.bayarcash_payment_intent && typeof meta.bayarcash_payment_intent === 'object') {
     return 'fpx'
@@ -125,7 +147,11 @@ export function deriveSaasPaymentMethodStatus(args: {
     return 'fpx'
   }
   if (String(args.paymentProvider || '').toLowerCase() === 'bayarcash' && method) {
-    return method === 'direct_debit' ? 'direct_debit_pending' : 'fpx'
+    return method === 'direct_debit'
+      ? bayarcashMandateLooksActive(meta)
+        ? 'direct_debit_active'
+        : 'direct_debit_pending'
+      : 'fpx'
   }
 
   return 'none'
