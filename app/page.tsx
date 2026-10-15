@@ -1047,10 +1047,21 @@ export default function NewPage() {
     (window as any)._lastPinchDist = null;
   };
 
+  useEffect(() => {
+    const root = document.documentElement
+    const prevScheme = root.style.colorScheme
+    root.style.colorScheme = 'light'
+    root.classList.add('landing-force-light')
+    return () => {
+      root.style.colorScheme = prevScheme
+      root.classList.remove('landing-force-light')
+    }
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100">
+    <div className="theme-fixed min-h-screen bg-gradient-to-br from-amber-50 to-yellow-100 text-slate-900">
       {/* Navigation */}
-      <nav className="bg-white shadow-lg sticky top-0 z-50">
+      <nav className="sticky top-0 z-50 bg-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -1200,33 +1211,33 @@ export default function NewPage() {
          }
        `}</style>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          {/* Background image with dark overlay */}
+      {/* Hero Section — full-bleed light marketing surface */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-amber-50 to-yellow-50">
+        <div className="absolute inset-0 z-0">
           <img
             src="/pg-hq.png"
             alt="Public Gold HQ"
-            className="absolute inset-0 w-full h-full object-cover z-0"
-            style={{ filter: 'brightness(0.8)' }}
+            className="h-full w-full object-cover"
+            style={{ filter: 'brightness(1.05) saturate(1.05)' }}
           />
-          <div className="absolute inset-0 bg-black bg-opacity-50 z-10" />
-          <div className="relative z-20 text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-1 leading-tight drop-shadow-lg">
+          <div className="absolute inset-0 bg-gradient-to-b from-amber-50/75 via-white/55 to-amber-50/90" />
+        </div>
+        <div className="relative z-20 mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="mb-1 text-4xl font-bold leading-tight text-slate-900 md:text-6xl">
               SIMPAN EMAS SERENDAH{' '}
               <span className="text-red-600">RM100</span>
             </h1>
-            <p className="text-xl md:text-2xl text-white mb-8 max-w-3xl mx-auto drop-shadow">
+            <p className="mx-auto mb-8 max-w-3xl text-xl text-slate-700 md:text-2xl">
               Mulakan simpanan emas anda hari ini - murah, mudah dan patuh syariah dengan hanya RM100
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col justify-center gap-4 sm:flex-row">
               <button
                 onClick={openDrawer}
-                className="bg-red-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-red-700 transform hover:scale-105 transition-all duration-200 shadow-lg shimmer-animate"
+                className="shimmer-animate rounded-xl bg-red-600 px-8 py-4 text-lg font-semibold text-white shadow-lg transition-all duration-200 hover:scale-105 hover:bg-red-700"
               >
                 Daftar Percuma
               </button>
-
             </div>
           </div>
         </div>
@@ -1475,19 +1486,18 @@ export default function NewPage() {
       </section>
 
       {/* Testimonials Section */}
-      <section className="relative py-20 bg-gradient-to-br from-red-50 to-yellow-100 overflow-hidden">
-        {/* Background image with dark overlay */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-red-50 to-yellow-100 py-20">
         <img
           src="/gold-background.png"
           alt="Gold Background"
-          className="absolute inset-0 w-full h-full object-cover z-0"
-          style={{ filter: 'brightness(0.7)' }}
+          className="absolute inset-0 z-0 h-full w-full object-cover opacity-30"
+          style={{ filter: 'brightness(1.15)' }}
         />
-        <div className="absolute inset-0 bg-black bg-opacity-40 z-10" />
+        <div className="absolute inset-0 z-10 bg-gradient-to-b from-amber-50/80 via-white/70 to-yellow-50/90" />
         <div className="relative z-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl text-white font-bold text-gray-900 mb-4">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-16 text-center">
+              <h2 className="mb-4 text-3xl font-bold text-gray-900 md:text-4xl">
                 Testimoni Penyimpan Emas
               </h2>
             </div>
@@ -1610,35 +1620,40 @@ export default function NewPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-black">
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+      <section className="bg-gradient-to-br from-white via-amber-50 to-yellow-50 py-20">
+        <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+          <h2 className="mb-6 text-3xl font-bold text-slate-900 md:text-4xl">
             Daftar Sekarang Secara PERCUMA !
           </h2>
-          <div className="flex flex-col sm:flex-col gap-4 justify-center mb-8">
-
+          <div className="mb-8 flex flex-col justify-center gap-4">
             <div className="flex flex-col items-center justify-center">
               <button
                 onClick={openDrawer}
-                className="bg-white text-red-600 px-8 py-4 rounded-xl text-lg font-semibold hover:bg-gray-100 transform hover:scale-105 transition-all duration-200 shadow-lg shimmer-animate"
+                className="shimmer-animate rounded-xl bg-red-600 px-8 py-4 text-lg font-semibold text-white shadow-lg transition-all duration-200 hover:scale-105 hover:bg-red-700"
               >
                 Klik Disini Untuk Daftar
               </button>
             </div>
 
-
             <div className="flex flex-col items-center justify-center">
+              <img
+                src="ebook.png"
+                alt="Ebook"
+                className="rounded-lg object-cover shadow-md sm:h-full sm:w-full md:h-[50vh] md:w-[40vw]"
+              />
 
-              <img src="ebook.png" alt="Ebook" className=" sm:w-full sm:h-full md:w-[40vw] md:h-[50vh] object-cover rounded-lg" />
-
-              <button onClick={() => window.open(`https://publicgoldofficial.com/app/ebook/${dealerInfo.username}#form`, '_blank')} className="border-2 border-white text-white px-8 py-4 rounded-xl text-lg font-semibold hover:bg-white hover:text-red-600 transition-all duration-200 shimmer-animate hidden">
+              <button
+                onClick={() =>
+                  window.open(
+                    `https://publicgoldofficial.com/app/ebook/${dealerInfo.username}#form`,
+                    '_blank'
+                  )
+                }
+                className="shimmer-animate mt-4 hidden rounded-xl border-2 border-red-600 px-8 py-4 text-lg font-semibold text-red-600 transition-all duration-200 hover:bg-red-600 hover:text-white"
+              >
                 Download Ebook PERCUMA
               </button>
             </div>
-
-
           </div>
         </div>
       </section>
@@ -1787,7 +1802,7 @@ export default function NewPage() {
         </div>
       </section>
 
-      <CompanyLegalFooter variant="dark" />
+      <CompanyLegalFooter variant="light" showCompanyLinks showPolicyLinks />
 
       {/* Registration Drawer */}
       {isDrawerOpen && (

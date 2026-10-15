@@ -750,6 +750,13 @@ body {
   }
 }
 
+/* Marketing homepage (/) — always light, even when system prefers dark */
+html.landing-force-light,
+html.landing-force-light body {
+  color-scheme: light !important;
+  background-color: #fffbeb !important;
+}
+
 /*
  * Remap hardcoded light Tailwind surfaces so the whole UI follows color-scheme.
  * color-scheme is flipped by the pure-CSS #theme-toggle + prefers-color-scheme rules above.
