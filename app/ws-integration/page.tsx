@@ -506,7 +506,7 @@ export default function WahaIntegrationPage() {
   if (!user) return null
 
   return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8 xl:max-w-[90rem]">
         <PageBackTitle
           title="WhatsApp Integration"
           subtitle={
