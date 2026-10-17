@@ -46,13 +46,17 @@ export async function GET(request: Request) {
       unknown: 0,
     }
 
+    // Narrow select — only fields needed for status + frontline filter.
+    const STATS_COLUMNS =
+      'pg_code, name, parent_pg_code, created_at, last_purchase_at, is_monthly_buyer, original_data'
+
     const pageSize = 1000
     let from = 0
 
     for (;;) {
       let query = supabase
         .from('customers')
-        .select('*')
+        .select(STATS_COLUMNS)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .range(from, from + pageSize - 1)

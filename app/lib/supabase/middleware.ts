@@ -32,6 +32,29 @@ function isStaticOrPublicAsset(pathname: string): boolean {
   return false
 }
 
+/** Cron / webhooks / workers authenticate themselves — skip Auth stampede. */
+function isTrustedServerApiPath(pathname: string): boolean {
+  if (pathname.startsWith('/api/cron/')) return true
+  if (pathname.startsWith('/api/pg-sync/webhook')) return true
+  if (pathname.startsWith('/api/automation/cron')) return true
+  if (pathname.startsWith('/api/automation/send')) return true
+  if (pathname.startsWith('/api/automation/gold-poster')) return true
+  if (pathname.startsWith('/api/admin/campaign-workflow-defaults')) return true
+  return false
+}
+
+/**
+ * API routes authenticate via requireUserApi / secrets in the handler.
+ * Skipping middleware getUser avoids double Auth (middleware + handler).
+ * Cookie refresh still happens on page navigations.
+ */
+function shouldSkipMiddlewareAuth(pathname: string): boolean {
+  if (isStaticOrPublicAsset(pathname)) return true
+  if (isTrustedServerApiPath(pathname)) return true
+  if (pathname.startsWith('/api/')) return true
+  return false
+}
+
 async function getUserWithTimeout(
   getUser: () => Promise<{ data: { user: unknown }; error: unknown }>
 ): Promise<{ user: { id: string } | null; timedOut: boolean }> {
@@ -56,8 +79,9 @@ async function getUserWithTimeout(
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // Never call Supabase Auth for assets / public pages (prevents Auth stampede + 25s kills).
-  if (isStaticOrPublicAsset(pathname)) {
+  // Never call Supabase Auth for assets / public pages / API handlers
+  // (prevents Auth stampede + double getUser on every /api/* call).
+  if (shouldSkipMiddlewareAuth(pathname)) {
     return NextResponse.next({ request })
   }
 

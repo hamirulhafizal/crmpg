@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   clearStoredPgSyncJob,
-  readStoredPgSyncJob,
   writeStoredPgSyncJob,
 } from '@/app/lib/pg-sync/active-job'
 import { buildQueueInfo, type PgSyncQueueInfo } from '@/app/lib/pg-sync/queue-info'
@@ -33,11 +32,16 @@ type Options = {
   autoOpenOnActive?: boolean
 }
 
-const STATUS_POLL_MS = 20_000
-const JOB_POLL_MS = 3_000
+/** Only poll status while a job is active (or after focus / stored resume). */
+const ACTIVE_STATUS_POLL_MS = 15_000
+const JOB_POLL_MS = 5_000
 
 function isTerminal(status: PgSyncJobStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled'
+}
+
+function hasInFlightJob(job: PgSyncJobView | null | undefined): boolean {
+  return Boolean(job?.id && !isTerminal(job.status))
 }
 
 export function usePgSyncQueueMonitor(options: Options) {
@@ -126,12 +130,35 @@ export function usePgSyncQueueMonitor(options: Options) {
     }
   }, [applyStatusPayload, enabled])
 
+  // Initial load + resume from sessionStorage; no idle polling.
   useEffect(() => {
     if (!enabled) return
     void refresh()
-    const id = window.setInterval(() => void refresh(), STATUS_POLL_MS)
-    return () => window.clearInterval(id)
   }, [enabled, refresh])
+
+  // Refresh when tab regains focus (covers “job finished while away”).
+  useEffect(() => {
+    if (!enabled) return
+    const onFocus = () => {
+      void refresh()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onFocus()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [enabled, refresh])
+
+  // While a job is in flight, keep a light status poll (no idle 20s hammer).
+  useEffect(() => {
+    if (!enabled || !hasInFlightJob(activeJob)) return
+    const id = window.setInterval(() => void refresh(), ACTIVE_STATUS_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [enabled, activeJob?.id, activeJob?.status, refresh])
 
   useEffect(() => {
     if (!enabled || !activeJob?.id || isTerminal(activeJob.status)) return

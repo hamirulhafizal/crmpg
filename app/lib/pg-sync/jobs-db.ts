@@ -182,10 +182,21 @@ export async function getPgSyncJobByWorkerId(
 async function resolveUserIdByPgCode(pgCode: string): Promise<string | null> {
   const admin = createServiceRoleClient()
   const want = normalizePg(pgCode)
+  // Prefer exact match (profiles.pgcode is typically stored uppercase).
+  const { data: exact } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('pgcode', want)
+    .limit(1)
+    .maybeSingle()
+  if (exact?.id) return exact.id as string
+
+  // Fallback for mixed-case legacy rows — still avoid full table when possible.
   const { data, error } = await admin
     .from('profiles')
     .select('id, pgcode')
-    .not('pgcode', 'is', null)
+    .ilike('pgcode', want)
+    .limit(20)
 
   if (error || !data?.length) return null
 
@@ -248,6 +259,14 @@ export async function markPgSyncJobTacSubmitted(userId: string, workerJobId: str
     .in('status', ['awaiting_tac', 'running'])
 }
 
+function progressSignature(progress: unknown): string {
+  try {
+    return JSON.stringify(progress ?? {})
+  } catch {
+    return ''
+  }
+}
+
 export async function syncPgSyncJobFromView(
   userId: string,
   job: PgSyncJobView
@@ -257,17 +276,32 @@ export async function syncPgSyncJobFromView(
 
   const { data: existing } = await admin
     .from('pg_sync_jobs')
-    .select('id, user_id, started_at')
+    .select('id, user_id, started_at, status, queue_position, progress, error_message, completed_at, pg_code')
     .eq('worker_job_id', job.id)
     .maybeSingle()
 
   if (existing) {
+    const nextPg = normalizePg(job.pg_code)
+    const nextStarted = patch.started_at ?? existing.started_at ?? job.started_at ?? null
+    const nextCompleted = patch.completed_at ?? existing.completed_at ?? null
+    const unchanged =
+      existing.status === patch.status &&
+      (existing.queue_position ?? null) === (patch.queue_position ?? null) &&
+      (existing.error_message ?? null) === (patch.error_message ?? null) &&
+      normalizePg(String(existing.pg_code ?? '')) === nextPg &&
+      (existing.started_at ?? null) === (nextStarted ?? null) &&
+      (existing.completed_at ?? null) === (nextCompleted ?? null) &&
+      progressSignature(existing.progress) === progressSignature(patch.progress)
+
+    // Skip no-op writes from status polling.
+    if (unchanged) return
+
     await admin
       .from('pg_sync_jobs')
       .update({
         ...patch,
-        pg_code: normalizePg(job.pg_code),
-        started_at: patch.started_at ?? existing.started_at ?? job.started_at ?? null,
+        pg_code: nextPg,
+        started_at: nextStarted,
       })
       .eq('id', existing.id)
     return

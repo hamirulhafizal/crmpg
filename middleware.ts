@@ -3,12 +3,15 @@ import { updateSession } from './app/lib/supabase/middleware'
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  // Public image renderer used by server-side automation sender.
-  if (pathname.startsWith('/api/automation/gold-poster')) {
-    return NextResponse.next()
-  }
-  // Large JSON workflow imports — skip middleware body handling; auth runs in the route handler.
-  if (pathname.startsWith('/api/admin/campaign-workflow-defaults')) {
+  // Trusted server paths — no cookie Auth (handlers use secrets / service role).
+  if (
+    pathname.startsWith('/api/automation/gold-poster') ||
+    pathname.startsWith('/api/automation/cron') ||
+    pathname.startsWith('/api/automation/send') ||
+    pathname.startsWith('/api/cron/') ||
+    pathname.startsWith('/api/pg-sync/webhook') ||
+    pathname.startsWith('/api/admin/campaign-workflow-defaults')
+  ) {
     return NextResponse.next()
   }
   return await updateSession(request)

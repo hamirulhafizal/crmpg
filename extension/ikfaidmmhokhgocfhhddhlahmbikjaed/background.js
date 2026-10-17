@@ -1232,25 +1232,52 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                     if (staleBatch.length < clearPage) break;
                     clearOffset += clearPage;
                 }
-                for (var c = 0; c < staleIds.length; c++) {
-                    await fetch(
-                        supabaseUrl +
-                            '/rest/v1/customers?id=eq.' +
-                            encodeURIComponent(staleIds[c]),
-                        {
-                            method: 'PATCH',
-                            headers: Object.assign({}, headers, {
-                                'Content-Type': 'application/json',
-                                Prefer: 'return=minimal'
-                            }),
-                            body: JSON.stringify({
-                                parent_pg_code: null,
-                                updated_at: new Date().toISOString()
-                            })
-                        }
+                // Batch clear stale parents (chunks) instead of one PATCH per id.
+                var CLEAR_CHUNK = 40;
+                for (var c = 0; c < staleIds.length; c += CLEAR_CHUNK) {
+                    var chunk = staleIds.slice(c, c + CLEAR_CHUNK);
+                    await Promise.all(
+                        chunk.map(function (staleId) {
+                            return fetch(
+                                supabaseUrl +
+                                    '/rest/v1/customers?id=eq.' +
+                                    encodeURIComponent(staleId),
+                                {
+                                    method: 'PATCH',
+                                    headers: Object.assign({}, headers, {
+                                        'Content-Type': 'application/json',
+                                        Prefer: 'return=minimal'
+                                    }),
+                                    body: JSON.stringify({
+                                        parent_pg_code: null,
+                                        updated_at: new Date().toISOString()
+                                    })
+                                }
+                            );
+                        })
                     );
                 }
             } catch (cleanupErr) { /* non-fatal */ }
+        }
+
+        // Concurrent REST writes (OpenAI still sequential when needed).
+        var WRITE_CHUNK = 16;
+        var writeQueue = [];
+
+        async function flushCustomerWrites() {
+            if (!writeQueue.length) return;
+            var batch = writeQueue.splice(0, writeQueue.length);
+            await Promise.all(
+                batch.map(function (job) {
+                    return job.run().then(function (ok) {
+                        if (ok === 'updated') updated++;
+                        else if (ok === 'inserted') inserted++;
+                        else failed++;
+                    }).catch(function () {
+                        failed++;
+                    });
+                })
+            );
         }
 
         for (var i = startIndex; i < rows.length; i++) {
@@ -1299,89 +1326,102 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             phoneKey = normalizePhoneForMatch(payload.phone);
             emailKey = normalizeEmailForMatch(payload.email);
             var existingId = existing && existing.id;
-
-            try {
-                if (existingId) {
-                    var patchBody = buildPatchBodyFromPayload(payload);
-                    // Never overwrite relationship naming fields that users can curate manually in CRM.
-                    delete patchBody.sender_name;
-                    delete patchBody.save_name;
-                    if (pgCode && existing.is_friend === true) delete patchBody.name;
-                    var patchRes = await fetch(supabaseUrl + '/rest/v1/customers?id=eq.' + existingId, {
-                        method: 'PATCH',
-                        headers: {
-                            apikey: anonKey,
-                            Authorization: 'Bearer ' + accessToken,
-                            'Content-Type': 'application/json',
-                            Prefer: 'return=minimal'
-                        },
-                        body: JSON.stringify(patchBody)
-                    });
-                    if (patchRes.ok) {
-                        updated++;
-                        var updatedEntry = {
-                            id: existingId,
-                            is_friend: existing.is_friend === true,
-                            gender: (patchBody.gender != null ? patchBody.gender : existing.gender) || null,
-                            ethnicity: (patchBody.ethnicity != null ? patchBody.ethnicity : existing.ethnicity) || null,
-                            age: patchBody.age != null ? patchBody.age : existing.age,
-                            prefix: (patchBody.prefix != null ? patchBody.prefix : existing.prefix) || null,
-                            first_name: (patchBody.first_name != null ? patchBody.first_name : existing.first_name) || null,
-                            sender_name: (patchBody.sender_name != null ? patchBody.sender_name : existing.sender_name) || null,
-                            save_name: (patchBody.save_name != null ? patchBody.save_name : existing.save_name) || null
-                        };
-                        if (pgCode) existingByPgCode[pgCode] = updatedEntry;
-                        if (phoneKey) existingByPhone[phoneKey] = updatedEntry;
-                        if (emailKey) existingByEmail[emailKey] = updatedEntry;
-                    } else {
-                        failed++;
-                    }
-                } else {
-                    var postRes = await fetch(supabaseUrl + '/rest/v1/customers', {
-                        method: 'POST',
-                        headers: {
-                            apikey: anonKey,
-                            Authorization: 'Bearer ' + accessToken,
-                            'Content-Type': 'application/json',
-                            Prefer: 'return=representation'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    if (postRes.ok) {
-                        var created = await postRes.json();
-                        if (created && created[0] && created[0].id) {
-                            inserted++;
-                            var createdEntry = {
-                                id: created[0].id,
-                                is_friend: created[0].is_friend === true,
-                                gender: created[0].gender || payload.gender || null,
-                                ethnicity: created[0].ethnicity || payload.ethnicity || null,
-                                age: created[0].age != null ? created[0].age : payload.age,
-                                prefix: created[0].prefix || payload.prefix || null,
-                                first_name: created[0].first_name || payload.first_name || null,
-                                sender_name: created[0].sender_name || payload.sender_name || null,
-                                save_name: created[0].save_name || payload.save_name || null
-                            };
-                            if (pgCode) existingByPgCode[pgCode] = createdEntry;
-                            if (phoneKey) existingByPhone[phoneKey] = createdEntry;
-                            if (emailKey) existingByEmail[emailKey] = createdEntry;
-                        } else {
-                            failed++;
-                        }
-                    } else {
-                        failed++;
-                    }
+            var existingFriend = existing && existing.is_friend === true;
+            var existingSnap = existing
+                ? {
+                    gender: existing.gender,
+                    ethnicity: existing.ethnicity,
+                    age: existing.age,
+                    prefix: existing.prefix,
+                    first_name: existing.first_name,
+                    sender_name: existing.sender_name,
+                    save_name: existing.save_name
                 }
-            } catch (e) {
-                failed++;
+                : null;
+
+            writeQueue.push({
+                run: (function (payloadInner, existingIdInner, pgCodeInner, phoneKeyInner, emailKeyInner, existingFriendInner, existingSnapInner) {
+                    return async function () {
+                        if (existingIdInner) {
+                            var patchBody = buildPatchBodyFromPayload(payloadInner);
+                            delete patchBody.sender_name;
+                            delete patchBody.save_name;
+                            if (pgCodeInner && existingFriendInner) delete patchBody.name;
+                            var patchRes = await fetch(
+                                supabaseUrl + '/rest/v1/customers?id=eq.' + existingIdInner,
+                                {
+                                    method: 'PATCH',
+                                    headers: {
+                                        apikey: anonKey,
+                                        Authorization: 'Bearer ' + accessToken,
+                                        'Content-Type': 'application/json',
+                                        Prefer: 'return=minimal'
+                                    },
+                                    body: JSON.stringify(patchBody)
+                                }
+                            );
+                            if (!patchRes.ok) return 'failed';
+                            var updatedEntry = {
+                                id: existingIdInner,
+                                is_friend: existingFriendInner,
+                                gender: (patchBody.gender != null ? patchBody.gender : existingSnapInner.gender) || null,
+                                ethnicity: (patchBody.ethnicity != null ? patchBody.ethnicity : existingSnapInner.ethnicity) || null,
+                                age: patchBody.age != null ? patchBody.age : existingSnapInner.age,
+                                prefix: (patchBody.prefix != null ? patchBody.prefix : existingSnapInner.prefix) || null,
+                                first_name: (patchBody.first_name != null ? patchBody.first_name : existingSnapInner.first_name) || null,
+                                sender_name: existingSnapInner.sender_name || null,
+                                save_name: existingSnapInner.save_name || null
+                            };
+                            if (pgCodeInner) existingByPgCode[pgCodeInner] = updatedEntry;
+                            if (phoneKeyInner) existingByPhone[phoneKeyInner] = updatedEntry;
+                            if (emailKeyInner) existingByEmail[emailKeyInner] = updatedEntry;
+                            return 'updated';
+                        }
+
+                        var postRes = await fetch(supabaseUrl + '/rest/v1/customers', {
+                            method: 'POST',
+                            headers: {
+                                apikey: anonKey,
+                                Authorization: 'Bearer ' + accessToken,
+                                'Content-Type': 'application/json',
+                                Prefer: 'return=representation'
+                            },
+                            body: JSON.stringify(payloadInner)
+                        });
+                        if (!postRes.ok) return 'failed';
+                        var created = await postRes.json();
+                        if (!(created && created[0] && created[0].id)) return 'failed';
+                        var createdEntry = {
+                            id: created[0].id,
+                            is_friend: created[0].is_friend === true,
+                            gender: created[0].gender || payloadInner.gender || null,
+                            ethnicity: created[0].ethnicity || payloadInner.ethnicity || null,
+                            age: created[0].age != null ? created[0].age : payloadInner.age,
+                            prefix: created[0].prefix || payloadInner.prefix || null,
+                            first_name: created[0].first_name || payloadInner.first_name || null,
+                            sender_name: created[0].sender_name || payloadInner.sender_name || null,
+                            save_name: created[0].save_name || payloadInner.save_name || null
+                        };
+                        if (pgCodeInner) existingByPgCode[pgCodeInner] = createdEntry;
+                        if (phoneKeyInner) existingByPhone[phoneKeyInner] = createdEntry;
+                        if (emailKeyInner) existingByEmail[emailKeyInner] = createdEntry;
+                        return 'inserted';
+                    };
+                })(payload, existingId, pgCode, phoneKey, emailKey, existingFriend, existingSnap)
+            });
+
+            if (writeQueue.length >= WRITE_CHUNK) {
+                await flushCustomerWrites();
             }
+
             if (typeof progressOpts.onRowProcessed === 'function') {
                 try {
                     await progressOpts.onRowProcessed(i, total, row);
                 } catch (e) { /* non-blocking */ }
             }
-            await new Promise(function (r) { setTimeout(r, 80); });
         }
+
+        await flushCustomerWrites();
 
         setProgress(100, 'Done: ' + inserted + ' added, ' + updated + ' updated, ' + failed + ' failed.');
         triggerConfetti();

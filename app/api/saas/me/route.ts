@@ -12,10 +12,18 @@ export async function GET(request: Request) {
     if (!payload) {
       return NextResponse.json({ error: 'Subscription not found' }, { status: 404 })
     }
-    return NextResponse.json({
-      ...payload,
-      entitlements: entitlementsFromMe(payload),
-    })
+    return NextResponse.json(
+      {
+        ...payload,
+        entitlements: entitlementsFromMe(payload),
+      },
+      {
+        headers: {
+          // Short private cache — shell polls this often; cut repeat DB work.
+          'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+        },
+      }
+    )
   } catch (e) {
     console.error(e)
     return NextResponse.json({ error: 'Failed to load billing' }, { status: 500 })

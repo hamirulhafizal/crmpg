@@ -379,7 +379,8 @@ export function PgBusinessCenterSyncModal({
       tick()
 
       const schedule = () => {
-        const delay = Date.now() < fastPollUntilRef.current ? 800 : 2000
+        // Fast only briefly after TAC/captcha; otherwise 5s to cut API volume.
+        const delay = Date.now() < fastPollUntilRef.current ? 1500 : 5000
         pollRef.current = setTimeout(() => {
           tick()
           schedule()

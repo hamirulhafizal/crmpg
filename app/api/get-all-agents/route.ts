@@ -12,9 +12,8 @@ export async function GET() {
 
     return NextResponse.json(filtered, {
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-        Expires: '0',
+        // Public landing list — short CDN/browser cache cuts Auth Admin stampede.
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
       },
     })
   } catch (error) {

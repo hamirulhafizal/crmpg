@@ -224,6 +224,8 @@ export async function GET(request: Request) {
       query = query.order('created_at', { ascending: false })
     }
 
+    // Only force full-table JS fetch for filters that cannot be pushed to PostgREST.
+    // Do NOT include hasAnyFilter — search/gender/ethnicity/age/tags use DB pagination.
     const shouldUseJsFiltering =
       birthday === 'today' ||
       birthday === 'month' ||
@@ -235,8 +237,8 @@ export async function GET(request: Request) {
       !!lastPurchaseMonth ||
       !!totalFrontline ||
       !!empireSize ||
-      isComputedSort ||
-      hasAnyFilter
+      !!nationality ||
+      isComputedSort
 
     if (shouldUseJsFiltering) {
       // Fetch all candidate rows in batches before JS filters.

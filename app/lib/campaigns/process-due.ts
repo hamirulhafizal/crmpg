@@ -1094,23 +1094,39 @@ async function syncEnrollmentsForCampaign(
         cronLog(debugLines, `queue active customer=${c.id} campaign=${campaign.id} (first in loop)`)
       }
 
-      const { error: insErr } = await supabase.from('campaign_enrollments').insert({
-        campaign_id: campaign.id,
-        customer_id: c.id,
-        user_id: campaign.user_id,
-        status: 'active',
-        last_step_sent: 0,
-        next_send_at: nextSendAt,
-        metadata: metadataWithCustomerQueue(baseMeta, queueMeta),
-      })
+      // ON CONFLICT DO NOTHING — avoid Postgres ERROR spam when cron re-runs
+      // and the unique (campaign_id, customer_id) row already exists.
+      const { data: insertedRow, error: insErr } = await supabase
+        .from('campaign_enrollments')
+        .upsert(
+          {
+            campaign_id: campaign.id,
+            customer_id: c.id,
+            user_id: campaign.user_id,
+            status: 'active',
+            last_step_sent: 0,
+            next_send_at: nextSendAt,
+            metadata: metadataWithCustomerQueue(baseMeta, queueMeta),
+          },
+          {
+            onConflict: 'campaign_id,customer_id',
+            ignoreDuplicates: true,
+          }
+        )
+        .select('id')
+        .maybeSingle()
 
       if (!insErr) {
         enrolled.add(c.id)
-        summary.enrollments_inserted++
-        insertedHere++
-        const label = customerWorkflowLabel(c)
-        onProgress?.({ type: 'enrollment', customerId: c.id, label })
-        onProgress?.({ type: 'log', message: `Enrolled ${label}`, level: 'success' })
+        if (insertedRow?.id) {
+          summary.enrollments_inserted++
+          insertedHere++
+          const label = customerWorkflowLabel(c)
+          onProgress?.({ type: 'enrollment', customerId: c.id, label })
+          onProgress?.({ type: 'log', message: `Enrolled ${label}`, level: 'success' })
+        } else {
+          skipAlready++
+        }
       } else {
         insertFailed++
         cronLog(debugLines, `enrollment insert failed campaign=${campaign.id} customer=${c.id}: ${insErr.message}`)
