@@ -34,7 +34,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
-      setUser(session?.user ?? null)
+      // Keep a stable user reference when id is unchanged so tab-focus
+      // session recovery (SIGNED_IN / TOKEN_REFRESHED) does not re-run
+      // every useEffect that depends on [user].
+      setUser((prev) => {
+        const next = session?.user ?? null
+        if (prev?.id && next?.id && prev.id === next.id) return prev
+        return next
+      })
       setLoading(false)
     })
 
@@ -60,6 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     const { data: { session } } = await supabase.auth.refreshSession()
     setSession(session)
+    // Always take the new user here — callers (profile/password updates)
+    // need fresh user_metadata even when id is unchanged.
     setUser(session?.user ?? null)
   }
 
