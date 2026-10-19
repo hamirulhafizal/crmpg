@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { accountInitials } from '@/app/lib/auth/saved-accounts'
 
 type AccountAvatarProps = {
@@ -25,13 +26,21 @@ export function AccountAvatar({
 }: AccountAvatarProps) {
   const dim = sizeClasses[size]
   const initials = accountInitials(fullName, email)
+  const trimmedUrl = avatarUrl?.trim() || null
+  const [imgFailed, setImgFailed] = useState(false)
 
-  if (avatarUrl?.trim()) {
+  useEffect(() => {
+    setImgFailed(false)
+  }, [trimmedUrl])
+
+  if (trimmedUrl && !imgFailed) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={avatarUrl}
+        src={trimmedUrl}
         alt=""
         className={`${dim} shrink-0 object-cover ring-2 ring-white shadow-sm ${className}`}
+        onError={() => setImgFailed(true)}
       />
     )
   }

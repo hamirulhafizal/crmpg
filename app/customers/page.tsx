@@ -65,7 +65,11 @@ import {
   fetchCustomerList,
   fetchCustomerStats,
 } from '@/app/lib/customers/fetch-customers'
-import { customerKeys, type CustomerListQueryParams } from '@/app/lib/customers/query-keys'
+import {
+  customerKeys,
+  DEFAULT_CUSTOMER_LIST_PARAMS,
+  type CustomerListQueryParams,
+} from '@/app/lib/customers/query-keys'
 
 const EMPTY_STATUS_COUNTS: Record<AccountStatusKey, number> = {
   temporary: 0,
@@ -517,6 +521,7 @@ function CustomersPage() {
 
   const listParams = useMemo<CustomerListQueryParams>(
     () => ({
+      ...DEFAULT_CUSTOMER_LIST_PARAMS,
       page,
       limit,
       sortBy,

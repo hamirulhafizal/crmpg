@@ -1,9 +1,17 @@
+import type { QueryClient } from '@tanstack/react-query'
 import type { AccountStatusKey } from '@/app/lib/customer-account-status'
-import type { CustomerListQueryParams } from '@/app/lib/customers/query-keys'
+import {
+  customerKeys,
+  DEFAULT_CUSTOMER_LIST_PARAMS,
+  type CustomerListQueryParams,
+} from '@/app/lib/customers/query-keys'
 import {
   getCachedWhatsAppAvatarUrl,
   setCachedWhatsAppAvatarUrl,
 } from '@/app/lib/customers/avatar-url-cache'
+
+const CUSTOMERS_PREFETCH_STALE_MS = 60_000
+const CUSTOMERS_PREFETCH_GC_MS = 10 * 60_000
 
 export type CustomerListRow = {
   id: string
@@ -207,4 +215,26 @@ export async function fetchCustomerAvatarUrl(
     setCachedWhatsAppAvatarUrl(userId, customerId, url, url ? 24 * 60 * 60_000 : 30 * 60_000)
   }
   return url
+}
+
+/** Warm React Query cache for the default Customers workspace (list + stats). */
+export function prefetchDefaultCustomersWorkspace(
+  queryClient: QueryClient,
+  userId: string
+): void {
+  if (!userId) return
+
+  void queryClient.prefetchQuery({
+    queryKey: customerKeys.list(userId, DEFAULT_CUSTOMER_LIST_PARAMS),
+    queryFn: () => fetchCustomerList(DEFAULT_CUSTOMER_LIST_PARAMS),
+    staleTime: CUSTOMERS_PREFETCH_STALE_MS,
+    gcTime: CUSTOMERS_PREFETCH_GC_MS,
+  })
+
+  void queryClient.prefetchQuery({
+    queryKey: customerKeys.stats(userId),
+    queryFn: fetchCustomerStats,
+    staleTime: CUSTOMERS_PREFETCH_STALE_MS,
+    gcTime: CUSTOMERS_PREFETCH_GC_MS,
+  })
 }

@@ -2,7 +2,9 @@
 
 import { useAuth } from '@/app/contexts/auth-context'
 import { createClient } from '@/app/lib/supabase/client'
+import { prefetchDefaultCustomersWorkspace } from '@/app/lib/customers/fetch-customers'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProfileCompletionDialog } from '@/app/dashboard/_components/ProfileCompletionDialog'
@@ -11,6 +13,7 @@ import { PageContentSkeleton } from '@/app/components/PageContentSkeleton'
 import { PWADashboardSetup, PWADashboardInstallButton } from '@/app/components/pwa/PWADashboardSetup'
 import { useAppShellChrome } from '@/app/contexts/app-shell-chrome'
 import { isProfileComplete, resolveProfilePhone, resolveFullName } from '@/app/lib/profile/completion'
+import { AccountAvatar } from '@/app/components/accounts/AccountAvatar'
 
 type ServiceTileProps = {
   href: string
@@ -50,8 +53,31 @@ function ServiceTile({
 export default function DashboardPage() {
   const { user, loading, refreshUser } = useAuth()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const supabase = useMemo(() => createClient(), [])
   const { setHeaderExtra, setDeferWhatsAppPrompt } = useAppShellChrome()
+
+  // Background-warm Customers cache so navigating to Customer management feels instant.
+  useEffect(() => {
+    if (!user?.id) return
+    let idleId: number | undefined
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+    const run = () => prefetchDefaultCustomersWorkspace(queryClient, user.id)
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(run, { timeout: 2500 })
+    } else {
+      timeoutId = setTimeout(run, 400)
+    }
+
+    return () => {
+      if (idleId != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId)
+      }
+      if (timeoutId != null) clearTimeout(timeoutId)
+    }
+  }, [user?.id, queryClient])
 
   const [accountChecksLoading, setAccountChecksLoading] = useState(true)
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false)
@@ -650,19 +676,24 @@ export default function DashboardPage() {
                 <p className="text-slate-900">{user.user_metadata.phone}</p>
               </div>
             )}
-            {user.user_metadata?.avatar_url && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Profile Picture</label>
-                <img
-                  src={user.user_metadata.avatar_url}
-                  alt="Profile"
-                  className="w-16 h-16 rounded-full border-2 border-slate-200"
-                  onError={(e) => {
-                    e.currentTarget.src = 'https://thispersondoesnotexist.com/'
-                  }}
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Profile Picture</label>
+              <AccountAvatar
+                avatarUrl={
+                  typeof user.user_metadata?.avatar_url === 'string'
+                    ? user.user_metadata.avatar_url
+                    : null
+                }
+                fullName={
+                  typeof user.user_metadata?.full_name === 'string'
+                    ? user.user_metadata.full_name
+                    : null
+                }
+                email={user.email ?? ''}
+                size="md"
+                className="rounded-full border-2 border-slate-200"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">User ID</label>
               <p className="text-sm text-slate-600 font-mono">{user.id}</p>

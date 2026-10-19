@@ -29,6 +29,32 @@ export type CustomerListQueryParams = {
   empireSize?: string
 }
 
+/** Default workspace list (page 1) — must match Customers page initial state for cache hits. */
+export const DEFAULT_CUSTOMER_LIST_PARAMS: CustomerListQueryParams = {
+  page: 1,
+  limit: 50,
+  sortBy: 'updated_at',
+  sortOrder: 'desc',
+  search: '',
+  gender: '',
+  ethnicity: '',
+  nationality: '',
+  ageMin: 0,
+  ageMax: 100,
+  ageFilterMin: 0,
+  ageFilterMax: 100,
+  birthday: '',
+  accountStatus: '',
+  profileVerified: '',
+  directDebit: '',
+  phoneContactStatus: '',
+  acquisitionSource: '',
+  registerMonth: '',
+  lastPurchaseMonth: '',
+  tagIds: [],
+  viewMode: 'paginated',
+}
+
 export const customerKeys = {
   all: (userId: string) => ['customers', userId] as const,
   lists: (userId: string) => [...customerKeys.all(userId), 'list'] as const,
