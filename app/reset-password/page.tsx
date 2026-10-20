@@ -5,6 +5,14 @@ import { createClient } from '@/app/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
+function resetLinkErrorMessage(raw: string | undefined | null): string {
+  const text = raw?.trim() || 'Could not start password reset.'
+  if (/code verifier/i.test(text) || /bad_oauth_callback/i.test(text)) {
+    return 'This reset link cannot be used from email in a different browser. Request a new reset link, then open the latest email on this device.'
+  }
+  return text
+}
+
 function ResetPasswordForm() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -23,24 +31,31 @@ function ResetPasswordForm() {
     void (async () => {
       try {
         const params = new URLSearchParams(window.location.search)
-        const code = params.get('code')
-        const hash = window.location.hash.startsWith('#')
-          ? new URLSearchParams(window.location.hash.slice(1))
-          : null
-        const hashError = hash?.get('error_description') || hash?.get('error')
+        const hash = new URLSearchParams(
+          window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+        )
+        const rawError =
+          hash.get('error_description') ||
+          hash.get('error') ||
+          params.get('error_description') ||
+          params.get('error')
 
-        if (hashError) {
+        if (rawError) {
+          const decoded = decodeURIComponent(rawError.replace(/\+/g, ' '))
           setMessage({
             type: 'error',
-            text: decodeURIComponent(hashError.replace(/\+/g, ' ')),
+            text: resetLinkErrorMessage(decoded),
           })
           setReady(true)
           return
         }
 
-        // Email / verify redirects land here with ?code= — exchange before updateUser.
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
+        const tokenHash = params.get('token_hash')
+        if (tokenHash) {
+          const { error } = await supabase.auth.verifyOtp({
+            type: 'recovery',
+            token_hash: tokenHash,
+          })
           if (error) {
             setMessage({
               type: 'error',
@@ -52,6 +67,38 @@ function ResetPasswordForm() {
             return
           }
           window.history.replaceState({}, '', '/reset-password')
+        } else {
+          const accessToken = hash.get('access_token')
+          const refreshToken = hash.get('refresh_token')
+          if (accessToken && refreshToken) {
+            const { error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
+            if (error) {
+              setMessage({
+                type: 'error',
+                text: error.message || 'Could not start password reset.',
+              })
+              setReady(true)
+              return
+            }
+            window.history.replaceState({}, '', '/reset-password')
+          } else if (params.get('code')) {
+            const { error } = await supabase.auth.exchangeCodeForSession(params.get('code')!)
+            if (error) {
+              setMessage({
+                type: 'error',
+                text: resetLinkErrorMessage(
+                  error.message ||
+                    'This reset link is invalid or expired. Request a new one from Forgot password.'
+                ),
+              })
+              setReady(true)
+              return
+            }
+            window.history.replaceState({}, '', '/reset-password')
+          }
         }
 
         const {
@@ -61,7 +108,7 @@ function ResetPasswordForm() {
         if (!session) {
           setMessage({
             type: 'error',
-            text: 'Auth session missing. Open the latest reset link from your email (same browser you requested it from), or request a new one.',
+            text: 'Auth session missing. Request a new reset link and open the latest email on this device.',
           })
           setSessionReady(false)
         } else {
@@ -71,7 +118,9 @@ function ResetPasswordForm() {
       } catch (err: unknown) {
         setMessage({
           type: 'error',
-          text: err instanceof Error ? err.message : 'Could not start password reset.',
+          text: resetLinkErrorMessage(
+            err instanceof Error ? err.message : 'Could not start password reset.'
+          ),
         })
         setSessionReady(false)
       } finally {
@@ -132,7 +181,7 @@ function ResetPasswordForm() {
       const err = error as { message?: string }
       setMessage({
         type: 'error',
-        text: err.message || 'An error occurred. Please try again.',
+        text: resetLinkErrorMessage(err.message || 'An error occurred. Please try again.'),
       })
     } finally {
       setLoading(false)

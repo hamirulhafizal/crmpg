@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
-import { createClient } from '@/app/lib/supabase/client'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -10,7 +9,6 @@ function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const searchParams = useSearchParams()
-  const supabase = createClient()
 
   useEffect(() => {
     const err = searchParams.get('error')
@@ -25,13 +23,15 @@ function ForgotPasswordForm() {
     setMessage(null)
 
     try {
-      // Used as {{ .RedirectTo }} when templates still use ConfirmationURL.
-      // Preferred template uses token_hash → /auth/confirm (no PKCE).
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       })
-
-      if (error) throw error
+      const payload = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        throw new Error(payload.error || 'Could not send reset email.')
+      }
 
       setMessage({
         type: 'success',
