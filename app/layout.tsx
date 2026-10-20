@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
-import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { THEME_TOGGLE_ID } from "./components/ThemeToggle";
 import ClientScripts from "./components/ClientScripts";
@@ -52,7 +51,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body
-        className={`${GeistSans.variable} ${GeistMono.variable} min-w-0 overflow-x-hidden antialiased`}
+        className={`${GeistMono.variable} min-w-0 overflow-x-hidden font-sans antialiased`}
         suppressHydrationWarning
       >
         {/* Pure CSS theme control — default follows system; checked inverts (no JS). */}
