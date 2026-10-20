@@ -510,8 +510,8 @@ export default function NewPage() {
               5 Kelebihan Menyimpan Emas
             </h2>
             <p className="text-lg text-gray-600 max-w-3xl mx-auto">
-              Emas sesuai dijadikan simpanan jangka panjang, <strong>sekurang-kurangnya 2 tahun</strong> dan ke atas.
-              Selain nilainya terjamin, ini antara kelebihan menyimpan emas:
+              Emas sesuai dijadikan sebahagian daripada simpanan jangka panjang, <strong>sekurang-kurangnya 2 tahun</strong> dan ke atas.
+              Ini antara kelebihan menyimpan emas sebagai salah satu cara mempelbagaikan aset:
             </p>
 
             <img
@@ -530,18 +530,18 @@ export default function NewPage() {
                 icon: "💰"
               },
               {
-                title: "Jumlah Simpanan Berganda Dengan Cepat",
-                description: "Kenaikkan harga emas purata 10-15% setahun, lebih tinggi daripada simpanan bank.",
+                title: "Bina Simpanan Emas Untuk Jangka Panjang",
+                description: "Emas sebagai pilihan simpanan untuk jangka panjang, sesuai dijadikan sebahagian daripada pelan kewangan anda.",
                 icon: "📈"
               },
               {
-                title: "Tidak Terkesan Dengan Inflasi",
-                description: "Emas mengekalkan nilai walaupun dalam ketidakstabilan ekonomi atau politik.",
+                title: "Emas Sering Digunakan Sebagai Pelindung Nilai",
+                description: "Salah satu cara untuk melindungi nilai tunai dalam pelan simpanan jangka panjang.",
                 icon: "🛡️"
               },
               {
                 title: "Mudah Ditukar Kepada Tunai",
-                description: "Boleh dipajak atau dijual bila terdesak dengan nilai yang stabil.",
+                description: "Boleh dipajak atau dijual bila terdesak melalui cawangan atau akaun emas.",
                 icon: "💳"
               },
               {
@@ -1141,8 +1141,8 @@ export default function NewPage() {
                         Kelebihan menyimpan emas dengan Public Gold:
                       </p>
                       <ul className="list-disc list-inside text-lg text-gray-700">
-                        <li>Nilai emas terjamin</li>
-                        <li>Tidak terjejas oleh inflasi</li>
+                        <li>Sesuai sebagai sebahagian daripada simpanan jangka panjang</li>
+                        <li>Sering digunakan sebagai pelindung nilai</li>
                         <li>Mudah ditukar kepada tunai</li>
                         <li>Mudah diwariskan</li>
                         <li>Patuh syariah</li>
@@ -1192,7 +1192,7 @@ export default function NewPage() {
                         </div>
                         <div>
                           <p className="font-semibold text-gray-900">Apakah kelebihan menyimpan emas dengan Public Gold?</p>
-                          <p className="text-gray-700">Nilai emas terjamin, tidak terjejas oleh inflasi, mudah ditukar kepada tunai, mudah diwariskan, dan patuh syariah.</p>
+                          <p className="text-gray-700">Emas sesuai sebagai sebahagian daripada simpanan jangka panjang, mudah ditukar kepada tunai, mudah diwariskan, dan patuh syariah.</p>
                         </div>
                         <div>
                           <p className="font-semibold text-gray-900">Apakah jenis emas yang tersedia?</p>
@@ -1254,8 +1254,8 @@ export default function NewPage() {
                       Kelebihan menyimpan emas dengan Public Gold:
                     </p>
                     <ul className="list-disc list-inside text-lg text-gray-700">
-                      <li>Nilai emas terjamin</li>
-                      <li>Tidak terjejas oleh inflasi</li>
+                      <li>Sesuai sebagai sebahagian daripada simpanan jangka panjang</li>
+                      <li>Sering digunakan sebagai pelindung nilai</li>
                       <li>Mudah ditukar kepada tunai</li>
                       <li>Mudah diwariskan</li>
                       <li>Patuh syariah</li>
@@ -1314,7 +1314,7 @@ export default function NewPage() {
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900">Apakah kelebihan menyimpan emas dengan Public Gold?</p>
-                        <p className="text-gray-700">Nilai emas terjamin, tidak terjejas oleh inflasi, mudah ditukar kepada tunai, mudah diwariskan, dan patuh syariah.</p>
+                        <p className="text-gray-700">Emas sesuai sebagai sebahagian daripada simpanan jangka panjang, mudah ditukar kepada tunai, mudah diwariskan, dan patuh syariah.</p>
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900">Apakah jenis emas yang tersedia?</p>
