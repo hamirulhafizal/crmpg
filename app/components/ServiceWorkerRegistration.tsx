@@ -1,9 +1,14 @@
 'use client'
 
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
+import { isAppShellPath } from '@/app/lib/app-shell-routes'
 
 export default function ServiceWorkerRegistration() {
+  const pathname = usePathname() || '/'
+
   useEffect(() => {
+    if (!isAppShellPath(pathname) && !pathname.startsWith('/admin')) return
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       // Register service worker
       navigator.serviceWorker
@@ -25,7 +30,7 @@ export default function ServiceWorkerRegistration() {
         window.location.reload()
       })
     }
-  }, [])
+  }, [pathname])
 
   return null
 }

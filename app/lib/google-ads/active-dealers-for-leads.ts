@@ -236,15 +236,15 @@ export async function loadActiveGoogleAdsDealers(
     if (!auth?.email) continue
 
     const prof = profileById.get(r.user_id)
-    const displayName =
-      (r.public_username && r.public_username.trim()) ||
-      (prof?.full_name && prof.full_name.trim()) ||
-      auth.email.split('@')[0] ||
-      'Dealer'
     const usernamePgo =
       (prof?.username_pbo && prof.username_pbo.trim()) ||
       (r.public_username && r.public_username.trim()) ||
-      displayName
+      ''
+    const displayName =
+      (prof?.full_name && prof.full_name.trim()) ||
+      usernamePgo ||
+      auth.email.split('@')[0] ||
+      'Dealer'
     const slug = r.public_username?.trim()
       ? slugifyPublicGold(r.public_username)
       : prof?.username_pbo?.trim()
@@ -263,7 +263,7 @@ export async function loadActiveGoogleAdsDealers(
       displayName,
       slug,
       pgcode,
-      usernamePgo,
+      usernamePgo: usernamePgo || displayName,
       image_url: avatar,
       lead_email: Boolean(r.lead_email),
       no_tel: dealerPhone || auth.phone,

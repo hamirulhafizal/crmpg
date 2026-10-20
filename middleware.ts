@@ -23,7 +23,7 @@ export const config = {
      * Match all request paths except static assets / PWA files.
      * (Those must not hit supabase.auth.getUser — Auth 504s were killing middleware.)
      */
-    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|robots\\.txt|icon|apple-icon|api/automation/gold-poster|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|json|txt|map)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.json|robots\\.txt|icon|apple-icon|api/automation/gold-poster|$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|js|json|txt|map)$).*)',
   ],
 }
 

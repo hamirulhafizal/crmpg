@@ -165,37 +165,51 @@ export default function NewPage() {
     [formData.phone, normalizePhoneByCountry]
   );
 
-  // Carousel image arrays
-  const testimoniImages = Array.from({ length: 8 }, (_, i) => `/testimoni/image copy ${i}.png`);
-  const gapImages = Array.from({ length: 3 }, (_, i) => `/gap/image${i}.png`);
+  // Carousel image arrays (pre-compressed WebP)
+  const testimoniImages = Array.from({ length: 8 }, (_, i) => `/optimized/testimoni/image copy ${i}.webp`);
+  const gapImages = Array.from({ length: 3 }, (_, i) => `/optimized/gap/image${i}.webp`);
 
   type CarouselType = 'testimoni' | 'gap';
   const [dialogCarousel, setDialogCarousel] = useState<CarouselType>('testimoni');
   const [dialogIndex, setDialogIndex] = useState<number>(0);
 
   useEffect(() => {
+    let idleId: number | undefined
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let cancelled = false
+
     const fetchAllAgents = async () => {
       try {
         const response = await fetch('/api/get-all-agents');
+        if (cancelled) return
         if (response.ok) {
           const data = await response.json();
-          //console.log('🔄 All agents fetched:--->', data);
-
           setAllAgents(data);
-
-          if (data.every((agent: any) => agent.lead_email === true)) {
-            console.log('🔄 All agents have lead_email: true, resetting all dealers lead_email to false');
-            setAllDealersLeadEmailFalse();
-          }
         }
       } catch (error) {
         console.error('Error fetching all agents:', error);
       } finally {
-        setIsAgentsLoading(false);
+        if (!cancelled) setIsAgentsLoading(false);
       }
     };
 
-    fetchAllAgents();
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(() => {
+        void fetchAllAgents()
+      }, { timeout: 2500 })
+    } else {
+      timeoutId = setTimeout(() => {
+        void fetchAllAgents()
+      }, 400)
+    }
+
+    return () => {
+      cancelled = true
+      if (idleId != null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId)
+      }
+      if (timeoutId != null) clearTimeout(timeoutId)
+    }
   }, []);
 
   // Filter agents based on search term (preserve payment queue order)
@@ -1067,7 +1081,7 @@ export default function NewPage() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 {/* <h1 className="text-2xl font-bold text-red">Simpan Emas</h1> */}
-                <img src="/pg-logo.png" alt="Public Gold" className="w-30 h-30" />
+                <img src="/pg-logo.png" alt="Public Gold" className="w-30 h-30" width={120} height={40} />
               </div>
             </div>
 
@@ -1214,10 +1228,13 @@ export default function NewPage() {
       {/* Hero Section — full-bleed light marketing surface */}
       <section className="relative overflow-hidden bg-gradient-to-b from-amber-50 to-yellow-50">
         <div className="absolute inset-0 z-0">
-          <img
-            src="/pg-hq.png"
+          <Image
+            src="/optimized/pg-hq.webp"
             alt="Public Gold HQ"
-            className="h-full w-full object-cover"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
             style={{ filter: 'brightness(1.05) saturate(1.05)' }}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-amber-50/75 via-white/55 to-amber-50/90" />
@@ -1421,7 +1438,15 @@ export default function NewPage() {
       <section id="simpan-emas" className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16 flex flex-col justify-center items-center">
-            <img className="p-5 pb-10 w-full h-70 sm:w-full sm:h-full md:w-[50vw] md:h-[70vh] object-cover" src="/menara-indoor.jpg" alt="Hero" />
+            <img
+              className="p-5 pb-10 w-full h-70 sm:w-full sm:h-full md:w-[50vw] md:h-[70vh] object-cover"
+              src="/optimized/menara-indoor.webp"
+              alt="Hero"
+              width={1040}
+              height={948}
+              loading="lazy"
+              decoding="async"
+            />
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
               5 Kelebihan Menyimpan Emas
             </h2>
@@ -1431,10 +1456,14 @@ export default function NewPage() {
             </p>
 
             <img
-              src="/gold-background.png"
-              alt="Gold Background"
+              src="/optimized/gold-background.webp"
+              alt=""
               className="my-10 object-cover z-0 mx-auto w-full h-90 sm:w-full sm:h-full md:w-[50vw] md:h-[70vh] rounded-xl"
               style={{ maxWidth: '100%', maxHeight: '100%' }}
+              width={1400}
+              height={1851}
+              loading="lazy"
+              decoding="async"
             />
           </div>
 
@@ -1487,12 +1516,6 @@ export default function NewPage() {
 
       {/* Testimonials Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-red-50 to-yellow-100 py-20">
-        <img
-          src="/gold-background.png"
-          alt="Gold Background"
-          className="absolute inset-0 z-0 h-full w-full object-cover opacity-30"
-          style={{ filter: 'brightness(1.15)' }}
-        />
         <div className="absolute inset-0 z-10 bg-gradient-to-b from-amber-50/80 via-white/70 to-yellow-50/90" />
         <div className="relative z-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -1511,6 +1534,8 @@ export default function NewPage() {
                       className="w-full h-auto object-cover rounded-lg cursor-zoom-in"
                       onClick={() => openImageDialog(src, 'testimoni', index)}
                       alt={`Testimoni ${index + 1}`}
+                      loading="lazy"
+                      decoding="async"
                     />
                   </div>
                 ))}
@@ -1520,7 +1545,7 @@ export default function NewPage() {
             <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12 max-w-4xl mx-auto">
               <div className="flex items-center mb-6">
 
-                <img src="/steven.png" alt="Public Gold" className="w-20 h-20 mr-5 rounded-full" />
+                <img src="/steven.png" alt="Public Gold" className="w-20 h-20 mr-5 rounded-full" width={80} height={80} loading="lazy" decoding="async" />
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">Steven Blanda</h3>
                   <p className="text-gray-600">Guru, Marudi (Sarawak)</p>
@@ -1600,6 +1625,8 @@ export default function NewPage() {
                     className="w-full h-auto object-cover rounded-lg cursor-zoom-in"
                     onClick={() => openImageDialog(src, 'gap', index)}
                     alt={`GAP ${index + 1}`}
+                    loading="lazy"
+                    decoding="async"
                   />
                 </div>
               ))}
@@ -1637,9 +1664,13 @@ export default function NewPage() {
 
             <div className="flex flex-col items-center justify-center">
               <img
-                src="ebook.png"
+                src="/optimized/ebook.webp"
                 alt="Ebook"
-                className="rounded-lg object-cover shadow-md sm:h-full sm:w-full md:h-[50vh] md:w-[40vw]"
+                className="rounded-lg object-contain shadow-md sm:h-full sm:w-full md:h-[50vh] md:w-[40vw]"
+                width={756}
+                height={504}
+                loading="lazy"
+                decoding="async"
               />
 
               <button
@@ -1749,7 +1780,7 @@ export default function NewPage() {
                           {agent.image_url && agent.image_url !== 'https://via.placeholder.com/150' ? (
                             <img
                               src={agent.image_url}
-                              alt={agent.username_pgo || agent.username}
+                              alt={agent.username || agent.username_pgo}
                               className="w-full h-full object-cover rounded-full"
                               loading="lazy"
                               onError={(e) => {
@@ -1766,14 +1797,14 @@ export default function NewPage() {
                             className="w-full h-full flex items-center justify-center"
                             style={{ display: agent.image_url && agent.image_url !== 'https://via.placeholder.com/150' ? 'none' : 'flex' }}
                           >
-                            {(agent.username_pgo || agent.username).charAt(0).toUpperCase()}
+                            {(agent.username || agent.username_pgo || '?').charAt(0).toUpperCase()}
                           </div>
                         </div>
 
                         <div className="text-center space-y-2 mb-3">
                           <div>
                             <p className="text-base font-semibold text-gray-900 leading-snug">
-                              {agent.username_pgo || agent.username || '—'}
+                              {agent.username || agent.username_pgo || '—'}
                             </p>
                           </div>
                           <div>
@@ -2187,7 +2218,7 @@ export default function NewPage() {
                           type="button"
                           onClick={handleLocationClick}
                           disabled={isLocationLoading}
-                          className="absolute right-2 top-[35px] transform -translate-y-1/2 p-1 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="absolute right-2 top-[21px] transform -translate-y-1/2 p-1 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Dapatkan lokasi semasa"
                         >
                           {isLocationLoading ? (
@@ -2296,7 +2327,7 @@ export default function NewPage() {
                     <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                       <h3 className="text-2xl font-bold text-gray-900 mb-4">Kenapa Public Gold?</h3>
 
-                      <img alt="" src="/pg-hq.png" className="sm:w-full sm:h-full md:w-[40vw] md:h-[50vh] object-cover rounded-lg mb-4" />
+                      <img alt="" src="/optimized/pg-hq.webp" className="sm:w-full sm:h-full md:w-[40vw] md:h-[50vh] object-cover rounded-lg mb-4" loading="lazy" decoding="async" />
 
                       <p className="text-lg text-gray-700 mb-4">
                         Public Gold adalah salah satu pengeluar emas syariah terkemuka di Malaysia. Kami menawarkan pelbagai produk emas yang patuh syariah, termasuk:
@@ -2414,7 +2445,7 @@ export default function NewPage() {
                   <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                     <h3 className="text-2xl font-bold text-gray-900 mb-4">Kenapa Public Gold?</h3>
 
-                    <img alt="" src="/pg-hq.png" className="w-full h-auto object-cover rounded-lg mb-4" />
+                    <img alt="" src="/optimized/pg-hq.webp" className="w-full h-auto object-cover rounded-lg mb-4" loading="lazy" decoding="async" />
 
                     <p className="text-lg text-gray-700 mb-4">
                       Public Gold adalah salah satu pengeluar emas syariah terkemuka di Malaysia. Kami menawarkan pelbagai produk emas yang patuh syariah, termasuk:
@@ -2533,7 +2564,7 @@ export default function NewPage() {
                   <div className="mb-6">
                     <img
                       alt="Public Gold App"
-                      src="/apps-pg.jpeg"
+                      src="/optimized/apps-pg.webp"
                       className="w-full max-w-sm h-auto object-cover rounded-xl shadow-lg border-2 border-yellow-400"
                     />
                   </div>
@@ -2594,7 +2625,7 @@ export default function NewPage() {
                 <div className="mb-6">
                   <img
                     alt="Public Gold App"
-                    src="/apps-pg.jpeg"
+                    src="/optimized/apps-pg.webp"
                     className="w-[80%] md:w-1/2 max-w-xs h-auto object-cover rounded-xl mx-auto shadow-lg border-2 border-yellow-400"
                   />
                 </div>

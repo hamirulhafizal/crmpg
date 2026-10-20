@@ -104,11 +104,13 @@ export function GoogleAdsRotationPanel() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 text-white">
+      <div className="theme-fixed border-b border-white/10 bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 text-white">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-900">Live lead rotation</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-900">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+              Live lead rotation
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">
               {nextRecipient
                 ? `Next GAP lead → ${nextRecipient.usernamePgo}`
                 : cycleComplete
@@ -127,7 +129,7 @@ export function GoogleAdsRotationPanel() {
 
         {stats.total > 0 && (
           <div className="mt-4">
-            <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center justify-between text-xs text-white/70">
               <span>
                 Round progress: {stats.completed}/{stats.total} received a lead
               </span>

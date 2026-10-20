@@ -2,17 +2,8 @@ import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
-import { AuthProvider } from "./contexts/auth-context";
-import { CustomerEditModalProvider } from "./contexts/customer-edit-modal-context";
-import { ClientOnly } from "./components/ClientOnly";
-import ServiceWorkerRegistration from "./components/ServiceWorkerRegistration";
-import ViewTransitions from "./components/ViewTransitions";
-import ClientScripts from "./components/ClientScripts";
-import { MotionProvider } from "./components/motion-provider";
-import { PWAInstallPromptBootstrap } from "./components/pwa/PWAInstallPromptBootstrap";
-import { QueryProvider } from "./components/providers/query-provider";
 import { THEME_TOGGLE_ID } from "./components/ThemeToggle";
-import { AppRouteShell } from "./components/AppRouteShell";
+import ClientScripts from "./components/ClientScripts";
 
 export const metadata: Metadata = {
   title: "Public Gold CRM",
@@ -34,7 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Public Gold Malaysia - All prices are quoted in Malaysia Ringgit (MYR) and excluding Gold Premium",
     images: ["/syariah1.png"],
-    url: "/image-gold.png",
+    url: "/",
     type: "article",
     description: "All prices are quoted in Malaysia Ringgit (MYR) and excluding Gold Premium",
   },
@@ -59,8 +50,6 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="PG CRM" />
         <link rel="manifest" href="/manifest.json" />
-        <link rel="dns-prefetch" href="https://app.nocodb.com" />
-        <link rel="dns-prefetch" href="https://publicgoldofficial.com" />
       </head>
       <body
         className={`${GeistSans.variable} ${GeistMono.variable} min-w-0 overflow-x-hidden antialiased`}
@@ -68,7 +57,6 @@ export default function RootLayout({
       >
         {/* Pure CSS theme control — default follows system; checked inverts (no JS). */}
         <input id={THEME_TOGGLE_ID} type="checkbox" aria-hidden tabIndex={-1} />
-        <PWAInstallPromptBootstrap />
         {/* Google Tag Manager (noscript) */}
         <noscript>
           <iframe
@@ -78,21 +66,8 @@ export default function RootLayout({
             style={{ display: 'none', visibility: 'hidden' }}
           />
         </noscript>
-        
-        <AuthProvider>
-          <QueryProvider>
-            <CustomerEditModalProvider>
-              <MotionProvider>
-                <ClientOnly>
-                  <ServiceWorkerRegistration />
-                  <ViewTransitions />
-                  <ClientScripts />
-                </ClientOnly>
-                <AppRouteShell>{children}</AppRouteShell>
-              </MotionProvider>
-            </CustomerEditModalProvider>
-          </QueryProvider>
-        </AuthProvider>
+        <ClientScripts />
+        {children}
       </body>
     </html>
   );

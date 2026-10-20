@@ -19,7 +19,19 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/app/admin/*": ["./app/(app)/admin/*"],
+      "@/app/automated-messages/*": ["./app/(app)/automated-messages/*"],
+      "@/app/customers/*": ["./app/(app)/customers/*"],
+      "@/app/dashboard/*": ["./app/(app)/dashboard/*"],
+      "@/app/excel-processor/*": ["./app/(app)/excel-processor/*"],
+      "@/app/extension-download/*": ["./app/(app)/extension-download/*"],
+      "@/app/google-ads/*": ["./app/(app)/google-ads/*"],
+      "@/app/profile/*": ["./app/(app)/profile/*"],
+      "@/app/pwa-test/*": ["./app/(app)/pwa-test/*"],
+      "@/app/test-pwa/*": ["./app/(app)/test-pwa/*"],
+      "@/app/waha-integration/*": ["./app/(app)/waha-integration/*"],
+      "@/app/ws-integration/*": ["./app/(app)/ws-integration/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
