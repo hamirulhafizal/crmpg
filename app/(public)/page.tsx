@@ -2076,9 +2076,9 @@ export default function NewPage() {
           <div className="md:hidden absolute inset-x-0 bottom-0 max-h-full">
             <div className={`relative w-full transform transition-transform duration-300 ease-in-out ${isDrawerAnimating ? 'translate-y-full' : 'translate-y-0'
               }`}>
-              <div className="bg-white rounded-t-2xl shadow-xl max-h-[90vh] flex flex-col">
+              <div className="flex max-h-[90svh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl">
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <div className="flex shrink-0 items-center justify-between border-b border-gray-200 p-6">
                   <h2 className="text-xl font-semibold text-gray-900">Daftar Akaun Public Gold</h2>
                   <button
                     onClick={closeDrawer}
@@ -2091,7 +2091,7 @@ export default function NewPage() {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                   {/* Context */}
                   <div className="mb-6 p-4 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-800 mb-3">
@@ -2103,7 +2103,7 @@ export default function NewPage() {
                   </div>
 
                   {/* Form */}
-                  <form id="mobileRegForm" onSubmit={handleSubmit} className="space-y-6 pb-28">
+                  <form id="mobileRegForm" onSubmit={handleSubmit} className="space-y-6">
                     {/* Full Name */}
                     <div>
                       <label htmlFor="fullNameMobile" className="block text-sm font-medium text-gray-700 mb-2">
@@ -2264,25 +2264,21 @@ export default function NewPage() {
                       </div>
                     )}
 
-                  </form>
-                  {/* Fixed footer submit button */}
-                  <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white border-t border-gray-200 p-4 z-5 mb-7">
                     <button
                       type="submit"
-                      form="mobileRegForm"
                       disabled={isSubmitting}
-                      className="w-full bg-red-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shimmer-animate"
+                      className="w-full rounded-lg bg-red-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-gray-400 shimmer-animate"
                     >
                       {isSubmitting ? (
                         <div className="flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                          <div className="mr-2 h-5 w-5 animate-spin rounded-full border-b-2 border-white"></div>
                           Menghantar... jangan tutup halaman ini.
                         </div>
                       ) : (
                         'Hantar Pendaftaran'
                       )}
                     </button>
-                  </div>
+                  </form>
                 </div>
               </div>
             </div>
