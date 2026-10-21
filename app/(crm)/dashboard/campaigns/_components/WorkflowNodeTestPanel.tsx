@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import type { WorkflowNodeTestResult } from '@/app/lib/campaigns/test-workflow-node'
 import {
   allWorkflowNodeIds,
@@ -31,6 +32,7 @@ export function WorkflowNodeTestPanel({
 }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<WorkflowNodeTestResult | null>(null)
+  const { openCustomerById } = useCustomerEditModal()
 
   const draftRef = useRef(draft)
   const onToastRef = useRef(onToast)
@@ -212,12 +214,39 @@ export function WorkflowNodeTestPanel({
                 Items ({result.items.length})
               </p>
               <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-                {result.items.map((item, i) => (
-                  <li key={i} className="px-2.5 py-2 text-xs">
-                    <p className="font-medium text-slate-900">{item.label}</p>
-                    {item.detail ? <p className="mt-0.5 text-slate-600">{item.detail}</p> : null}
-                  </li>
-                ))}
+                {result.items.map((item, i) => {
+                  const customerId = item.customer_id?.trim()
+                  const body = (
+                    <>
+                      <p
+                        className={`font-medium text-slate-900 ${
+                          customerId ? 'underline decoration-slate-300 underline-offset-2' : ''
+                        }`}
+                      >
+                        {item.label}
+                      </p>
+                      {item.detail ? <p className="mt-0.5 text-slate-600">{item.detail}</p> : null}
+                    </>
+                  )
+                  return (
+                    <li key={customerId || i} className="text-xs">
+                      {customerId ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openCustomerById(customerId, { overlayZIndexClassName: 'z-[2100]' })
+                          }
+                          title="Open customer details"
+                          className="workflow-test-item-btn block w-full px-2.5 py-2 text-left transition hover:bg-violet-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                        >
+                          {body}
+                        </button>
+                      ) : (
+                        <div className="px-2.5 py-2">{body}</div>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ) : null}

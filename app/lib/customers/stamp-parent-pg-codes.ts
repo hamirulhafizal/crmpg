@@ -129,7 +129,7 @@ export async function stampParentPgCodesForUser(
   // Include the sync-root dealer (Tree Tier / profile) so juniors naming them resolve.
   const { data: profile } = await admin
     .from('profiles')
-    .select('pgcode, full_name, name')
+    .select('pgcode, full_name')
     .eq('id', userId)
     .maybeSingle()
   if (profile) {

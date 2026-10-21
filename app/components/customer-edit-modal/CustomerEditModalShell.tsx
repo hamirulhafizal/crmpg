@@ -36,6 +36,7 @@ import { computeAgeFromDob } from '@/app/lib/customer-dob'
 import { fetchCustomerAvatarUrl } from '@/app/lib/customers/fetch-customers'
 import { CustomerChecklistPanel } from '@/app/components/customer-edit-modal/CustomerChecklistPanel'
 import { isValidCampaignPhone, normalizePhoneToMsisdn } from '@/app/lib/phone-msisdn'
+import { describeCustomerTreeTier } from '@/app/lib/customers/frontline-tier'
 
 function WhatsAppOpenIconButton({ phone }: { phone: string | null | undefined }) {
   if (!isValidCampaignPhone(phone)) {
@@ -159,6 +160,14 @@ export interface Customer {
   sender_name: string | null
   save_name: string | null
   pg_code: string | null
+  parent_pg_code?: string | null
+  tree_tier?: number | null
+  upline?: {
+    pg_code: string | null
+    name: string | null
+    customer_id: string | null
+    is_dealer?: boolean
+  } | null
   row_number: number | null
   original_data: Record<string, unknown> | null
   is_married: boolean | null
@@ -1352,6 +1361,46 @@ export function CustomerEditModalShell({
                       }
                       className="w-full px-3 py-2 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tree tier</label>
+                    <div
+                      className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800"
+                      aria-live="polite"
+                    >
+                      {isCreating
+                        ? '—'
+                        : describeCustomerTreeTier(draft.tree_tier, draft.upline?.is_dealer)}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Hop count from you. Direct frontline is tier 1.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Parent PG (upline)
+                    </label>
+                    <div
+                      className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 font-mono tracking-wide"
+                      aria-live="polite"
+                    >
+                      {isCreating
+                        ? '—'
+                        : draft.upline?.pg_code || draft.parent_pg_code || '—'}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isCreating
+                        ? 'Shown after the customer is saved.'
+                        : draft.upline?.is_dealer
+                          ? 'This record is you (dealer) — no upline.'
+                          : draft.upline?.name
+                            ? `Upline: ${draft.upline.name}`
+                            : draft.upline?.pg_code || draft.parent_pg_code
+                              ? 'Upline PG linked; name not found in your customers.'
+                              : 'No upline PG linked. Sync from Business Center to fill this.'}
+                    </p>
                   </div>
 
                   <div>

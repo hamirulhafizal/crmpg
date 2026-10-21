@@ -223,6 +223,118 @@ function LiveActivityPanel({
   )
 }
 
+function WorkflowNameTitle({
+  value,
+  onChange,
+  editable,
+  disabled,
+}: {
+  value: string
+  onChange: (next: string) => void
+  editable: boolean
+  disabled?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!editing) setDraftName(value)
+  }, [value, editing])
+
+  useEffect(() => {
+    if (!editing) return
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+  }, [editing])
+
+  const commit = () => {
+    const next = draftName.replace(/\s+/g, ' ').trim()
+    if (!next) {
+      setDraftName(value)
+      setEditing(false)
+      return
+    }
+    if (next !== value) onChange(next)
+    setEditing(false)
+  }
+
+  const cancel = () => {
+    setDraftName(value)
+    setEditing(false)
+  }
+
+  if (!editable) {
+    return (
+      <h1
+        id="workflow-title"
+        className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg"
+      >
+        {value || 'Untitled workflow'}
+      </h1>
+    )
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        id="workflow-title"
+        aria-label="Workflow name"
+        maxLength={120}
+        disabled={disabled}
+        value={draftName}
+        onChange={(e) => setDraftName(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+        className="workflow-title-input min-w-[10rem] max-w-[min(100%,28rem)] flex-1 rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-base font-semibold text-slate-900 outline-none ring-2 ring-sky-500/25 focus:border-sky-500 sm:text-lg"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => setEditing(true)}
+      title="Rename workflow"
+      aria-label={`Rename workflow, current name ${value || 'Untitled workflow'}`}
+      className="workflow-title-btn group inline-flex min-h-9 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-black/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <h1
+        id="workflow-title"
+        className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg"
+      >
+        {value || 'Untitled workflow'}
+      </h1>
+      <svg
+        className="h-3.5 w-3.5 shrink-0 text-slate-400 opacity-80 group-hover:text-slate-600 group-hover:opacity-100"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L8.25 18.402 4.5 19.5l1.098-3.75 12.264-11.263z"
+        />
+      </svg>
+    </button>
+  )
+}
+
 function CampaignWorkflowView(props: Props) {
   const {
     open,
@@ -262,6 +374,8 @@ function CampaignWorkflowView(props: Props) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const savedSnapshot = useRef(JSON.stringify(initialDraft))
+  const [workflowName, setWorkflowName] = useState(campaignName)
+  const savedNameRef = useRef(campaignName)
   const [nodeTestAutoRunKey, setNodeTestAutoRunKey] = useState(0)
   const [testingNodeId, setTestingNodeId] = useState<string | null>(null)
   const [nodeTestVisual, setNodeTestVisual] = useState<Record<string, WorkflowNodeState> | null>(
@@ -331,6 +445,22 @@ function CampaignWorkflowView(props: Props) {
     if (initialDraft) savedSnapshot.current = JSON.stringify(initialDraft)
   }, [initialDraft])
 
+  const workflowNameRef = useRef(workflowName)
+  workflowNameRef.current = workflowName
+
+  const applyWorkflowName = useCallback((next: string) => {
+    const cleaned = next.replace(/\s+/g, ' ').trim()
+    workflowNameRef.current = cleaned
+    setWorkflowName(cleaned)
+  }, [])
+
+  useEffect(() => {
+    const localDirty = workflowNameRef.current.trim() !== savedNameRef.current.trim()
+    if (localDirty) return
+    savedNameRef.current = campaignName
+    setWorkflowName(campaignName)
+  }, [campaignName])
+
   const definitionNodeIds = useMemo(() => {
     const def = draft.definition?.nodes?.length
       ? (draft.definition as WorkflowDefinition)
@@ -361,7 +491,10 @@ function CampaignWorkflowView(props: Props) {
     onUrlSelectionChange(nodeId)
   }, [open, selectedNodeIds, onUrlSelectionChange])
 
-  const isDirty = editable && JSON.stringify(draft) !== savedSnapshot.current
+  const isDirty =
+    editable &&
+    (JSON.stringify(draft) !== savedSnapshot.current ||
+      workflowName.trim() !== savedNameRef.current.trim())
 
   const onPositionsChange = useCallback((positions: Record<string, { x: number; y: number }>) => {
     setDraft((d) => {
@@ -461,6 +594,11 @@ function CampaignWorkflowView(props: Props) {
   const saveWorkflow = async () => {
     if (!editable) return
     if (!saveAsPlatformDefault && !campaignId) return
+    const trimmedName = workflowNameRef.current.replace(/\s+/g, ' ').trim()
+    if (!trimmedName) {
+      setSaveError('Workflow name is required')
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -471,7 +609,7 @@ function CampaignWorkflowView(props: Props) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id: platformDefaultId,
-              name: campaignName,
+              name: trimmedName,
               workflow_definition,
               workflow_layout: draft.layout ?? null,
             }),
@@ -479,11 +617,13 @@ function CampaignWorkflowView(props: Props) {
         : await fetch(`/api/campaigns/${campaignId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ workflow_definition }),
+            body: JSON.stringify({ workflow_definition, name: trimmedName }),
           })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Save failed')
       savedSnapshot.current = JSON.stringify(draft)
+      savedNameRef.current = trimmedName
+      setWorkflowName(trimmedName)
       resetHistory(draft)
       onSaved?.()
       if (saveAsPlatformDefault && typeof json.synced_campaigns === 'number' && json.synced_campaigns > 0) {
@@ -536,12 +676,12 @@ function CampaignWorkflowView(props: Props) {
 
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
-                <h1
-                  id="workflow-title"
-                  className="min-w-0 truncate text-base font-semibold text-slate-900 sm:text-lg"
-                >
-                  {campaignName}
-                </h1>
+                <WorkflowNameTitle
+                  value={workflowName}
+                  onChange={applyWorkflowName}
+                  editable={editable}
+                  disabled={saving}
+                />
                 <CampaignStatusBadge status={campaignStatus as never} />
                 {isDirty ? (
                   <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">

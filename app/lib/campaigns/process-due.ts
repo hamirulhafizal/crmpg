@@ -28,6 +28,8 @@ import {
   customerMatchesFilters,
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
+import { describeAudienceRanksFilter } from '@/app/lib/customer-account-status'
+import { describeFrontlineTiersFilter, frontlineTiersNeedsFullScan, resolveAudienceFrontlineScope } from '@/app/lib/customers/frontline-tier'
 import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import { isWhatsAppSendAllowed, getPhoneContactStatusFromRow } from '@/app/lib/customer-phone-contact-status'
 import { computeSendAt, isScheduledSendTime } from '@/app/lib/campaigns/schedule'
@@ -351,7 +353,7 @@ function audienceFiltersSummary(f: CampaignAudienceFilters): string {
   const ids = (f.tag_ids ?? []).map(String).filter(Boolean)
   const acct = (f.account_status ?? []).length
   const eth = (f.ethnicities ?? []).join(',') || '—'
-  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} ethnicities=${eth} is_friend=${f.is_friend ?? '—'} profile_verified=${f.profile_verified ?? '—'} direct_debit=${f.direct_debit ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'}`
+  return `tag_slugs=[${slugs.join(', ')}] tag_ids=${ids.length} account_status=${acct} gender=${f.gender ?? '—'} ethnicities=${eth} is_friend=${f.is_friend ?? '—'} profile_verified=${f.profile_verified ?? '—'} direct_debit=${f.direct_debit ?? '—'} is_monthly_buyer=${f.is_monthly_buyer ?? '—'} ${describeFrontlineTiersFilter(f)} ${describeAudienceRanksFilter(f.business_ranks)}`
 }
 
 async function logCampaignPipelineDiagnostics(
@@ -974,14 +976,12 @@ async function syncEnrollmentsForCampaign(
     return
   }
 
-  const { data: ownerProfile } = await supabase
-    .from('profiles')
-    .select('pgcode')
-    .eq('id', campaign.user_id)
-    .maybeSingle()
-  const rootPgCode = normalizePgCodeValue(
-    (ownerProfile as { pgcode?: string | null } | null)?.pgcode
+  const { rootPgCode, tierByCustomerId } = await resolveAudienceFrontlineScope(
+    supabase,
+    campaign.user_id,
+    filters
   )
+  const needsFullTree = frontlineTiersNeedsFullScan(filters)
 
   const { data: existing } = await supabase
     .from('campaign_enrollments')
@@ -1018,7 +1018,9 @@ async function syncEnrollmentsForCampaign(
       .from('customers')
       .select(CUSTOMER_EMBED_FOR_AUDIENCE_MATCH)
       .eq('user_id', campaign.user_id)
-    customersQuery = applyRootFrontlineAudienceDbFilter(customersQuery, rootPgCode)
+    if (!needsFullTree) {
+      customersQuery = applyRootFrontlineAudienceDbFilter(customersQuery, rootPgCode)
+    }
     const { data: batch, error } = await customersQuery.range(offset, offset + CUSTOMER_PAGE - 1)
 
     if (error) {
@@ -1038,7 +1040,7 @@ async function syncEnrollmentsForCampaign(
         skipNoPhone++
         continue
       }
-      if (!customerInCampaignAudienceScope(c, rootPgCode)) {
+      if (!customerInCampaignAudienceScope(c, rootPgCode, filters, tierByCustomerId)) {
         skipFilters++
         continue
       }
@@ -1162,17 +1164,9 @@ async function reconcileEnrollmentsToAudience(
     .eq('id', campaignId)
     .maybeSingle()
   const ownerId = (campaignOwner as { user_id?: string } | null)?.user_id
-  let rootPgCode = ''
-  if (ownerId) {
-    const { data: ownerProfile } = await supabase
-      .from('profiles')
-      .select('pgcode')
-      .eq('id', ownerId)
-      .maybeSingle()
-    rootPgCode = normalizePgCodeValue(
-      (ownerProfile as { pgcode?: string | null } | null)?.pgcode
-    )
-  }
+  const { rootPgCode, tierByCustomerId } = ownerId
+    ? await resolveAudienceFrontlineScope(supabase, ownerId, filters)
+    : { rootPgCode: '', tierByCustomerId: undefined }
   let offset = 0
   let paused = 0
 
@@ -1201,7 +1195,7 @@ async function reconcileEnrollmentsToAudience(
       const customer = (Array.isArray(custRaw) ? custRaw[0] : custRaw) as CustomerForAudience | null
       const stillInAudience =
         customer &&
-        customerInCampaignAudienceScope(customer, rootPgCode) &&
+        customerInCampaignAudienceScope(customer, rootPgCode, filters, tierByCustomerId) &&
         customerMatchesFilters(customer, filters)
       if (!customer || stillInAudience) continue
 
@@ -1397,6 +1391,7 @@ async function processDueEnrollmentRows(
   let sendIndex = 0
   const sessionPickByUser = new Map<string, WhatsAppSessionPick | null>()
   const rootPgByUser = new Map<string, string>()
+  const tierMapByUser = new Map<string, Map<string, number>>()
 
   const getSessionPick = async (userId: string, forCampaign: CampaignRow): Promise<WhatsAppSessionPick | null> => {
     const cacheKey = userId
@@ -1419,6 +1414,18 @@ async function processDueEnrollmentRows(
     const root = normalizePgCodeValue((profile as { pgcode?: string | null } | null)?.pgcode)
     rootPgByUser.set(userId, root)
     return root
+  }
+
+  const getAudienceScope = async (userId: string, filters: CampaignAudienceFilters) => {
+    const rootPgCode = await getRootPgCode(userId)
+    if (!frontlineTiersNeedsFullScan(filters)) {
+      return { rootPgCode, tierByCustomerId: undefined as Map<string, number> | undefined }
+    }
+    if (!tierMapByUser.has(userId)) {
+      const scope = await resolveAudienceFrontlineScope(supabase, userId, filters)
+      tierMapByUser.set(userId, scope.tierByCustomerId ?? new Map())
+    }
+    return { rootPgCode, tierByCustomerId: tierMapByUser.get(userId) }
   }
 
   for (const row of due) {
@@ -1461,8 +1468,16 @@ async function processDueEnrollmentRows(
     }
 
     if (plan.audienceNodeId) {
-      const rootPgCode = await getRootPgCode(campaign.user_id)
-      const inScope = customerInCampaignAudienceScope(customer, rootPgCode)
+      const { rootPgCode, tierByCustomerId } = await getAudienceScope(
+        campaign.user_id,
+        plan.compiled.audience_filters
+      )
+      const inScope = customerInCampaignAudienceScope(
+        customer,
+        rootPgCode,
+        plan.compiled.audience_filters,
+        tierByCustomerId
+      )
       const matches = customerMatchesFilters(customer, plan.compiled.audience_filters)
       if (!inScope || !matches) {
         const label = customerWorkflowLabel(customer)
@@ -1473,10 +1488,10 @@ async function processDueEnrollmentRows(
           plan,
           audienceFilters,
           reason: !inScope
-            ? 'customer outside root frontline (nested Tree Tier)'
+            ? 'customer outside selected tree tier'
             : 'customer no longer matches audience filters',
           metaKey: 'skip_audience_mismatch',
-          metaExtra: { customer_id: customer.id, outside_root_frontline: !inScope },
+          metaExtra: { customer_id: customer.id, outside_tree_tier: !inScope },
           debugLines,
           onProgress,
           progressMessage: `Skipped ${label} — not in target audience`,

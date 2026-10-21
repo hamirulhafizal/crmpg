@@ -822,6 +822,52 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         return v;
     }
 
+    function existingEntryPgKey(entry) {
+        return entry ? normalizePgCodeForMatch(entry.pg_code) : '';
+    }
+
+    /**
+     * Junior accounts reuse the parent's phone (and sometimes email). Never treat
+     * "same phone" as the same person when a PG code is present.
+     */
+    function nameTokensForMerge(value) {
+        var stop = {
+            ADIK: 1, TN: 1, PN: 1, CIK: 1, BIN: 1, BINTI: 1, BTE: 1, BT: 1,
+            A: 1, AL: 1, B: 1, MOHD: 1, MOHAMAD: 1, MOHAMMAD: 1, MUHAMMAD: 1,
+            MUHAMAD: 1, NUR: 1, NOOR: 1, SITI: 1, ABDUL: 1, ABD: 1
+        };
+        return String(value || '')
+            .toUpperCase()
+            .split(/[^A-Z0-9]+/)
+            .filter(function (t) { return t.length >= 3 && !stop[t]; });
+    }
+
+    function namesCompatibleForPgAttach(row, existing) {
+        if (!row || !existing) return false;
+        var incoming = String(row.Name || row.name || '').trim();
+        var existingBits = [
+            existing.sender_name,
+            existing.save_name,
+            existing.first_name,
+            existing.name
+        ].filter(function (v) { return typeof v === 'string' && v.trim(); });
+        if (!incoming || !existingBits.length) return false;
+        if (typeof namesLikelyMatch === 'function') {
+            for (var i = 0; i < existingBits.length; i++) {
+                if (namesLikelyMatch(incoming, existingBits[i])) return true;
+            }
+        }
+        var incomingTokens = nameTokensForMerge(incoming);
+        if (!incomingTokens.length) return false;
+        for (var j = 0; j < existingBits.length; j++) {
+            var existingTokens = nameTokensForMerge(existingBits[j]);
+            for (var k = 0; k < incomingTokens.length; k++) {
+                if (existingTokens.indexOf(incomingTokens[k]) !== -1) return true;
+            }
+        }
+        return false;
+    }
+
     function isPatchValueNonEmpty(value) {
         if (value === null || value === undefined) return false;
         if (typeof value === 'string') return value.trim() !== '';
@@ -1150,6 +1196,46 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
         var existingByPgCode = {};
         var existingByPhone = {};
         var existingByEmail = {};
+
+        function indexExistingMaps(entry, pgCodeKey, phoneKeyVal, emailKeyVal) {
+            if (!entry) return;
+            if (pgCodeKey) {
+                entry.pg_code = pgCodeKey;
+                existingByPgCode[pgCodeKey] = entry;
+                if (phoneKeyVal && existingByPhone[phoneKeyVal] && existingByPhone[phoneKeyVal].id === entry.id) {
+                    delete existingByPhone[phoneKeyVal];
+                }
+                if (emailKeyVal && existingByEmail[emailKeyVal] && existingByEmail[emailKeyVal].id === entry.id) {
+                    delete existingByEmail[emailKeyVal];
+                }
+                return;
+            }
+            if (phoneKeyVal) existingByPhone[phoneKeyVal] = entry;
+            if (emailKeyVal) existingByEmail[emailKeyVal] = entry;
+        }
+
+        function findExistingForSyncRow(row, pgCodeKey, phoneKeyVal, emailKeyVal) {
+            if (pgCodeKey && existingByPgCode[pgCodeKey]) {
+                return existingByPgCode[pgCodeKey];
+            }
+            if (pgCodeKey) {
+                var friend = null;
+                if (phoneKeyVal && existingByPhone[phoneKeyVal]) friend = existingByPhone[phoneKeyVal];
+                else if (emailKeyVal && existingByEmail[emailKeyVal]) friend = existingByEmail[emailKeyVal];
+                if (friend && !existingEntryPgKey(friend) && namesCompatibleForPgAttach(row, friend)) {
+                    return friend;
+                }
+                return null;
+            }
+            if (phoneKeyVal && existingByPhone[phoneKeyVal] && !existingEntryPgKey(existingByPhone[phoneKeyVal])) {
+                return existingByPhone[phoneKeyVal];
+            }
+            if (emailKeyVal && existingByEmail[emailKeyVal] && !existingEntryPgKey(existingByEmail[emailKeyVal])) {
+                return existingByEmail[emailKeyVal];
+            }
+            return null;
+        }
+
         var headers = { apikey: anonKey, Authorization: 'Bearer ' + accessToken };
         var checkPct = progressOpts.existingCheckPct != null
             ? progressOpts.existingCheckPct
@@ -1161,7 +1247,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             while (true) {
                 var url = supabaseUrl
                     + '/rest/v1/customers?user_id=eq.' + userId
-                    + '&select=id,pg_code,is_friend,phone,email,gender,ethnicity,age,prefix,first_name,sender_name,save_name'
+                    + '&select=id,pg_code,is_friend,phone,email,gender,ethnicity,age,prefix,first_name,sender_name,save_name,name'
                     + '&limit=' + pageSize
                     + '&offset=' + offset;
                 var res = await fetch(url, { headers: headers });
@@ -1169,23 +1255,27 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                 var list = await res.json();
                 if (!Array.isArray(list) || list.length === 0) break;
                 list.forEach(function (c) {
+                    var pgKey = normalizePgCodeForMatch(c.pg_code);
                     var entry = {
                         id: c.id,
                         is_friend: c.is_friend === true,
+                        pg_code: pgKey || '',
                         gender: c.gender || null,
                         ethnicity: c.ethnicity || null,
                         age: c.age,
                         prefix: c.prefix || null,
                         first_name: c.first_name || null,
                         sender_name: c.sender_name || null,
-                        save_name: c.save_name || null
+                        save_name: c.save_name || null,
+                        name: c.name || null
                     };
-                    var pgKey = normalizePgCodeForMatch(c.pg_code);
                     var phoneKey = normalizePhoneForMatch(c.phone);
                     var emailKey = normalizeEmailForMatch(c.email);
                     if (pgKey) existingByPgCode[pgKey] = entry;
-                    if (phoneKey) existingByPhone[phoneKey] = entry;
-                    if (emailKey) existingByEmail[emailKey] = entry;
+                    // Phone/email indexes are only for records with no PG. Junior
+                    // accounts share the parent's number and must stay separate rows.
+                    if (!pgKey && phoneKey) existingByPhone[phoneKey] = entry;
+                    if (!pgKey && emailKey) existingByEmail[emailKey] = entry;
                 });
                 if (list.length < pageSize) break;
                 offset += pageSize;
@@ -1292,17 +1382,10 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
             setProgress(pct, progressText);
 
             var row = rows[i];
-            var existing = null;
             var pgCode = normalizePgCodeForMatch(row.PGCode || row.pg_code || '');
             var phoneKey = normalizePhoneForMatch(row.Telephone || row.phone || '');
             var emailKey = normalizeEmailForMatch(row.Email || row.email || '');
-            if (pgCode && existingByPgCode[pgCode]) {
-                existing = existingByPgCode[pgCode];
-            } else if (phoneKey && existingByPhone[phoneKey]) {
-                existing = existingByPhone[phoneKey];
-            } else if (emailKey && existingByEmail[emailKey]) {
-                existing = existingByEmail[emailKey];
-            }
+            var existing = findExistingForSyncRow(row, pgCode, phoneKey, emailKey);
             var processResult = null;
             try {
                 if (!hasExistingClassificationData(existing)) {
@@ -1346,7 +1429,6 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             var patchBody = buildPatchBodyFromPayload(payloadInner);
                             delete patchBody.sender_name;
                             delete patchBody.save_name;
-                            if (pgCodeInner && existingFriendInner) delete patchBody.name;
                             var patchRes = await fetch(
                                 supabaseUrl + '/rest/v1/customers?id=eq.' + existingIdInner,
                                 {
@@ -1364,6 +1446,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             var updatedEntry = {
                                 id: existingIdInner,
                                 is_friend: existingFriendInner,
+                                pg_code: pgCodeInner || '',
                                 gender: (patchBody.gender != null ? patchBody.gender : existingSnapInner.gender) || null,
                                 ethnicity: (patchBody.ethnicity != null ? patchBody.ethnicity : existingSnapInner.ethnicity) || null,
                                 age: patchBody.age != null ? patchBody.age : existingSnapInner.age,
@@ -1372,9 +1455,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                                 sender_name: existingSnapInner.sender_name || null,
                                 save_name: existingSnapInner.save_name || null
                             };
-                            if (pgCodeInner) existingByPgCode[pgCodeInner] = updatedEntry;
-                            if (phoneKeyInner) existingByPhone[phoneKeyInner] = updatedEntry;
-                            if (emailKeyInner) existingByEmail[emailKeyInner] = updatedEntry;
+                            indexExistingMaps(updatedEntry, pgCodeInner, phoneKeyInner, emailKeyInner);
                             return 'updated';
                         }
 
@@ -1394,6 +1475,7 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                         var createdEntry = {
                             id: created[0].id,
                             is_friend: created[0].is_friend === true,
+                            pg_code: pgCodeInner || normalizePgCodeForMatch(created[0].pg_code) || '',
                             gender: created[0].gender || payloadInner.gender || null,
                             ethnicity: created[0].ethnicity || payloadInner.ethnicity || null,
                             age: created[0].age != null ? created[0].age : payloadInner.age,
@@ -1402,9 +1484,12 @@ downloadAutodebit.addEventListener("click", () => runInActiveTab(() => {
                             sender_name: created[0].sender_name || payloadInner.sender_name || null,
                             save_name: created[0].save_name || payloadInner.save_name || null
                         };
-                        if (pgCodeInner) existingByPgCode[pgCodeInner] = createdEntry;
-                        if (phoneKeyInner) existingByPhone[phoneKeyInner] = createdEntry;
-                        if (emailKeyInner) existingByEmail[emailKeyInner] = createdEntry;
+                        indexExistingMaps(
+                            createdEntry,
+                            createdEntry.pg_code,
+                            phoneKeyInner,
+                            emailKeyInner
+                        );
                         return 'inserted';
                     };
                 })(payload, existingId, pgCode, phoneKey, emailKey, existingFriend, existingSnap)

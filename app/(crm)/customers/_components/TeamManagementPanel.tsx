@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/app/contexts/auth-context'
 import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
 import { CustomerWhatsAppAvatar } from '@/app/customers/_components/CustomerWhatsAppAvatar'
@@ -61,6 +61,7 @@ type TeamManagementPanelProps = {
 
 export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const { openCustomerById } = useCustomerEditModal()
   const [page, setPage] = useState(1)
   const [limit] = useState(50)
@@ -72,6 +73,14 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
   const [sortBy, setSortBy] = useState('total_frontline')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [frontlineDealer, setFrontlineDealer] = useState<DealerFrontlineSeed | null>(null)
+  const [nestedConfirmOpen, setNestedConfirmOpen] = useState(false)
+  const [nestedPreview, setNestedPreview] = useState<{ keepCount: number; nestedCount: number } | null>(
+    null
+  )
+  const [nestedPreviewError, setNestedPreviewError] = useState<string | null>(null)
+  const [nestedPreviewLoading, setNestedPreviewLoading] = useState(false)
+  const [nestedDeleting, setNestedDeleting] = useState(false)
+  const nestedDeletingRef = useRef(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -142,6 +151,77 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
     setPage(1)
   }, [])
 
+  const openNestedDeleteConfirm = useCallback(async () => {
+    setNestedConfirmOpen(true)
+    setNestedPreview(null)
+    setNestedPreviewError(null)
+    setNestedPreviewLoading(true)
+    try {
+      const res = await fetch('/api/customers/nested-tiers', { cache: 'no-store' })
+      const data = (await res.json().catch(() => ({}))) as {
+        keep_count?: number
+        nested_count?: number
+        error?: string
+      }
+      if (!res.ok) throw new Error(data.error || 'Could not count nested customers.')
+      setNestedPreview({
+        keepCount: Number(data.keep_count) || 0,
+        nestedCount: Number(data.nested_count) || 0,
+      })
+    } catch (err) {
+      setNestedPreviewError(err instanceof Error ? err.message : 'Could not count nested customers.')
+    } finally {
+      setNestedPreviewLoading(false)
+    }
+  }, [])
+
+  const closeNestedDeleteConfirm = useCallback(() => {
+    if (nestedDeletingRef.current) return
+    setNestedConfirmOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!nestedConfirmOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeNestedDeleteConfirm()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [nestedConfirmOpen, closeNestedDeleteConfirm])
+
+  const confirmDeleteNestedTiers = useCallback(async () => {
+    if (nestedDeletingRef.current) return
+    nestedDeletingRef.current = true
+    setNestedDeleting(true)
+    try {
+      const res = await fetch('/api/customers/nested-tiers', { method: 'DELETE' })
+      const data = (await res.json().catch(() => ({}))) as {
+        deleted?: number
+        keep_count?: number
+        message?: string
+        error?: string
+      }
+      if (!res.ok) throw new Error(data.error || 'Failed to delete nested customers.')
+      const deleted = Number(data.deleted) || 0
+      const kept = Number(data.keep_count) || 0
+      const message =
+        data.message ||
+        `Deleted ${deleted.toLocaleString()} nested customer(s). ${kept.toLocaleString()} direct frontline kept.`
+      window.alert(message)
+      setNestedConfirmOpen(false)
+      if (user?.id) {
+        await queryClient.invalidateQueries({ queryKey: customerKeys.all(user.id) })
+      }
+      await teamQuery.refetch()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete nested customers.'
+      window.alert(message)
+    } finally {
+      nestedDeletingRef.current = false
+      setNestedDeleting(false)
+    }
+  }, [queryClient, teamQuery, user?.id])
+
   const toggleSort = (column: string) => {
     if (sortBy === column) {
       setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))
@@ -162,14 +242,24 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
               Dealers only (Rank contains dealer). Cached for faster grid loads.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void teamQuery.refetch()}
-            disabled={isFetching}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-          >
-            {isFetching ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void openNestedDeleteConfirm()}
+              disabled={nestedDeleting || nestedPreviewLoading}
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-50 dark:border-red-800 dark:bg-red-950/50 dark:text-red-300 dark:hover:bg-red-950"
+            >
+              Delete nested tiers
+            </button>
+            <button
+              type="button"
+              onClick={() => void teamQuery.refetch()}
+              disabled={isFetching}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {isFetching ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4">
@@ -502,6 +592,66 @@ export function TeamManagementPanel({ active }: TeamManagementPanelProps) {
           </div>
         )}
       </div>
+
+      {nestedConfirmOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center p-4 sm:items-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+            aria-label="Close"
+            onClick={closeNestedDeleteConfirm}
+            disabled={nestedDeleting}
+          />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="nested-delete-title"
+            className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <h3 id="nested-delete-title" className="text-lg font-semibold text-slate-900">
+              Delete nested tiers?
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              This permanently removes customers below your direct frontline (tier 2, 3, 4, and
+              deeper). Your frontline (tier 1) is kept. This cannot be undone.
+            </p>
+            {nestedPreviewLoading ? (
+              <p className="mt-3 text-sm text-slate-500">Counting nested customers…</p>
+            ) : nestedPreviewError ? (
+              <p className="mt-3 text-sm text-red-700">{nestedPreviewError}</p>
+            ) : nestedPreview ? (
+              <p className="mt-3 text-sm font-medium text-slate-800">
+                {nestedPreview.nestedCount.toLocaleString()} nested customer
+                {nestedPreview.nestedCount === 1 ? '' : 's'} will be deleted.{' '}
+                {nestedPreview.keepCount.toLocaleString()} direct frontline will be kept.
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeNestedDeleteConfirm}
+                disabled={nestedDeleting}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteNestedTiers()}
+                disabled={
+                  nestedDeleting ||
+                  nestedPreviewLoading ||
+                  Boolean(nestedPreviewError) ||
+                  nestedPreview?.nestedCount === 0
+                }
+                className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {nestedDeleting ? 'Deleting…' : 'Delete nested tiers'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <DealerFrontlineModal
         open={Boolean(frontlineDealer)}

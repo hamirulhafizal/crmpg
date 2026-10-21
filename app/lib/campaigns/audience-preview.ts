@@ -7,7 +7,12 @@ import {
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
-import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
+import { describeAudienceRanksFilter } from '@/app/lib/customer-account-status'
+import {
+  describeFrontlineTiersFilter,
+  frontlineTiersNeedsFullScan,
+  resolveAudienceFrontlineScope,
+} from '@/app/lib/customers/frontline-tier'
 
 const CUSTOMER_PAGE = 250
 const SAMPLE_CAP = 40
@@ -138,10 +143,11 @@ export function describeCampaignAudienceFilters(
   }
   if (lines.length === 0) {
     lines.push(
-      'No audience filters — your root frontline customers with a valid Malaysian phone number.'
+      'No audience filters — customers in the selected tree tier(s) with a valid Malaysian phone number.'
     )
   }
-  lines.unshift('Scope: your frontline only (excludes nested Tree Tier / Mos downline)')
+  lines.unshift(describeAudienceRanksFilter(filters.business_ranks))
+  lines.unshift(describeFrontlineTiersFilter(filters))
   return lines
 }
 
@@ -152,20 +158,24 @@ export async function computeEligibleAudiencePreview(
   supabase: SupabaseClient,
   userId: string,
   filters: CampaignAudienceFilters
-): Promise<{ matching_total: number; sample: AudienceEligibleSample[]; customers_scanned: number }> {
+): Promise<{
+  matching_total: number
+  sample: AudienceEligibleSample[]
+  customers_scanned: number
+  in_scope_total: number
+}> {
   const sample: AudienceEligibleSample[] = []
   let matching_total = 0
+  let in_scope_total = 0
   let offset = 0
   let scanned = 0
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('pgcode')
-    .eq('id', userId)
-    .maybeSingle()
-  const rootPgCode = normalizePgCodeValue(
-    (profile as { pgcode?: string | null } | null)?.pgcode
+  const { rootPgCode, tierByCustomerId } = await resolveAudienceFrontlineScope(
+    supabase,
+    userId,
+    filters
   )
+  const needsFullTree = frontlineTiersNeedsFullScan(filters)
 
   while (true) {
     let query = supabase
@@ -175,7 +185,9 @@ export async function computeEligibleAudiencePreview(
          customer_tags ( tag_id, tags ( slug ) )`
       )
       .eq('user_id', userId)
-    query = applyRootFrontlineAudienceDbFilter(query, rootPgCode)
+    if (!needsFullTree) {
+      query = applyRootFrontlineAudienceDbFilter(query, rootPgCode)
+    }
     const { data: batch, error } = await query.range(offset, offset + CUSTOMER_PAGE - 1)
 
     if (error) throw error
@@ -185,7 +197,8 @@ export async function computeEligibleAudiencePreview(
     for (const raw of rows) {
       const c = raw as unknown as CustomerForAudience
       scanned++
-      if (!customerInCampaignAudienceScope(c, rootPgCode)) continue
+      if (!customerInCampaignAudienceScope(c, rootPgCode, filters, tierByCustomerId)) continue
+      in_scope_total++
       if (!customerMatchesFilters(c, filters)) continue
       matching_total++
       if (sample.length < SAMPLE_CAP) {
@@ -203,7 +216,7 @@ export async function computeEligibleAudiencePreview(
     if (rows.length < CUSTOMER_PAGE) break
   }
 
-  return { matching_total, sample, customers_scanned: scanned }
+  return { matching_total, sample, customers_scanned: scanned, in_scope_total }
 }
 
 /**

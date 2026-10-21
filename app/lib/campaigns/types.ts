@@ -1,3 +1,5 @@
+import type { AudienceRanksFilter } from '@/app/lib/customer-account-status'
+
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'archived'
 
 export type CampaignTriggerType = 'manual' | 'birthday' | 'last_purchase' | 'enrollment'
@@ -6,10 +8,25 @@ export type EnrollmentStatus = 'active' | 'completed' | 'paused' | 'removed'
 
 export type CampaignSendStatus = 'pending' | 'sent' | 'failed' | 'skipped'
 
+/** Hops below the logged-in dealer in Tree Tier (direct frontline = 1). */
+export type FrontlineTierNumber = 1 | 2 | 3 | 4
+/** `all` = entire tree. Array = any of those hops. Omit = tier 1 only (legacy). */
+export type FrontlineTiersFilter = 'all' | FrontlineTierNumber[]
+
 /** Stored in campaigns.audience_filters — merged with app-side account-status logic. */
 export type CampaignAudienceFilters = {
   tag_slugs?: string[]
   tag_ids?: string[]
+  /**
+   * Tree Tier hops to include. `all` = every descendant; `[1,3]` = those tiers.
+   * Missing / empty = `[1]` (direct frontline only — existing workflows).
+   */
+  frontline_tiers?: FrontlineTiersFilter
+  /**
+   * Rank from `original_data.Rank`. `all` / omitted = every rank (legacy workflows).
+   * Array = any of those buckets (Master dealer, Priority dealer, Dealer, Customer, Junior account).
+   */
+  business_ranks?: AudienceRanksFilter
   /** Matches keys from getAccountStatusKey */
   account_status?: Array<'temporary' | 'freeze' | 'active' | 'free' | 'inactive' | 'unknown'>
   is_monthly_buyer?: boolean | null

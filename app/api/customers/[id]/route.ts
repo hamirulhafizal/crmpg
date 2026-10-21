@@ -5,6 +5,7 @@ import {
   isKnownPhoneContactStatusInput,
   parsePhoneContactStatus,
 } from '@/app/lib/customer-phone-contact-status'
+import { resolveCustomerTreePlacement } from '@/app/lib/customers/frontline-tier'
 import { parseSalesJourneyStage } from '@/app/lib/sales-journey'
 
 // GET /api/customers/[id] - Get single customer
@@ -40,7 +41,22 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(data)
+    try {
+      const placement = await resolveCustomerTreePlacement(supabase, user.id, data)
+      return NextResponse.json({
+        ...data,
+        tree_tier: placement.tree_tier,
+        upline: {
+          pg_code: placement.parent_pg_code,
+          name: placement.parent_name,
+          customer_id: placement.parent_customer_id,
+          is_dealer: placement.is_dealer,
+        },
+      })
+    } catch (placementError) {
+      console.error('Error resolving customer tree placement:', placementError)
+      return NextResponse.json(data)
+    }
   } catch (error: any) {
     console.error('Error in GET /api/customers/[id]:', error)
     return NextResponse.json(

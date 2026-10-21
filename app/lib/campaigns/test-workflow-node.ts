@@ -10,7 +10,7 @@ import {
   customerMatchesFilters,
   type CustomerForAudience,
 } from '@/app/lib/campaigns/audience'
-import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
+import { resolveAudienceFrontlineScope } from '@/app/lib/customers/frontline-tier'
 import { computeSendAt, isScheduledSendTime, sendTimeDisplayLabel, sendTimeFromDb } from '@/app/lib/campaigns/schedule'
 import { triggerScheduleDisplayLabel, triggerScheduleFromParams } from '@/app/lib/campaigns/trigger-schedule'
 import { renderCampaignTemplateForCustomer } from '@/app/lib/campaigns/template'
@@ -26,7 +26,22 @@ import type { CompiledWorkflow, WorkflowDefinition, WorkflowNodeInstance } from 
 export type WorkflowNodeTestItem = {
   label: string
   detail?: string
+  /** Present when the row is a CRM customer — inspector can open the details dialog. */
+  customer_id?: string
   meta?: Record<string, string | number | null>
+}
+
+function itemFromCustomerSample(
+  row: { id?: string | null; save_name?: string | null; name?: string | null; phone?: string | null; pg_code?: string | null },
+  detail?: string
+): WorkflowNodeTestItem {
+  const id = typeof row.id === 'string' ? row.id.trim() : ''
+  return {
+    customer_id: id || undefined,
+    label: row.save_name?.trim() || row.name?.trim() || row.pg_code || id || 'Customer',
+    detail: detail ?? (row.phone ?? 'No phone'),
+    meta: row.pg_code ? { pg_code: row.pg_code } : undefined,
+  }
 }
 
 export type WorkflowPathTestStep = {
@@ -240,17 +255,15 @@ async function testSingleWorkflowNode(
 
         const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters)
         logs.push(`Scanned ${preview.customers_scanned} customers in CRM`)
-        logs.push(`${preview.matching_total} match audience rules now`)
+        logs.push(`${preview.in_scope_total} in selected tree tier(s)`)
+        logs.push(`${preview.matching_total} match all audience rules now`)
 
         for (const row of preview.sample.slice(0, 12)) {
-          items.push({
-            label: row.save_name?.trim() || row.name?.trim() || row.pg_code || row.id,
-            detail: row.phone ?? 'No phone',
-            meta: { pg_code: row.pg_code },
-          })
+          items.push(itemFromCustomerSample(row))
         }
 
         metrics.matching_total = preview.matching_total
+        metrics.in_scope_total = preview.in_scope_total
         metrics.customers_scanned = preview.customers_scanned
 
         return {
@@ -312,10 +325,12 @@ async function testSingleWorkflowNode(
           duration_ms: Date.now() - started,
           summary: `${preview.matching_total} match · ${alreadyEnrolled} enrolled · cap ${compiled.daily_send_limit}/day`,
           logs,
-          items: preview.sample.slice(0, 8).map((row) => ({
-            label: row.save_name?.trim() || row.name?.trim() || 'Customer',
-            detail: row.phone ? `Would queue if not enrolled · ${row.phone}` : 'Skipped — no phone',
-          })),
+          items: preview.sample.slice(0, 8).map((row) =>
+            itemFromCustomerSample(
+              row,
+              row.phone ? `Would queue if not enrolled · ${row.phone}` : 'Skipped — no phone'
+            )
+          ),
           metrics,
         }
       }
@@ -352,10 +367,7 @@ async function testSingleWorkflowNode(
           duration_ms: Date.now() - started,
           summary: `${preview.matching_total} customer(s) match filters`,
           logs,
-          items: preview.sample.slice(0, 12).map((row) => ({
-            label: row.save_name?.trim() || row.name?.trim() || row.pg_code || row.id,
-            detail: row.phone ?? 'No phone',
-          })),
+          items: preview.sample.slice(0, 12).map((row) => itemFromCustomerSample(row)),
           metrics: { matching_total: preview.matching_total },
         }
       }
@@ -414,6 +426,7 @@ async function testSingleWorkflowNode(
             ? renderCampaignTemplateForCustomer(caption, sample as Record<string, unknown>)
             : '(no caption)'
           items.push({
+            customer_id: sample.id,
             label: customerWorkflowLabel(sample),
             detail: `Caption preview: ${cap.slice(0, 120)}${cap.length > 120 ? '…' : ''}`,
           })
@@ -495,6 +508,7 @@ async function testSingleWorkflowNode(
             if (!c?.phone) continue
             const body = renderCampaignTemplateForCustomer(template, c as Record<string, unknown>)
             items.push({
+              customer_id: c.id,
               label: customerWorkflowLabel(c),
               detail: body.slice(0, 160) + (body.length > 160 ? '…' : ''),
               meta: {
@@ -530,13 +544,10 @@ async function testSingleWorkflowNode(
         logs.push('Save campaign to see enrollment-based due times')
         logs.push(`If enrolled now, first slot anchor ≈ ${anchor.toLocaleString('en-MY', { timeZone: tz })}`)
 
-        const { data: sampleProfile } = await opts.supabase
-          .from('profiles')
-          .select('pgcode')
-          .eq('id', opts.userId)
-          .maybeSingle()
-        const sampleRootPg = normalizePgCodeValue(
-          (sampleProfile as { pgcode?: string | null } | null)?.pgcode
+        const { rootPgCode: sampleRootPg, tierByCustomerId } = await resolveAudienceFrontlineScope(
+          opts.supabase,
+          opts.userId,
+          filters
         )
 
         const { data: sampleRows } = await opts.supabase
@@ -552,10 +563,11 @@ async function testSingleWorkflowNode(
         let shown = 0
         for (const raw of sampleRows ?? []) {
           const c = raw as unknown as CustomerForAudience
-          if (!customerInCampaignAudienceScope(c, sampleRootPg)) continue
+          if (!customerInCampaignAudienceScope(c, sampleRootPg, filters, tierByCustomerId)) continue
           if (!customerMatchesFilters(c, filters)) continue
           const body = renderCampaignTemplateForCustomer(template, c as Record<string, unknown>)
           items.push({
+            customer_id: c.id,
             label: customerWorkflowLabel(c),
             detail: body.slice(0, 160) + (body.length > 160 ? '…' : ''),
             meta: { phone: c.phone },

@@ -5,6 +5,8 @@
  * BC columns (2026): PGCode, Email, Profile Verified Status, Name, Parent Name,
  * D.O.B., Rank, Branch, Nationality, Telephone, Total Frontline, Empire Size,
  * Date Register, Last Purchase Date, Direct Debit Subscription.
+ * Junior Account rows: Name / PGCode / D.O.B. are the child's. Parent Name is
+ * the guardian only — never use it as the customer identity.
  * Row modal (Additional Information): Origin, FMD PGCode, FMD Name.
  *
  * Parent PG is not a column. Rules:

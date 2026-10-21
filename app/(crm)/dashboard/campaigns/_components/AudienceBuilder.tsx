@@ -1,6 +1,13 @@
 'use client'
 
-import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
+import type { CampaignAudienceFilters, FrontlineTierNumber } from '@/app/lib/campaigns/types'
+import {
+  AUDIENCE_RANK_BUCKETS,
+  getBusinessRankBucketLabel,
+  normalizeAudienceRanksFilter,
+  type AudienceRankBucket,
+} from '@/app/lib/customer-account-status'
+import { FRONTLINE_TIER_NUMBERS, normalizeFrontlineTiersFilter } from '@/app/lib/customers/frontline-tier'
 import type { CategoryRow } from '@/app/admin/settings/tag-admin-sidebar'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
@@ -322,6 +329,52 @@ export function AudienceBuilder({
   value: CampaignAudienceFilters
   onChange: (next: CampaignAudienceFilters) => void
 }) {
+  const wantedTiers = normalizeFrontlineTiersFilter(value)
+  const isAllTiers = wantedTiers === 'all'
+  const selectedTiers = isAllTiers ? new Set<FrontlineTierNumber>() : wantedTiers
+
+  const setFrontlineTiers = (next: CampaignAudienceFilters['frontline_tiers']) => {
+    onChange({ ...value, frontline_tiers: next })
+  }
+
+  const toggleTier = (tier: FrontlineTierNumber) => {
+    if (isAllTiers) {
+      setFrontlineTiers([tier])
+      return
+    }
+    const next = new Set(selectedTiers)
+    if (next.has(tier)) next.delete(tier)
+    else next.add(tier)
+    if (next.size === 0) {
+      setFrontlineTiers([1])
+      return
+    }
+    setFrontlineTiers([...next].sort((a, b) => a - b) as FrontlineTierNumber[])
+  }
+
+  const wantedRanks = normalizeAudienceRanksFilter(value.business_ranks)
+  const isAllRanks = wantedRanks === 'all'
+  const selectedRanks = isAllRanks ? new Set<AudienceRankBucket>() : wantedRanks
+
+  const setBusinessRanks = (next: CampaignAudienceFilters['business_ranks']) => {
+    onChange({ ...value, business_ranks: next })
+  }
+
+  const toggleRank = (rank: AudienceRankBucket) => {
+    if (isAllRanks) {
+      setBusinessRanks([rank])
+      return
+    }
+    const next = new Set(selectedRanks)
+    if (next.has(rank)) next.delete(rank)
+    else next.add(rank)
+    if (next.size === 0) {
+      setBusinessRanks('all')
+      return
+    }
+    setBusinessRanks(AUDIENCE_RANK_BUCKETS.filter((b) => next.has(b)))
+  }
+
   const toggleStatus = (key: (typeof STATUSES)[number]) => {
     const cur = new Set(value.account_status ?? [])
     if (cur.has(key)) cur.delete(key)
@@ -349,6 +402,66 @@ export function AudienceBuilder({
         <p className="mt-1 text-xs text-slate-500">
           Search and pick tags from your catalog (grouped by category). Multiple tags use OR logic.
         </p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-slate-900">Tree tier</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Hops below you in Direct frontline. All = entire tree. Or pick 1, 2, 3, and/or 4. Default is
+          tier 1 (your direct frontline).
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label className="flex items-center gap-2 text-sm text-slate-900">
+            <input
+              type="checkbox"
+              checked={isAllTiers}
+              onChange={() => setFrontlineTiers(isAllTiers ? [1] : 'all')}
+            />
+            All tiers
+          </label>
+          {FRONTLINE_TIER_NUMBERS.map((tier) => (
+            <label key={tier} className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="checkbox"
+                checked={!isAllTiers && selectedTiers.has(tier)}
+                disabled={isAllTiers}
+                onChange={() => toggleTier(tier)}
+              />
+              {tier}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium text-slate-900">Rank</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Matches the Rank field on the customer record. All = every rank. Or pick Master dealer,
+          Priority dealer, Dealer, Customer, and/or Junior account. Default is all.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label className="flex items-center gap-2 text-sm text-slate-900">
+            <input
+              type="checkbox"
+              checked={isAllRanks}
+              onChange={() =>
+                setBusinessRanks(isAllRanks ? [...AUDIENCE_RANK_BUCKETS] : 'all')
+              }
+            />
+            All ranks
+          </label>
+          {AUDIENCE_RANK_BUCKETS.map((rank) => (
+            <label key={rank} className="flex items-center gap-2 text-sm text-slate-900">
+              <input
+                type="checkbox"
+                checked={!isAllRanks && selectedRanks.has(rank)}
+                disabled={isAllRanks}
+                onChange={() => toggleRank(rank)}
+              />
+              {getBusinessRankBucketLabel(rank)}
+            </label>
+          ))}
+        </div>
       </div>
 
       <div>

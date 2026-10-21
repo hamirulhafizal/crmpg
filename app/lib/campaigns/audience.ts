@@ -1,4 +1,6 @@
 import {
+  audienceRanksIsDefault,
+  customerMatchesAudienceRanks,
   getAccountStatusKey,
   getLastPurchaseUtcYmd,
   getRegistrationUtcYmd,
@@ -8,6 +10,11 @@ import {
 import { isWhatsAppSendAllowed } from '@/app/lib/customer-phone-contact-status'
 import { customerDobIsToday, customerDobMatchesMonthDayFilter, getMalaysiaTodayYmd } from '@/app/lib/customer-dob'
 import { isRootFrontlineCustomer } from '@/app/lib/customers/frontline-parent'
+import {
+  customerMatchesFrontlineTiers,
+  frontlineTiersIsDefault,
+  frontlineTiersNeedsFullScan,
+} from '@/app/lib/customers/frontline-tier'
 import { normalizePgCodeValue } from '@/app/lib/customers/pg-code'
 import type { CampaignAudienceFilters } from '@/app/lib/campaigns/types'
 import { isValidCampaignPhone } from '@/app/lib/phone-msisdn'
@@ -87,13 +94,19 @@ export function customerTagIds(c: CustomerForAudience): Set<string> {
 }
 
 /**
- * Campaigns only target the dealer's own frontline (same as Workspace),
- * not nested Tree Tier syncs (e.g. Mos downline).
+ * Default (tier 1): dealer's own frontline only (same as Workspace).
+ * `frontline_tiers: 'all' | [2, …]` uses the Tree Tier hop map.
  */
 export function customerInCampaignAudienceScope(
   c: CustomerForAudience,
-  rootPgCode: string
+  rootPgCode: string,
+  filters: CampaignAudienceFilters = {},
+  tierByCustomerId?: Map<string, number>
 ): boolean {
+  if (frontlineTiersNeedsFullScan(filters)) {
+    if (!tierByCustomerId) return false
+    return customerMatchesFrontlineTiers(c.id, filters, tierByCustomerId)
+  }
   const root = normalizePgCodeValue(rootPgCode)
   if (!root) return true
   return isRootFrontlineCustomer(
@@ -130,6 +143,8 @@ export function customerMatchesFilters(c: CustomerForAudience, filters: Campaign
     const key = getAccountStatusKey(c)
     if (!st.includes(key as (typeof st)[number])) return false
   }
+
+  if (!customerMatchesAudienceRanks(c.original_data, filters.business_ranks)) return false
 
   if (filters.is_monthly_buyer != null) {
     if (Boolean(c.is_monthly_buyer) !== filters.is_monthly_buyer) return false
@@ -231,6 +246,7 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
   if ((f.tag_slugs ?? []).some((t) => String(t).trim())) return true
   if ((f.tag_ids ?? []).some((id) => String(id).trim())) return true
   if ((f.account_status ?? []).length > 0) return true
+  if (!audienceRanksIsDefault(f.business_ranks)) return true
   if (f.is_monthly_buyer != null) return true
   if (f.is_friend != null) return true
   if (f.profile_verified != null) return true
@@ -246,6 +262,7 @@ export function audienceFiltersConfigured(filters: CampaignAudienceFilters): boo
   if (f.last_purchase_on_or_after?.trim() || f.last_purchase_on_or_before?.trim()) return true
   if (f.register_on_or_after?.trim() || f.register_on_or_before?.trim()) return true
   if (f.segment_attributes && Object.keys(f.segment_attributes).length > 0) return true
+  if (!frontlineTiersIsDefault(f)) return true
   return false
 }
 

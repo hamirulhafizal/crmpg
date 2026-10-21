@@ -244,9 +244,31 @@ body {
   border-color: var(--wf-border) !important;
 }
 
+.campaign-workflow-shell--dark .workflow-test-item-btn:hover {
+  background: rgba(139, 92, 246, 0.16) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-test-item-btn .underline {
+  text-decoration-color: #64748b;
+}
+
 .campaign-workflow-shell--dark .workflow-header {
   background: var(--wf-surface) !important;
   border-color: var(--wf-border) !important;
+}
+
+.campaign-workflow-shell--dark .workflow-title-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.campaign-workflow-shell--dark .workflow-title-btn svg {
+  color: var(--wf-muted);
+}
+
+.campaign-workflow-shell--dark .workflow-title-input {
+  background: var(--wf-surface-muted) !important;
+  border-color: #38bdf8 !important;
+  color: var(--wf-text) !important;
 }
 
 .campaign-workflow-shell--dark .workflow-header .bg-amber-100 {

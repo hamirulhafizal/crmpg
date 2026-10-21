@@ -123,7 +123,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
     const body = await request.json().catch(() => ({}))
 
     const updates: Record<string, unknown> = {}
-    if (typeof body.name === 'string') updates.name = body.name.trim()
+    if (typeof body.name === 'string') {
+      const nextName = body.name.trim()
+      if (!nextName) {
+        return NextResponse.json({ error: 'name is required' }, { status: 400 })
+      }
+      updates.name = nextName
+    }
     if (typeof body.description === 'string') updates.description = body.description
     if (typeof body.status === 'string') updates.status = body.status
     if (typeof body.trigger_type === 'string') updates.trigger_type = body.trigger_type

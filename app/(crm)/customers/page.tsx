@@ -158,13 +158,14 @@ function WhatsAppOpenButton({ phone }: { phone: string | null | undefined }) {
 /** Rank buckets in overview funnel + cards (pipeline order). */
 const RANK_OVERVIEW_BUCKETS: BusinessRankBucket[] = [
   'customer',
+  'junior_account',
   'dealer',
   'priority_dealer',
   'master_dealer',
   'other',
 ]
 
-const RANK_FUNNEL_SEGMENT_FILLS = ['#cbd5e1', '#a5b4fc', '#818cf8', '#6366f1', '#4338ca'] as const
+const RANK_FUNNEL_SEGMENT_FILLS = ['#cbd5e1', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4338ca'] as const
 
 /** Table row tint + left accent — aligns with Account status summary cards. */
 const ACCOUNT_STATUS_ROW_CLASSES: Record<AccountStatusKey, string> = {
@@ -1204,6 +1205,7 @@ function CustomersPage() {
     }
     const ranks: Record<BusinessRankBucket, number> = {
       customer: 0,
+      junior_account: 0,
       dealer: 0,
       priority_dealer: 0,
       master_dealer: 0,
@@ -3142,7 +3144,7 @@ function CustomersPage() {
                       <h2 className="mb-1 text-sm font-semibold text-slate-300">By rank (from Rank field)</h2>
                       <p className="mb-4 text-xs text-slate-300">
                         Funnel width follows each tier’s count (widest = largest bucket). Tiers link Customer →
-                        Dealer → Priority → Master → Other.
+                        Junior → Dealer → Priority → Master → Other.
                       </p>
 
                       <div className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 via-white to-indigo-50/30 p-4 shadow-inner sm:p-6">
@@ -3241,7 +3243,7 @@ function CustomersPage() {
                       </div>
 
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Breakdown</h3>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {RANK_OVERVIEW_BUCKETS.map((bucket) => {
                           const n = salesJourneyStats.ranks[bucket]
                           const pct =

@@ -65,16 +65,12 @@ export async function GET(request: Request) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('pgcode, full_name, name')
+      .select('pgcode, full_name')
       .eq('id', user.id)
       .maybeSingle()
 
     const rootPgCode = normalizePgCodeValue(profile?.pgcode)
-    const profileName =
-      (profile as { full_name?: string | null; name?: string | null } | null)
-        ?.full_name ||
-      (profile as { name?: string | null } | null)?.name ||
-      null
+    const profileName = profile?.full_name || null
 
     const { data: parentRow } = await supabase
       .from('customers')

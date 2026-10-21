@@ -558,7 +558,24 @@ export function getSalesJourneyStageLabel(stage: SalesJourneyStageKey): string {
 }
 
 /** Normalised PG business rank from `original_data.Rank` (free text). */
-export type BusinessRankBucket = 'customer' | 'dealer' | 'priority_dealer' | 'master_dealer' | 'other'
+export type BusinessRankBucket =
+  | 'customer'
+  | 'junior_account'
+  | 'dealer'
+  | 'priority_dealer'
+  | 'master_dealer'
+  | 'other'
+
+/** Ranks that can be targeted in campaign audience filters (excludes other / unset). */
+export const AUDIENCE_RANK_BUCKETS = [
+  'master_dealer',
+  'priority_dealer',
+  'dealer',
+  'customer',
+  'junior_account',
+] as const
+export type AudienceRankBucket = (typeof AUDIENCE_RANK_BUCKETS)[number]
+export type AudienceRanksFilter = 'all' | AudienceRankBucket[]
 
 export function getBusinessRankBucket(originalData: unknown): BusinessRankBucket {
   const data = normalizeCustomerOriginalData(originalData)
@@ -567,6 +584,7 @@ export function getBusinessRankBucket(originalData: unknown): BusinessRankBucket
   if (r.includes('master')) return 'master_dealer'
   if (r.includes('priority')) return 'priority_dealer'
   if (r.includes('dealer')) return 'dealer'
+  if (r.includes('junior')) return 'junior_account'
   if (r.includes('customer')) return 'customer'
   return 'other'
 }
@@ -575,6 +593,8 @@ export function getBusinessRankBucketLabel(bucket: BusinessRankBucket): string {
   switch (bucket) {
     case 'customer':
       return 'Customer'
+    case 'junior_account':
+      return 'Junior account'
     case 'dealer':
       return 'Dealer'
     case 'priority_dealer':
@@ -584,6 +604,59 @@ export function getBusinessRankBucketLabel(bucket: BusinessRankBucket): string {
     default:
       return 'Other / unset'
   }
+}
+
+function isAudienceRankBucket(raw: unknown): raw is AudienceRankBucket {
+  return (
+    raw === 'master_dealer' ||
+    raw === 'priority_dealer' ||
+    raw === 'dealer' ||
+    raw === 'customer' ||
+    raw === 'junior_account'
+  )
+}
+
+/** Missing / empty / `all` = every rank (legacy workflows keep matching). */
+export function normalizeAudienceRanksFilter(
+  v: AudienceRanksFilter | null | undefined
+): 'all' | Set<AudienceRankBucket> {
+  if (v == null || v === 'all') return 'all'
+  if (Array.isArray(v)) {
+    const set = new Set<AudienceRankBucket>()
+    for (const raw of v) {
+      if (isAudienceRankBucket(raw)) set.add(raw)
+    }
+    if (set.size > 0) return set
+  }
+  return 'all'
+}
+
+export function audienceRanksIsDefault(
+  v: AudienceRanksFilter | null | undefined
+): boolean {
+  return normalizeAudienceRanksFilter(v) === 'all'
+}
+
+export function describeAudienceRanksFilter(
+  v: AudienceRanksFilter | null | undefined
+): string {
+  const wanted = normalizeAudienceRanksFilter(v)
+  if (wanted === 'all') return 'Rank: all'
+  const labels = AUDIENCE_RANK_BUCKETS.filter((b) => wanted.has(b)).map((b) =>
+    getBusinessRankBucketLabel(b)
+  )
+  return `Rank: ${labels.join(', ')}`
+}
+
+export function customerMatchesAudienceRanks(
+  originalData: unknown,
+  v: AudienceRanksFilter | null | undefined
+): boolean {
+  const wanted = normalizeAudienceRanksFilter(v)
+  if (wanted === 'all') return true
+  const bucket = getBusinessRankBucket(originalData)
+  if (bucket === 'other') return false
+  return wanted.has(bucket)
 }
 
 /** Frontline / empire size qualification bands (Public Gold style thresholds). */
