@@ -9,14 +9,40 @@ import { canActivateCampaign } from '@/app/lib/saas/enforce'
 import { ensureUserDefaultCampaign, loadCampaignPlatformDefaultTier } from '@/app/lib/campaigns/platform-defaults'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
+type ServiceClient = ReturnType<typeof createServiceRoleClient>
+
+/** Exact per-campaign totals. Fetching rows hits PostgREST's 1000-row cap and the list count drops to 0 after refresh. */
+async function countByCampaignId(
+  admin: ServiceClient,
+  table: 'campaign_enrollments' | 'campaign_message_logs',
+  ids: string[],
+  extra?: { sendStatus?: string; sentAtGte?: string }
+): Promise<Map<string, number>> {
+  const rows = await Promise.all(
+    ids.map(async (id) => {
+      let q = admin.from(table).select('id', { count: 'exact', head: true }).eq('campaign_id', id)
+      if (extra?.sendStatus) q = q.eq('send_status', extra.sendStatus)
+      if (extra?.sentAtGte) q = q.gte('sent_at', extra.sentAtGte)
+      const { count, error } = await q
+      if (error) {
+        console.error(`[campaigns] count ${table} failed`, id, error.message)
+        return [id, 0] as const
+      }
+      return [id, count ?? 0] as const
+    })
+  )
+  return new Map(rows)
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await requireUserApi(request)
     if (!auth.ok) return auth.response
     const { user, supabase } = auth
+    const admin = createServiceRoleClient()
 
     try {
-      await ensureUserDefaultCampaign(createServiceRoleClient(), user.id)
+      await ensureUserDefaultCampaign(admin, user.id)
     } catch (e) {
       console.error('[campaigns] ensureUserDefaultCampaign failed', e)
     }
@@ -38,35 +64,18 @@ export async function GET(request: Request) {
       Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())
     ).toISOString()
 
-    const [enrRes, logRes] = await Promise.all([
-      supabase.from('campaign_enrollments').select('campaign_id').in('campaign_id', ids),
-      supabase
-        .from('campaign_message_logs')
-        .select('campaign_id, send_status, sent_at')
-        .in('campaign_id', ids),
+    const [enrolledBy, sentBy, sentTodayBy] = await Promise.all([
+      countByCampaignId(admin, 'campaign_enrollments', ids),
+      countByCampaignId(admin, 'campaign_message_logs', ids, { sendStatus: 'sent' }),
+      countByCampaignId(admin, 'campaign_message_logs', ids, {
+        sendStatus: 'sent',
+        sentAtGte: dayStartIso,
+      }),
     ])
-
-    const enrolledBy = new Map<string, number>()
-    for (const r of enrRes.data ?? []) {
-      const k = r.campaign_id as string
-      enrolledBy.set(k, (enrolledBy.get(k) ?? 0) + 1)
-    }
-
-    const sentBy = new Map<string, number>()
-    const sentTodayBy = new Map<string, number>()
-    for (const r of logRes.data ?? []) {
-      if (r.send_status !== 'sent') continue
-      const k = r.campaign_id as string
-      sentBy.set(k, (sentBy.get(k) ?? 0) + 1)
-      const sentAt = r.sent_at ? String(r.sent_at) : ''
-      if (sentAt && sentAt >= dayStartIso) {
-        sentTodayBy.set(k, (sentTodayBy.get(k) ?? 0) + 1)
-      }
-    }
 
     const enriched = await Promise.all(
       (campaigns ?? []).map(async (c) => {
-        const tier = await loadCampaignPlatformDefaultTier(createServiceRoleClient(), c.platform_default_id)
+        const tier = await loadCampaignPlatformDefaultTier(admin, c.platform_default_id)
         return {
           ...c,
           platform_default_tier: tier,

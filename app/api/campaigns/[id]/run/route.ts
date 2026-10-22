@@ -3,6 +3,9 @@ import { createClient } from '@/app/lib/supabase/server'
 import { processDueCampaignMessagesForCampaign } from '@/app/lib/campaigns/process-due'
 import type { CampaignWorkflowProgressEvent } from '@/app/lib/campaigns/workflow-events'
 
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
+
 type Ctx = { params: Promise<{ id: string }> }
 
 function runErrorStatus(msg: string): number {

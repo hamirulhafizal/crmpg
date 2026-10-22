@@ -55,6 +55,43 @@ function canToggleStatus(status: string): boolean {
   return s === 'active' || s === 'paused' || s === 'draft'
 }
 
+function WorkflowStatusSwitch({
+  checked,
+  disabled,
+  ariaLabel,
+  onClick,
+}: {
+  checked: boolean
+  disabled?: boolean
+  ariaLabel: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onClick()
+      }}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-wait disabled:opacity-60 dark:focus-visible:ring-offset-slate-900 ${
+        checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`pointer-events-none block h-6 w-6 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform duration-200 ease-out ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  )
+}
+
 function hasEditableTrigger(row: WorkflowRow): boolean {
   const def = parseWorkflowDefinition(row.workflow_definition)
   return Boolean(def?.nodes.some((n) => String(n.type).startsWith('crm.trigger.')))
@@ -528,7 +565,7 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
                       <div className="h-5 w-14 rounded-full bg-slate-200" />
-                      <div className="h-6 w-11 rounded-full bg-slate-200" />
+                      <div className="h-7 w-12 rounded-full bg-slate-200" />
                     </div>
                   </div>
                   <div className="mt-2.5 space-y-2 border-t border-slate-100 pt-2.5">
@@ -631,31 +668,12 @@ export function WorkflowListDialog({ open, onClose, onActiveCountChange }: Props
                       <div className="flex shrink-0 flex-col items-end gap-2">
                         <CampaignStatusBadge status={(row.status as CampaignStatus) || 'draft'} />
                         {togglable ? (
-                          <label
-                            className={`inline-flex items-center gap-2 ${busy ? 'opacity-60' : 'cursor-pointer'}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="text-[11px] font-medium text-slate-500">
-                              {isActive ? 'On' : 'Off'}
-                            </span>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={isActive}
-                              aria-label={isActive ? `Pause ${row.name}` : `Enable ${row.name}`}
-                              disabled={busy}
-                              onClick={() => handleToggle(row)}
-                              className={`relative h-6 w-11 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:cursor-wait ${
-                                isActive ? 'bg-emerald-500' : 'bg-slate-300'
-                              }`}
-                            >
-                              <span
-                                className={`absolute top-0.5 ${isActive ? 'left-[-2.4rem]' : 'left-[1.4rem]'} h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                                  isActive ? 'translate-x-5' : 'translate-x-0'
-                                }`}
-                              />
-                            </button>
-                          </label>
+                          <WorkflowStatusSwitch
+                            checked={isActive}
+                            disabled={busy}
+                            ariaLabel={isActive ? `Pause ${row.name}` : `Enable ${row.name}`}
+                            onClick={() => handleToggle(row)}
+                          />
                         ) : null}
                       </div>
                     </div>

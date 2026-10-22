@@ -16,6 +16,8 @@ import {
   buildCampaignPanelPath,
   panelModeFromSearchParams,
 } from '@/app/lib/campaigns/campaign-panel-url'
+import { runCampaignTestWithStream } from '@/app/dashboard/campaigns/_components/campaign-workflow-client'
+import type { CampaignWorkflowProgressEvent } from '@/app/lib/campaigns/workflow-events'
 
 type Row = {
   id: string
@@ -49,12 +51,64 @@ function ActionIcon({
   )
 }
 
+function SpinnerIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={`${className} animate-spin`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        d="M16.023 9.348h4.992M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"
+      />
+    </svg>
+  )
+}
+
+function LiveCountCell({
+  value,
+  running,
+  runStatus,
+  align = 'end',
+}: {
+  value: number
+  running: boolean
+  runStatus: string | null
+  align?: 'end' | 'center'
+}) {
+  return (
+    <div className={align === 'center' ? 'flex flex-col items-center gap-0.5' : 'flex flex-col items-end gap-0.5'}>
+      <span className={`inline-flex items-center gap-1.5 tabular-nums ${running ? 'font-semibold text-sky-800 dark:text-sky-300' : ''}`}>
+        {running ? <SpinnerIcon className="h-3.5 w-3.5" /> : null}
+        {value}
+      </span>
+      {running && runStatus ? (
+        <span className="max-w-[12rem] text-[11px] font-medium leading-snug text-sky-700 dark:text-sky-300">{runStatus}</span>
+      ) : null}
+    </div>
+  )
+}
+
+function playProgressLabel(event: CampaignWorkflowProgressEvent): string | null {
+  if (event.type === 'phase') {
+    if (event.phase === 'started') return 'Starting…'
+    if (event.phase === 'enrollment_sync') return 'Matching audience and enrolling…'
+    if (event.phase === 'due_send') return 'Sending due messages…'
+    if (event.phase === 'finished') return 'Finishing…'
+  }
+  if (event.type === 'enrollment') return `Enrolling ${event.label}…`
+  if (event.type === 'send') {
+    if (event.status === 'sending') return `Sending ${event.index}/${event.total}…`
+    if (event.status === 'sent') return `Sent ${event.index}/${event.total}`
+    return `Send failed ${event.index}/${event.total}`
+  }
+  if (event.type === 'log' && event.message.trim()) return event.message
+  return null
+}
+
 type CampaignRowActionsProps = {
   row: Row
   busy: string | null
   saasUsage: { atCampaignLimit: boolean; isProActive: boolean } | null
   onView: () => void
-  onActivate: () => void
+  onPlay: () => void
   onPause: () => void
   onDuplicate: () => void
   onDelete: () => void
@@ -65,17 +119,33 @@ function CampaignRowActions({
   busy,
   saasUsage,
   onView,
-  onActivate,
+  onPlay,
   onPause,
   onDuplicate,
   onDelete,
 }: CampaignRowActionsProps) {
   const idBusy = busy === row.id
+  const actionsLocked = busy !== null
+  const playBlocked =
+    actionsLocked ||
+    (row.status !== 'active' && saasUsage?.atCampaignLimit === true) ||
+    (row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true)
+  const playTitle =
+    row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true
+      ? 'Pro workflows require an active Pro subscription'
+      : row.status !== 'active' && saasUsage?.atCampaignLimit
+        ? 'Active campaign limit reached — upgrade to Pro'
+        : row.status === 'active'
+          ? 'Run now — enroll matching customers and send due messages'
+          : row.status === 'paused'
+            ? 'Resume, enroll matching customers, and start sending'
+            : 'Activate, enroll matching customers, and start sending'
+
   return (
     <div className="flex flex-wrap gap-1.5">
       <button
         type="button"
-        disabled={idBusy}
+        disabled={actionsLocked}
         onClick={onView}
         title="View campaign"
         aria-label="View campaign"
@@ -92,27 +162,17 @@ function CampaignRowActions({
           </svg>
         </ActionIcon>
       </button>
-      {row.status !== 'active' ? (
-        <button
-          type="button"
-          disabled={
-            idBusy ||
-            (saasUsage?.atCampaignLimit === true && row.status !== 'active') ||
-            (row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true)
-          }
-          onClick={onActivate}
-          title={
-            row.platform_default_tier === 'pro' && saasUsage?.isProActive !== true
-              ? 'Pro workflows require an active Pro subscription'
-              : saasUsage?.atCampaignLimit
-                ? 'Active campaign limit reached — upgrade to Pro'
-                : row.status === 'paused'
-                  ? 'Resume campaign'
-                  : 'Activate campaign'
-          }
-          aria-label={row.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
-          className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
-        >
+      <button
+        type="button"
+        disabled={playBlocked}
+        onClick={onPlay}
+        title={playTitle}
+        aria-label={row.status === 'active' ? 'Run campaign' : row.status === 'paused' ? 'Resume campaign' : 'Activate campaign'}
+        className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+      >
+        {idBusy ? (
+          <SpinnerIcon />
+        ) : (
           <ActionIcon>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path
@@ -122,11 +182,12 @@ function CampaignRowActions({
               />
             </svg>
           </ActionIcon>
-        </button>
-      ) : (
+        )}
+      </button>
+      {row.status === 'active' ? (
         <button
           type="button"
-          disabled={idBusy}
+          disabled={actionsLocked}
           onClick={onPause}
           title="Pause campaign"
           aria-label="Pause campaign"
@@ -138,10 +199,10 @@ function CampaignRowActions({
             </svg>
           </ActionIcon>
         </button>
-      )}
+      ) : null}
       <button
         type="button"
-        disabled={idBusy}
+        disabled={actionsLocked}
         onClick={onDuplicate}
         title="Duplicate campaign"
         aria-label="Duplicate campaign"
@@ -156,7 +217,7 @@ function CampaignRowActions({
       </button>
       <button
         type="button"
-        disabled={idBusy}
+        disabled={actionsLocked}
         onClick={onDelete}
         title="Delete campaign"
         aria-label="Delete campaign"
@@ -246,6 +307,7 @@ function CampaignsListInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [runStatus, setRunStatus] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
@@ -319,7 +381,7 @@ function CampaignsListInner() {
     setListLoading(true)
     ;(async () => {
       try {
-        const res = await fetch('/api/campaigns')
+        const res = await fetch('/api/campaigns', { cache: 'no-store' })
         const json = await res.json()
         if (cancelled) return
         if (!res.ok) throw new Error(json.error || 'Failed')
@@ -385,8 +447,21 @@ function CampaignsListInner() {
     }
   }
 
+  const bumpActiveCampaigns = (delta: number) => {
+    setSaasUsage((prev) => {
+      if (!prev) return prev
+      const activeCampaigns = Math.max(0, prev.activeCampaigns + delta)
+      return {
+        ...prev,
+        activeCampaigns,
+        atCampaignLimit: prev.maxActiveCampaigns >= 0 && activeCampaigns >= prev.maxActiveCampaigns,
+      }
+    })
+  }
+
   const patchStatus = async (id: string, status: string) => {
     setBusy(id)
+    setRunStatus(status === 'paused' ? 'Pausing…' : 'Updating…')
     try {
       const res = await fetch(`/api/campaigns/${id}`, {
         method: 'PATCH',
@@ -396,29 +471,8 @@ function CampaignsListInner() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: json.data.status } : r)))
-      if (status === 'active') {
-        setSaasUsage((prev) =>
-          prev
-            ? {
-                ...prev,
-                activeCampaigns: prev.activeCampaigns + 1,
-                atCampaignLimit:
-                  prev.maxActiveCampaigns >= 0 && prev.activeCampaigns + 1 >= prev.maxActiveCampaigns,
-              }
-            : prev
-        )
-      } else if (status === 'paused') {
-        setSaasUsage((prev) =>
-          prev
-            ? {
-                ...prev,
-                activeCampaigns: Math.max(0, prev.activeCampaigns - 1),
-                atCampaignLimit:
-                  prev.maxActiveCampaigns >= 0 && Math.max(0, prev.activeCampaigns - 1) >= prev.maxActiveCampaigns,
-              }
-            : prev
-        )
-      }
+      if (status === 'active') bumpActiveCampaigns(1)
+      else if (status === 'paused') bumpActiveCampaigns(-1)
       pushToast('success', status === 'active' ? 'Campaign activated.' : 'Campaign updated.')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed'
@@ -426,6 +480,70 @@ function CampaignsListInner() {
       pushToast('error', msg)
     } finally {
       setBusy(null)
+      setRunStatus(null)
+    }
+  }
+
+  const activateAndRun = async (row: Row) => {
+    const id = row.id
+    setBusy(id)
+    setErr(null)
+    let enrollments = 0
+    let sent = 0
+    let failed = 0
+    try {
+      if (row.status !== 'active') {
+        setRunStatus('Activating…')
+        const res = await fetch(`/api/campaigns/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'active' }),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error || 'Failed to activate')
+        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: json.data.status } : r)))
+        bumpActiveCampaigns(1)
+      }
+
+      setRunStatus('Matching audience and enrolling…')
+      const result = await runCampaignTestWithStream(id, (event) => {
+        const label = playProgressLabel(event)
+        if (label) setRunStatus(label)
+        if (event.type === 'enrollment') {
+          enrollments += 1
+          setRows((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, enrolled_count: (r.enrolled_count ?? 0) + 1 } : r))
+          )
+        }
+        if (event.type === 'send' && event.status === 'sent') {
+          sent += 1
+          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, sent_count: (r.sent_count ?? 0) + 1 } : r)))
+        }
+        if (event.type === 'send' && event.status === 'failed') failed += 1
+        if (event.type === 'summary') {
+          enrollments = event.summary.enrollments_inserted
+          sent = event.summary.messages_sent
+          failed = event.summary.messages_failed
+        }
+      })
+      if (!result.ok) throw new Error(result.error || 'Run failed')
+
+      setRunStatus('Updating counts…')
+      await refetchList()
+
+      const parts = [
+        enrollments > 0 ? `enrolled ${enrollments}` : 'no new enrollments',
+        ...(sent > 0 ? [`sent ${sent}`] : []),
+        ...(failed > 0 ? [`${failed} failed`] : []),
+      ]
+      pushToast('success', `Campaign is active — ${parts.join(', ')}.`)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed'
+      setErr(msg)
+      pushToast('error', msg)
+    } finally {
+      setBusy(null)
+      setRunStatus(null)
     }
   }
 
@@ -600,7 +718,7 @@ function CampaignsListInner() {
                 />
                 <button
                   type="button"
-                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy || busy !== null}
                   onClick={() => void activateAllDrafts()}
                   title="Activate all draft workflows you are allowed to run"
                   className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-60"
@@ -609,7 +727,7 @@ function CampaignsListInner() {
                 </button>
                 <button
                   type="button"
-                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy}
+                  disabled={refreshing || bulkBusy || bulkDeleting || importBusy || busy !== null}
                   onClick={() => void refetchList()}
                   title="Refresh list"
                   aria-label="Refresh workflow list"
@@ -792,7 +910,11 @@ function CampaignsListInner() {
                   {rows.map((r) => (
                     <article
                       key={r.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                      className={`rounded-2xl border bg-white p-4 shadow-sm ${
+                        busy === r.id
+                          ? 'border-sky-200 ring-1 ring-sky-100 dark:border-sky-800 dark:ring-sky-900'
+                          : 'border-slate-200'
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <input
@@ -839,11 +961,19 @@ function CampaignsListInner() {
 
                           <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
                             <div className="rounded-xl border border-slate-100 bg-white px-2 py-2">
-                              <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              <dt
+                                className="text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                                title="Customers added to this workflow’s send queue"
+                              >
                                 Enrolled
                               </dt>
                               <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">
-                                {r.enrolled_count ?? 0}
+                                <LiveCountCell
+                                  value={r.enrolled_count ?? 0}
+                                  running={busy === r.id}
+                                  runStatus={null}
+                                  align="center"
+                                />
                               </dd>
                             </div>
                             <div className="rounded-xl border border-slate-100 bg-white px-2 py-2">
@@ -864,13 +994,23 @@ function CampaignsListInner() {
                             </div>
                           </dl>
 
+                          {busy === r.id ? (
+                            <div
+                              className="mt-3 flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200"
+                              aria-live="polite"
+                            >
+                              <SpinnerIcon className="h-3.5 w-3.5 shrink-0" />
+                              <span>{runStatus || 'Working…'}</span>
+                            </div>
+                          ) : null}
+
                           <div className="mt-3 border-t border-slate-100 pt-3">
                             <CampaignRowActions
                               row={r}
                               busy={busy}
                               saasUsage={saasUsage}
                               onView={() => replacePanel({ view: r.id })}
-                              onActivate={() => void patchStatus(r.id, 'active')}
+                              onPlay={() => void activateAndRun(r)}
                               onPause={() => void patchStatus(r.id, 'paused')}
                               onDuplicate={() => void duplicate(r.id)}
                               onDelete={() => void remove(r.id)}
@@ -902,7 +1042,12 @@ function CampaignsListInner() {
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Trigger</th>
-                      <th className="px-4 py-3 text-right">Enrolled</th>
+                      <th
+                        className="px-4 py-3 text-right"
+                        title="Customers added to this workflow’s send queue"
+                      >
+                        Enrolled
+                      </th>
                       <th className="px-4 py-3 text-right">Sent</th>
                       <th className="px-4 py-3">Created</th>
                       <th className="px-4 py-3 text-right">Actions</th>
@@ -913,9 +1058,11 @@ function CampaignsListInner() {
                       <tr
                         key={r.id}
                         className={
-                          selectedIds.has(r.id)
-                            ? 'bg-muted/70 text-foreground hover:bg-muted'
-                            : 'text-foreground hover:bg-muted/60'
+                          busy === r.id
+                            ? 'bg-sky-50/80 text-foreground dark:bg-sky-950/40'
+                            : selectedIds.has(r.id)
+                              ? 'bg-muted/70 text-foreground hover:bg-muted'
+                              : 'text-foreground hover:bg-muted/60'
                         }
                       >
                         <td className="px-3 py-3 align-top">
@@ -954,7 +1101,11 @@ function CampaignsListInner() {
                           <CampaignListTriggerCell campaign={r} />
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-slate-600">
-                          {r.enrolled_count ?? 0}
+                          <LiveCountCell
+                            value={r.enrolled_count ?? 0}
+                            running={busy === r.id}
+                            runStatus={runStatus}
+                          />
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-slate-600">
                           {r.sent_count ?? 0}
@@ -969,7 +1120,7 @@ function CampaignsListInner() {
                               busy={busy}
                               saasUsage={saasUsage}
                               onView={() => replacePanel({ view: r.id })}
-                              onActivate={() => void patchStatus(r.id, 'active')}
+                              onPlay={() => void activateAndRun(r)}
                               onPause={() => void patchStatus(r.id, 'paused')}
                               onDuplicate={() => void duplicate(r.id)}
                               onDelete={() => void remove(r.id)}
