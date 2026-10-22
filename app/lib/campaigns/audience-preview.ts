@@ -15,7 +15,9 @@ import {
 } from '@/app/lib/customers/frontline-tier'
 
 const CUSTOMER_PAGE = 250
-const SAMPLE_CAP = 40
+/** First N matching customers returned for campaign detail previews. */
+export const AUDIENCE_PREVIEW_SAMPLE_CAP = 40
+const SAMPLE_CAP = AUDIENCE_PREVIEW_SAMPLE_CAP
 
 export async function resolveTagIdLabels(
   supabase: SupabaseClient,
@@ -157,13 +159,17 @@ export function describeCampaignAudienceFilters(
 export async function computeEligibleAudiencePreview(
   supabase: SupabaseClient,
   userId: string,
-  filters: CampaignAudienceFilters
+  filters: CampaignAudienceFilters,
+  options?: { sampleCap?: number; collectAll?: boolean }
 ): Promise<{
   matching_total: number
   sample: AudienceEligibleSample[]
   customers_scanned: number
   in_scope_total: number
 }> {
+  const sampleCap = options?.collectAll
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, options?.sampleCap ?? SAMPLE_CAP)
   const sample: AudienceEligibleSample[] = []
   let matching_total = 0
   let in_scope_total = 0
@@ -201,7 +207,7 @@ export async function computeEligibleAudiencePreview(
       in_scope_total++
       if (!customerMatchesFilters(c, filters)) continue
       matching_total++
-      if (sample.length < SAMPLE_CAP) {
+      if (sample.length < sampleCap) {
         sample.push({
           id: c.id,
           save_name: c.save_name,

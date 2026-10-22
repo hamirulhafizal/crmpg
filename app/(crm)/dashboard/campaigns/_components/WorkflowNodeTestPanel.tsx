@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useCustomerEditModal } from '@/app/contexts/customer-edit-modal-context'
-import type { WorkflowNodeTestResult } from '@/app/lib/campaigns/test-workflow-node'
+import type { WorkflowNodeTestItem, WorkflowNodeTestResult } from '@/app/lib/campaigns/test-workflow-node'
 import {
   allWorkflowNodeIds,
   animateWorkflowPathTest,
@@ -10,6 +10,192 @@ import {
 } from '@/app/lib/campaigns/workflow-node-test-visual'
 import type { WorkflowEditorDraft } from '@/app/lib/campaigns/workflow-layout'
 import type { WorkflowNodeState } from '@/app/dashboard/campaigns/_components/CampaignWorkflowModal'
+
+const ITEMS_PAGE_SIZE = 20
+
+function itemSearchHaystack(item: WorkflowNodeTestItem): string {
+  return [item.label, item.detail, item.customer_id, item.meta?.pg_code]
+    .map((x) => String(x ?? '').toLowerCase())
+    .join(' ')
+}
+
+function TestResultItemsList({
+  items,
+  matchingTotal,
+  onOpenCustomer,
+}: {
+  items: WorkflowNodeTestItem[]
+  matchingTotal?: number
+  onOpenCustomer: (customerId: string) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const listRef = useRef<HTMLUListElement>(null)
+
+  useEffect(() => {
+    setQuery('')
+    setPage(1)
+  }, [items])
+
+  const q = query.trim().toLowerCase()
+  const filtered = useMemo(() => {
+    if (!q) return items
+    return items.filter((item) => itemSearchHaystack(item).includes(q))
+  }, [items, q])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PAGE_SIZE))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+  const from = filtered.length === 0 ? 0 : (safePage - 1) * ITEMS_PAGE_SIZE + 1
+  const to = Math.min(safePage * ITEMS_PAGE_SIZE, filtered.length)
+  const pageItems = filtered.slice((safePage - 1) * ITEMS_PAGE_SIZE, safePage * ITEMS_PAGE_SIZE)
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage)
+  }, [page, safePage])
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 })
+  }, [safePage, q])
+
+  const universe = typeof matchingTotal === 'number' ? matchingTotal : items.length
+
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        Items · {universe.toLocaleString()} match{universe === 1 ? '' : 'es'}
+      </p>
+      <label className="mt-1.5 block">
+        <span className="sr-only">Search items</span>
+        <div className="relative">
+          <svg
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10.5a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z" />
+          </svg>
+          <input
+            type="text"
+            inputMode="search"
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
+            placeholder="Search name, phone, or PG code"
+            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-8 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('')
+                setPage(1)
+              }}
+              className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </label>
+      <p className="mt-1.5 text-[11px] text-slate-500">
+        {filtered.length === 0
+          ? q
+            ? `No items match “${query.trim()}”.`
+            : 'No items.'
+          : q
+            ? `Showing ${from}–${to} of ${filtered.length} matching “${query.trim()}”`
+            : `Showing ${from}–${to} of ${filtered.length}`}
+      </p>
+      {pageItems.length > 0 ? (
+        <ul
+          ref={listRef}
+          className="mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100"
+        >
+          {pageItems.map((item, i) => {
+            const customerId = item.customer_id?.trim()
+            const body = (
+              <>
+                <p
+                  className={`font-medium text-slate-900 ${
+                    customerId ? 'underline decoration-slate-300 underline-offset-2' : ''
+                  }`}
+                >
+                  {item.label}
+                </p>
+                {item.detail ? <p className="mt-0.5 text-slate-600">{item.detail}</p> : null}
+              </>
+            )
+            return (
+              <li key={customerId || `${safePage}-${i}`} className="text-xs">
+                {customerId ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenCustomer(customerId)}
+                    title="Open customer details"
+                    className="workflow-test-item-btn block w-full px-2.5 py-2 text-left transition hover:bg-violet-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className="px-2.5 py-2">{body}</div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+      {totalPages > 1 ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setPage(1)}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="First page"
+          >
+            First
+          </button>
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="inline-flex h-8 min-w-14 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <p className="text-[11px] tabular-nums text-slate-500">
+            Page {safePage} of {totalPages}
+          </p>
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="inline-flex h-8 min-w-14 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(totalPages)}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Last page"
+          >
+            Last
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 export function WorkflowNodeTestPanel({
   nodeId,
@@ -209,46 +395,17 @@ export function WorkflowNodeTestPanel({
           ) : null}
 
           {result.items.length > 0 ? (
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Items ({result.items.length})
-              </p>
-              <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
-                {result.items.map((item, i) => {
-                  const customerId = item.customer_id?.trim()
-                  const body = (
-                    <>
-                      <p
-                        className={`font-medium text-slate-900 ${
-                          customerId ? 'underline decoration-slate-300 underline-offset-2' : ''
-                        }`}
-                      >
-                        {item.label}
-                      </p>
-                      {item.detail ? <p className="mt-0.5 text-slate-600">{item.detail}</p> : null}
-                    </>
-                  )
-                  return (
-                    <li key={customerId || i} className="text-xs">
-                      {customerId ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openCustomerById(customerId, { overlayZIndexClassName: 'z-[2100]' })
-                          }
-                          title="Open customer details"
-                          className="workflow-test-item-btn block w-full px-2.5 py-2 text-left transition hover:bg-violet-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
-                        >
-                          {body}
-                        </button>
-                      ) : (
-                        <div className="px-2.5 py-2">{body}</div>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+            <TestResultItemsList
+              items={result.items}
+              matchingTotal={
+                typeof result.metrics.matching_total === 'number'
+                  ? result.metrics.matching_total
+                  : undefined
+              }
+              onOpenCustomer={(customerId) =>
+                openCustomerById(customerId, { overlayZIndexClassName: 'z-[2100]' })
+              }
+            />
           ) : null}
         </div>
       ) : (

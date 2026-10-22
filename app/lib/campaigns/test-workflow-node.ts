@@ -253,18 +253,21 @@ async function testSingleWorkflowNode(
         const criteria = describeCampaignAudienceFilters(filters, tagLabels)
         logs.push(...criteria.map((l) => `Rule: ${l}`))
 
-        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters)
+        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters, {
+          collectAll: true,
+        })
         logs.push(`Scanned ${preview.customers_scanned} customers in CRM`)
         logs.push(`${preview.in_scope_total} in selected tree tier(s)`)
         logs.push(`${preview.matching_total} match all audience rules now`)
 
-        for (const row of preview.sample.slice(0, 12)) {
+        for (const row of preview.sample) {
           items.push(itemFromCustomerSample(row))
         }
 
         metrics.matching_total = preview.matching_total
         metrics.in_scope_total = preview.in_scope_total
         metrics.customers_scanned = preview.customers_scanned
+        metrics.items_total = preview.sample.length
 
         return {
           ok: true,
@@ -272,7 +275,7 @@ async function testSingleWorkflowNode(
           node_type: node.type,
           title: 'Audience',
           duration_ms: Date.now() - started,
-          summary: `${preview.matching_total} customer(s) match · ${preview.sample.length} shown`,
+          summary: `${preview.matching_total} customer(s) match`,
           logs,
           items,
           metrics,
@@ -281,7 +284,9 @@ async function testSingleWorkflowNode(
 
       case 'crm.enroll.queue': {
         const filters = compiled.audience_filters
-        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters)
+        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters, {
+          collectAll: true,
+        })
         let alreadyEnrolled = 0
         let activeEnrollments = 0
 
@@ -325,7 +330,7 @@ async function testSingleWorkflowNode(
           duration_ms: Date.now() - started,
           summary: `${preview.matching_total} match · ${alreadyEnrolled} enrolled · cap ${compiled.daily_send_limit}/day`,
           logs,
-          items: preview.sample.slice(0, 8).map((row) =>
+          items: preview.sample.map((row) =>
             itemFromCustomerSample(
               row,
               row.phone ? `Would queue if not enrolled · ${row.phone}` : 'Skipped — no phone'
@@ -357,7 +362,9 @@ async function testSingleWorkflowNode(
         const tagLabels = tagIds.length > 0 ? await resolveTagIdLabels(opts.supabase, tagIds) : undefined
         const criteria = describeCampaignAudienceFilters(filters, tagLabels)
         logs.push(...criteria.map((l) => `Rule: ${l}`))
-        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters)
+        const preview = await computeEligibleAudiencePreview(opts.supabase, opts.userId, filters, {
+          collectAll: true,
+        })
         logs.push(`${preview.matching_total} match (Get Many / audience)`)
         return {
           ok: true,
@@ -367,7 +374,7 @@ async function testSingleWorkflowNode(
           duration_ms: Date.now() - started,
           summary: `${preview.matching_total} customer(s) match filters`,
           logs,
-          items: preview.sample.slice(0, 12).map((row) => itemFromCustomerSample(row)),
+          items: preview.sample.map((row) => itemFromCustomerSample(row)),
           metrics: { matching_total: preview.matching_total },
         }
       }
