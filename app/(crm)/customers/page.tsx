@@ -1131,32 +1131,24 @@ function CustomersPage() {
     setImportResult(null)
     setImportProgress({ current: 0, total: 0 })
     try {
-      const params = new URLSearchParams({
-        page: '1',
-        limit: '100000',
-        sortBy,
-        sortOrder,
-      })
-      const response = await fetch(`/api/customers?${params}`, {
+      const response = await fetch('/api/customers/google-contacts-import', {
         cache: 'no-store',
       })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Failed to fetch customers')
-      const allCustomers: Customer[] = result.data || []
-      if (allCustomers.length === 0) {
-        setError('No customers to import. Add customers first.')
+      const dataToImport: Record<string, unknown>[] = Array.isArray(result.data) ? result.data : []
+      if (dataToImport.length === 0) {
+        setError('No customers in tree tiers 1–4 to import.')
         setIsImporting(false)
         return
       }
-      const dataToImport = allCustomers.map((c): Record<string, unknown> => ({
-        Name: c.name ?? '',
-        SenderName: c.sender_name ?? '',
-        FirstName: c.first_name ?? '',
-        SaveName: c.save_name ?? '',
-        DOB: c.dob ?? '',
-        Email: c.email ?? '',
-        Phone: c.phone ?? '',
-      }))
+      const counts = result.counts as { t1?: number; t2?: number; t3?: number; t4?: number } | undefined
+      if (counts) {
+        setImportResult({
+          success: true,
+          message: `Preparing ${dataToImport.length} contacts (T1 ${counts.t1 ?? 0} · T2 ${counts.t2 ?? 0} · T3 ${counts.t3 ?? 0} · T4 ${counts.t4 ?? 0})…`,
+        })
+      }
       await window.googleContactsIntegration.importContacts(dataToImport)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Import to Google failed')
@@ -2366,7 +2358,7 @@ function CustomersPage() {
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Import all to Google Contacts
+                    Import T1–T4 to Google Contacts
                   </>
                 )}
               </button>
@@ -2375,7 +2367,7 @@ function CustomersPage() {
           {(isImporting || importProgress.total > 0) && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
-                <span>Importing to Google Contacts…</span>
+                <span>Importing T1–T4 to Google Contacts…</span>
                 <span>{importProgress.total > 0 ? `${importProgress.current} / ${importProgress.total}` : 'Preparing…'}</span>
               </div>
               <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">

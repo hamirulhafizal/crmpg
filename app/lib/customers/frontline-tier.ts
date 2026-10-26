@@ -10,7 +10,14 @@ import type { CampaignAudienceFilters, FrontlineTierNumber } from '@/app/lib/cam
 
 export const FRONTLINE_TIER_NUMBERS = [1, 2, 3, 4] as const
 
-type GraphRow = FrontlineParentRow & { id: string; sender_name?: string | null }
+export type FrontlineGraphRow = FrontlineParentRow & { id: string; sender_name?: string | null }
+
+type GraphRow = FrontlineGraphRow
+
+export type FrontlineTreeIndex = {
+  tierByCustomerId: Map<string, number>
+  parentPgByCustomerId: Map<string, string>
+}
 
 export function normalizeFrontlineTiersFilter(
   filters: Pick<CampaignAudienceFilters, 'frontline_tiers'> | CampaignAudienceFilters | null | undefined
@@ -80,13 +87,17 @@ function graphRowForParent(row: GraphRow): FrontlineParentRow {
   }
 }
 
-export function buildFrontlineTierByCustomerId(
+export function buildFrontlineTreeIndex(
   rows: GraphRow[],
   rootPgCode: string,
   extras?: { profileName?: string | null }
-): Map<string, number> {
+): FrontlineTreeIndex {
+  const empty: FrontlineTreeIndex = {
+    tierByCustomerId: new Map(),
+    parentPgByCustomerId: new Map(),
+  }
   const root = normalizePgCodeValue(rootPgCode)
-  if (!root) return new Map()
+  if (!root) return empty
 
   const nameToPg = buildCustomerNameToPgMap(
     rows.map((row) => ({ pg_code: row.pg_code, name: row.sender_name || row.name })),
@@ -108,7 +119,8 @@ export function buildFrontlineTierByCustomerId(
     childrenByParentPg.set(parent, list)
   }
 
-  const out = new Map<string, number>()
+  const tierByCustomerId = new Map<string, number>()
+  const parentPgByCustomerId = new Map<string, string>()
   let frontier = [root]
   const seenPg = new Set<string>([root])
   let depth = 0
@@ -117,7 +129,10 @@ export function buildFrontlineTierByCustomerId(
     for (const parentPg of frontier) {
       for (const child of childrenByParentPg.get(parentPg) ?? []) {
         const childTier = depth + 1
-        if (!out.has(child.id)) out.set(child.id, childTier)
+        if (!tierByCustomerId.has(child.id)) {
+          tierByCustomerId.set(child.id, childTier)
+          parentPgByCustomerId.set(child.id, parentPg)
+        }
         const childPg = normalizePgCodeValue(child.pg_code)
         if (childPg && !seenPg.has(childPg)) {
           seenPg.add(childPg)
@@ -128,7 +143,15 @@ export function buildFrontlineTierByCustomerId(
     frontier = next
     depth += 1
   }
-  return out
+  return { tierByCustomerId, parentPgByCustomerId }
+}
+
+export function buildFrontlineTierByCustomerId(
+  rows: GraphRow[],
+  rootPgCode: string,
+  extras?: { profileName?: string | null }
+): Map<string, number> {
+  return buildFrontlineTreeIndex(rows, rootPgCode, extras).tierByCustomerId
 }
 
 const GRAPH_SELECT = 'id, pg_code, name, sender_name, parent_pg_code, original_data'

@@ -12,6 +12,10 @@
 import { NextResponse } from 'next/server'
 import { google } from 'googleapis'
 import { cookies } from 'next/headers'
+import {
+  readGoogleContactNameFromRow,
+  toGooglePeopleName,
+} from '@/app/lib/customers/google-contact-name'
 
 interface ProcessedRow {
   [key: string]: any
@@ -86,30 +90,9 @@ function mapToGoogleContact(row: ProcessedRow): any {
     birthdays: [],
   }
 
-  // Map names - Priority: savename > SenderName > FirstName
-  const saveName = row.savename || row['savename'] || row.SaveName || row['SaveName'] || row.SAVENAME || row['SAVENAME'] || ''
-  const senderName = row.SenderName || row['SenderName'] || ''
-  const firstName = row.FirstName || row['FirstName'] || row['First Name'] || ''
-  const fullName = row.Name || row['Name'] || ''
-  
-  // Use savename as First Name (givenName), fallback to SenderName or FirstName
-  const givenName = saveName || senderName || firstName || ''
-  
-  // Extract last name from full name if available
-  let familyName = ''
-  if (fullName && !saveName && !senderName) {
-    const nameParts = fullName.split(' ')
-    if (nameParts.length > 1) {
-      familyName = nameParts.slice(1).join(' ')
-    }
-  }
-  
-  if (givenName || fullName) {
-    contact.names.push({
-      displayName: fullName || saveName || senderName || firstName || '',
-      givenName: givenName, // savename is used as First Name
-      familyName: familyName,
-    })
+  const contactName = readGoogleContactNameFromRow(row)
+  if (contactName) {
+    contact.names.push(toGooglePeopleName(contactName))
   }
 
   // Map birthday - Priority: D.O.B > DOB > Birthday
