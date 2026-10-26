@@ -461,6 +461,12 @@ export default function ExcelProcessorPage() {
     try {
       // Use client-side Google Contacts integration
       if (window.googleContactsIntegration) {
+        const prepared = window.googleContactsIntegration.prepareImport
+          ? await window.googleContactsIntegration.prepareImport()
+          : true
+        if (!prepared) {
+          throw new Error('Google session expired. Click “Connect Google Contacts”, then import again.')
+        }
         await window.googleContactsIntegration.importContacts(dataToImport)
       } else {
         throw new Error('Google Contacts integration not available. Please refresh the page.')

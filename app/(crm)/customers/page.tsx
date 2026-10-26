@@ -1131,6 +1131,14 @@ function CustomersPage() {
     setImportResult(null)
     setImportProgress({ current: 0, total: 0 })
     try {
+      // Refresh the Google token during the click (browsers block silent OAuth after await).
+      const prepared = window.googleContactsIntegration.prepareImport
+        ? await window.googleContactsIntegration.prepareImport()
+        : true
+      if (!prepared) {
+        throw new Error('Google session expired. Click “Google Connected”, then import again.')
+      }
+
       const response = await fetch('/api/customers/google-contacts-import', {
         cache: 'no-store',
       })

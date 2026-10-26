@@ -5,6 +5,7 @@ declare global {
     googleContactsIntegration?: {
       signIn: () => void
       signOut: () => void
+      prepareImport?: () => Promise<boolean>
       importContacts: (data: Record<string, unknown>[]) => Promise<void>
       isSignedIn: () => boolean
       isLoading?: () => boolean
