@@ -16,6 +16,7 @@ import {
 import {
   featuresMapFromRows,
   parseMaxActiveCampaigns,
+  parseTruthyFlag,
   parseWhatsAppProviders,
 } from '@/app/lib/saas/plans'
 import type {
@@ -287,6 +288,9 @@ export async function buildSaasMePayload(userId: string): Promise<SaasMePayload 
       max_active_campaigns: '0',
       whatsapp_providers: '',
       platform_access: 'read_only',
+      trypost_access: 'false',
+      trypost_max_channels: '0',
+      trypost_analytics: 'false',
     }
   }
 
@@ -396,6 +400,15 @@ export function entitlementsFromMe(payload: SaasMePayload) {
   const whatsappProviders = platformAdmin
     ? ADMIN_WHATSAPP_PROVIDERS
     : parseWhatsAppProviders(payload.subscription.features.whatsapp_providers)
+  const trypostMaxChannels = platformAdmin
+    ? -1
+    : parseMaxActiveCampaigns(payload.subscription.features.trypost_max_channels ?? '1')
+  const trypostAnalytics = platformAdmin
+    ? true
+    : parseTruthyFlag(payload.subscription.features.trypost_analytics ?? 'false')
+  const trypostAccess = platformAdmin
+    ? true
+    : parseTruthyFlag(payload.subscription.features.trypost_access ?? 'true')
 
   return {
     maxActiveCampaigns: maxCampaigns,
@@ -409,5 +422,8 @@ export function entitlementsFromMe(payload: SaasMePayload) {
     status: payload.subscription.status,
     atCampaignLimit: platformAdmin ? false : payload.alerts.at_campaign_limit,
     isPlatformAdmin: platformAdmin,
+    trypostAccess,
+    trypostMaxChannels,
+    trypostAnalytics,
   }
 }

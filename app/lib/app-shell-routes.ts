@@ -12,6 +12,7 @@ export function isAppShellPath(pathname: string): boolean {
     '/customers',
     '/ws-integration',
     '/waha-integration',
+    '/social-scheduling',
     '/extension-download',
     '/profile',
     '/automated-messages',
@@ -34,6 +35,7 @@ export function resolveAppShellTitle(pathname: string): string {
   if (p.startsWith('/ws-integration') || p.startsWith('/waha-integration')) {
     return 'WhatsApp Integration'
   }
+  if (p.startsWith('/social-scheduling')) return 'Social Posts'
   if (p.startsWith('/extension-download')) return 'Chrome Extension'
   if (p.startsWith('/profile')) return 'Edit Profile'
   if (p.startsWith('/automated-messages')) return 'Automated Messages'

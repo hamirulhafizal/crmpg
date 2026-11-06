@@ -49,6 +49,9 @@ export type SaasFeatureKey =
   | 'max_active_campaigns'
   | 'whatsapp_providers'
   | 'platform_access'
+  | 'trypost_access'
+  | 'trypost_max_channels'
+  | 'trypost_analytics'
 
 export type SaasPlanWithFeatures = SaasPlanRow & {
   features: SaasPlanFeatureRow[]
@@ -68,10 +71,16 @@ export const SAAS_FEATURE_DEFAULTS: Record<SaasFeatureKey, string> = {
   max_active_campaigns: '1',
   whatsapp_providers: 'waha',
   platform_access: 'true',
+  trypost_access: 'true',
+  trypost_max_channels: '1',
+  trypost_analytics: 'false',
 }
 
 export const SAAS_FEATURE_LABELS: Record<SaasFeatureKey, string> = {
   max_active_campaigns: 'Max active workflows (-1 = unlimited)',
   whatsapp_providers: 'WhatsApp Server (comma-separated: waha, wasender)',
   platform_access: 'Platform access when subscription valid (true/false)',
+  trypost_access: 'Social scheduling (TryPost) access (true/false)',
+  trypost_max_channels: 'Max social channels (-1 = unlimited)',
+  trypost_analytics: 'Social analytics (true/false)',
 }

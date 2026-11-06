@@ -1,3 +1,7 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "TryPost": {
+      "url": "https://app.trypost.it/mcp/trypost"
+    }
+  }
 }

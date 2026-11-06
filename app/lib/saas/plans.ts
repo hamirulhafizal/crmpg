@@ -34,6 +34,11 @@ export function parseWhatsAppProviders(value: string | undefined): Array<'waha' 
   return [...out]
 }
 
+export function parseTruthyFlag(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase()
+  return v === 'true' || v === '1' || v === 'yes'
+}
+
 /** @deprecated Use hasPlatformWriteAccess from billing.ts */
 export function isPlatformSubscriptionUsable(status: SaasSubscriptionStatus): boolean {
   return status === 'active' || status === 'trialing'

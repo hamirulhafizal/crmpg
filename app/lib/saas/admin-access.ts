@@ -5,6 +5,9 @@ export const ADMIN_UNLIMITED_FEATURES: Record<string, string> = {
   max_active_campaigns: '-1',
   whatsapp_providers: 'waha,wasender',
   platform_access: 'true',
+  trypost_access: 'true',
+  trypost_max_channels: '-1',
+  trypost_analytics: 'true',
 }
 
 export const ADMIN_WHATSAPP_PROVIDERS: WhatsAppProvider[] = ['waha', 'wasender']

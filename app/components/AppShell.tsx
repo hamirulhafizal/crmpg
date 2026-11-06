@@ -13,6 +13,8 @@ import {
 import { GlobalCustomerSearch } from '@/app/components/GlobalCustomerSearch'
 import { UserProfileMenu } from '@/app/components/UserProfileMenu'
 import { WhatsAppConnectHost } from '@/app/components/WhatsAppConnectHost'
+import { useAuth } from '@/app/contexts/auth-context'
+import { createClient } from '@/app/lib/supabase/client'
 
 export type AppNavItem = {
   href: string
@@ -22,6 +24,8 @@ export type AppNavItem = {
   /** Soft accent for active/hover chip */
   accentClassName: string
   match?: (pathname: string) => boolean
+  /** Hide from non-admins until feature is opened to Free/Pro. */
+  adminOnly?: boolean
 }
 
 function IconDashboard(props: SVGProps<SVGSVGElement>) {
@@ -137,6 +141,19 @@ function IconExtension(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function IconSocial(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden {...props}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M7 8h10M7 12h6m-7 8l2.5-2.5H17a3 3 0 003-3V7a3 3 0 00-3-3H7a3 3 0 00-3 3v11l3-2.5z"
+      />
+    </svg>
+  )
+}
+
 function IconMenu(props: SVGProps<SVGSVGElement>) {
   return (
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden {...props}>
@@ -201,6 +218,15 @@ export const APP_SERVICE_NAV: AppNavItem[] = [
     match: (p) => p.startsWith('/ws-integration') || p.startsWith('/waha-integration'),
   },
   {
+    href: '/social-scheduling',
+    label: 'Social Posts',
+    description: 'All social channels',
+    accentClassName: 'text-fuchsia-800 bg-fuchsia-50',
+    icon: IconSocial,
+    match: (p) => p.startsWith('/social-scheduling'),
+    adminOnly: true,
+  },
+  {
     href: '/dashboard/campaigns',
     label: 'Workflows',
     description: 'Multi-step Automation',
@@ -252,7 +278,10 @@ export function AppShell({
   className = '',
 }: AppShellProps) {
   const pathname = usePathname() || '/'
+  const { user } = useAuth()
+  const supabase = createClient()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const panelId = useId()
 
   const closeMobile = useCallback(() => setMobileOpen(false), [])
@@ -260,6 +289,22 @@ export function AppShell({
   useEffect(() => {
     closeMobile()
   }, [pathname, closeMobile])
+
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+      if (cancelled) return
+      setIsAdmin(!error && data?.role === 'admin')
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, supabase])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -277,6 +322,7 @@ export function AppShell({
 
   const items = APP_SERVICE_NAV.filter((item) => {
     if (item.href === '/google-ads' && !showGoogleAds) return false
+    if (item.adminOnly && !isAdmin) return false
     return true
   })
 
@@ -323,7 +369,7 @@ export function AppShell({
   )
 
   return (
-    <div className={`min-h-screen w-full bg-background text-foreground ${className}`.trim()}>
+    <div className={`h-dvh w-full overflow-hidden bg-background text-foreground ${className}`.trim()}>
       {/* Mobile drawer backdrop */}
       <div
         className={`fixed inset-0 z-[80] bg-black/40 transition-opacity lg:hidden ${
@@ -361,8 +407,8 @@ export function AppShell({
         {nav}
       </aside>
 
-      {/* Main column — flex column so page content can grow and footer stick to bottom */}
-      <div className="flex min-h-screen min-w-0 flex-col lg:pl-64">
+      {/* Main column — viewport-locked; pages scroll inside main */}
+      <div className="flex h-full min-w-0 flex-col lg:pl-64">
         {/* Fixed to viewport so wide page content cannot drag the header sideways */}
         <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80 lg:left-64">
           <div className="flex h-14 w-full min-w-0 items-center gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
@@ -392,7 +438,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden pt-14">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto pt-14">
           {children}
         </main>
       </div>

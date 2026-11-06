@@ -82,6 +82,9 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
     document.body.style.overflow = ''
   }, [shellKey])
 
+  // Social scheduling uses a viewport-locked calendar; hide footer and lock height.
+  const fillViewport = pathname.startsWith('/social-scheduling')
+
   // One AppShell only — swapping whole shells during auth caused double headers.
   return (
     <AppShell
@@ -91,13 +94,27 @@ function AuthenticatedAppChrome({ children }: { children: ReactNode }) {
       showGoogleAds={ready ? showGoogleAds : false}
       deferWhatsAppPrompt={ready ? deferWhatsAppPrompt : true}
     >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
-        <div className="min-w-0 flex-1">
+      <div
+        className={
+          fillViewport
+            ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+            : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden'
+        }
+      >
+        <div
+          className={
+            fillViewport
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'min-w-0 flex-1'
+          }
+        >
           {ready ? children : <PageContentSkeleton />}
         </div>
-        <div className="mt-auto shrink-0">
-          <CompanyLegalFooter />
-        </div>
+        {!fillViewport && (
+          <div className="mt-auto shrink-0">
+            <CompanyLegalFooter />
+          </div>
+        )}
       </div>
     </AppShell>
   )

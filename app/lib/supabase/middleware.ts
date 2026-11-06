@@ -129,6 +129,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/customers') ||
     pathname.startsWith('/ws-integration') ||
     pathname.startsWith('/waha-integration') ||
+    pathname.startsWith('/social-scheduling') ||
     pathname.startsWith('/google-ads') ||
     pathname.startsWith('/automated-messages') ||
     pathname.startsWith('/extension-download') ||
