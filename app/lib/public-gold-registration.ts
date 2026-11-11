@@ -7,8 +7,8 @@ import { sendGapLeadWhatsAppImage, sendGapLeadWhatsAppMessages } from '@/app/lib
 import { formatPhoneForDisplay } from '@/app/lib/phone-msisdn'
 
 /**
- * Hermetic browsers under node_modules (postinstall). Required on Vercel serverless — there is no
- * stable ~/.cache; omitting this made fallback resolve to /tmp/.cache/ms-playwright and fail.
+ * Local/dev: hermetic browsers under node_modules (postinstall).
+ * Vercel: @sparticuz/chromium only — Playwright Chromium is not installed at build time.
  */
 if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '0'
@@ -368,7 +368,7 @@ export async function registerCustomerAtPublicGold(
       finalUrl: '',
       statusText:
         `Chromium failed to start: ${msg.slice(0, 900)}. ` +
-        'Local: run `npx playwright install chromium`. Vercel: use @sparticuz/chromium (see next.config serverExternalPackages) and ensure `postinstall` runs; check deployment CPU (arm64 may need chromium-min).',
+        'Local: run `npx playwright install chromium`. Vercel: @sparticuz/chromium only (Playwright browser download is skipped at build); check deployment CPU (arm64 may need chromium-min).',
     }
   }
   console.log('browser launched')

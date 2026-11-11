@@ -1,7 +1,8 @@
 {
   "build": {
     "env": {
-      "PLAYWRIGHT_BROWSERS_PATH": "0"
+      "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1",
+      "SKIP_PLAYWRIGHT_CHROMIUM": "1"
     }
   },
   "functions": {
