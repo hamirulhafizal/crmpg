@@ -9,6 +9,14 @@ import type {
 import { isSupportedTryPostPlatform } from '@/app/lib/trypost/types'
 import { getTryPostClientForUser } from '@/app/lib/trypost/workspaces'
 
+export type CreateSocialPostDestination = {
+  socialAccountId: string
+  content?: string | null
+  contentType?: string | null
+  mediaUrls?: string[]
+  meta?: Record<string, unknown>
+}
+
 export type CreateSocialPostsInput = {
   userId: string
   content: string
@@ -17,6 +25,8 @@ export type CreateSocialPostsInput = {
   scheduledAt?: string | null
   mediaUrls?: string[]
   contentType?: string | null
+  /** Per-channel overrides (content, media, content_type, meta). */
+  destinations?: CreateSocialPostDestination[]
 }
 
 function resolveBatchStatus(
@@ -48,10 +58,24 @@ export async function createSocialPosts(input: CreateSocialPostsInput) {
     .filter(Boolean)
     .map((url) => ({ url }))
 
-  if (!content && media.length === 0) {
+  const destinationInputs =
+    input.destinations?.length
+      ? input.destinations
+      : input.socialAccountIds.map((socialAccountId) => ({
+          socialAccountId,
+          contentType: input.contentType ?? null,
+        }))
+
+  const hasAnyDestinationPayload = destinationInputs.some((dest) => {
+    const destContent = (dest.content ?? content).trim()
+    const destMedia = (dest.mediaUrls ?? input.mediaUrls ?? []).filter(Boolean)
+    return Boolean(destContent || destMedia.length)
+  })
+
+  if (!content && media.length === 0 && !hasAnyDestinationPayload) {
     throw new TryPostApiError('Post needs text or media', 422)
   }
-  if (!input.socialAccountIds.length) {
+  if (!input.socialAccountIds.length && !destinationInputs.length) {
     throw new TryPostApiError('Select at least one connected channel', 422)
   }
 
@@ -60,7 +84,12 @@ export async function createSocialPosts(input: CreateSocialPostsInput) {
     (workspace.channels ?? []).map((c) => [c.id, c])
   )
 
-  for (const id of input.socialAccountIds) {
+  const accountIds =
+    destinationInputs.length > 0
+      ? destinationInputs.map((d) => d.socialAccountId)
+      : input.socialAccountIds
+
+  for (const id of accountIds) {
     const channel = channelById.get(id)
     if (!channel || !isSupportedTryPostPlatform(channel.platform)) {
       throw new TryPostApiError(`Channel ${id} is not a connected TryPost account`, 422)
@@ -82,18 +111,35 @@ export async function createSocialPosts(input: CreateSocialPostsInput) {
     ...resolved,
     content: content || null,
     media: media.length ? media : undefined,
-    destinations: input.socialAccountIds.map((social_account_id) => ({
-      social_account_id,
-      content_type: input.contentType ?? null,
-    })),
+    destinations: destinationInputs.map((dest) => {
+      const destMedia = (dest.mediaUrls ?? [])
+        .map((url) => url.trim())
+        .filter(Boolean)
+        .map((url) => ({ url }))
+      return {
+        social_account_id: dest.socialAccountId,
+        content_type: dest.contentType ?? input.contentType ?? null,
+        content: dest.content !== undefined ? dest.content : undefined,
+        media: destMedia.length ? destMedia : undefined,
+        meta: dest.meta && Object.keys(dest.meta).length ? dest.meta : undefined,
+      }
+    }),
   })
 
   const posts = batch.posts ?? []
   const admin = createServiceRoleClient()
+  const destByAccount = new Map(destinationInputs.map((d) => [d.socialAccountId, d]))
   const rows = posts.map((post) => {
     const socialAccountId =
       String(post.social_account_id ?? input.socialAccountIds[0] ?? '')
     const channel = channelById.get(socialAccountId)
+    const dest = destByAccount.get(socialAccountId)
+    const destContent =
+      dest?.content !== undefined && dest.content !== null ? dest.content : content || null
+    const destMediaRefs: TryPostMediaReference[] = (dest?.mediaUrls ?? input.mediaUrls ?? [])
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((url) => ({ url }))
     return {
       user_id: input.userId,
       workspace_id: workspace.id,
@@ -101,13 +147,16 @@ export async function createSocialPosts(input: CreateSocialPostsInput) {
       trypost_post_group_id: post.post_group_id ? String(post.post_group_id) : null,
       social_account_id: socialAccountId,
       platform: channel?.platform ?? 'unknown',
-      content: content || null,
-      content_type: input.contentType ?? (post.content_type ? String(post.content_type) : null),
-      media,
+      content: destContent,
+      content_type:
+        dest?.contentType ??
+        input.contentType ??
+        (post.content_type ? String(post.content_type) : null),
+      media: destMediaRefs.length ? destMediaRefs : media,
       status: String(post.status ?? resolved.status),
       publish_mode: input.publishMode,
       scheduled_at: input.scheduledAt ?? (post.scheduled_at ? String(post.scheduled_at) : null),
-      meta: {},
+      meta: dest?.meta ?? {},
       last_error: input.publishMode === 'pending_approval'
         ? 'Stored as draft: workspace API keys publish directly (pending_approval needs a member who requires approval).'
         : null,

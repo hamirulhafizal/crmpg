@@ -264,3 +264,25 @@ export function platformLabel(platform: string): string {
 export function platformShort(platform: string): string {
   return platformVisual(platform).short
 }
+
+/** Public path for platform badge images (mirrors TryPost /images/accounts/*.png). */
+export function platformIconSrc(platform: string): string {
+  const key = platform === 'instagram-facebook' ? 'instagram' : platform === 'linkedin-page' ? 'linkedin' : platform
+  const known = new Set([
+    'instagram',
+    'facebook',
+    'tiktok',
+    'youtube',
+    'linkedin',
+    'x',
+    'threads',
+    'pinterest',
+    'bluesky',
+    'mastodon',
+    'telegram',
+    'discord',
+    'google_business',
+  ])
+  const file = known.has(key) ? key : 'generic'
+  return `/images/accounts/${file}.png`
+}

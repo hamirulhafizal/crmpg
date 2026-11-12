@@ -60,6 +60,13 @@ export async function POST(request: Request) {
       scheduledAt?: string | null
       mediaUrls?: string[]
       contentType?: string | null
+      destinations?: Array<{
+        socialAccountId?: string
+        content?: string | null
+        contentType?: string | null
+        mediaUrls?: string[]
+        meta?: Record<string, unknown>
+      }>
     }
 
     const publishMode = (body.publishMode ?? 'draft') as TryPostPublishMode
@@ -67,14 +74,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid publishMode' }, { status: 422 })
     }
 
+    const destinations = Array.isArray(body.destinations)
+      ? body.destinations
+          .filter((d) => typeof d?.socialAccountId === 'string' && d.socialAccountId)
+          .map((d) => ({
+            socialAccountId: String(d.socialAccountId),
+            content: d.content,
+            contentType: d.contentType ?? null,
+            mediaUrls: Array.isArray(d.mediaUrls) ? d.mediaUrls : undefined,
+            meta: d.meta && typeof d.meta === 'object' ? d.meta : undefined,
+          }))
+      : undefined
+
     const result = await createSocialPosts({
       userId: auth.user.id,
       content: body.content ?? '',
-      socialAccountIds: Array.isArray(body.socialAccountIds) ? body.socialAccountIds : [],
+      socialAccountIds: Array.isArray(body.socialAccountIds)
+        ? body.socialAccountIds
+        : destinations?.map((d) => d.socialAccountId) ?? [],
       publishMode,
       scheduledAt: body.scheduledAt ?? null,
       mediaUrls: Array.isArray(body.mediaUrls) ? body.mediaUrls : [],
       contentType: body.contentType ?? null,
+      destinations,
     })
 
     return NextResponse.json(result, { status: 201 })

@@ -238,6 +238,13 @@ export default function SocialSchedulingPage() {
     scheduledAt: string | null
     mediaUrls: string[]
     createAnother: boolean
+    destinations: Array<{
+      socialAccountId: string
+      content?: string | null
+      contentType?: string | null
+      mediaUrls?: string[]
+      meta?: Record<string, unknown>
+    }>
   }) => {
     setSaving(true)
     setError(null)
@@ -252,6 +259,7 @@ export default function SocialSchedulingPage() {
           publishMode: input.publishMode,
           scheduledAt: input.scheduledAt,
           mediaUrls: input.mediaUrls,
+          destinations: input.destinations,
         }),
       })
       const json = await res.json()

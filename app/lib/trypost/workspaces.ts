@@ -3,6 +3,7 @@ import {
   TryPostApiError,
   createTryPostClient,
   getPlatformTryPostApiKey,
+  type TryPostClient,
 } from '@/app/lib/trypost/client'
 import {
   filterSupportedChannels,
@@ -10,6 +11,38 @@ import {
   type TryPostWorkspacePublic,
   type TryPostWorkspaceRow,
 } from '@/app/lib/trypost/types'
+
+/** TryPost list-social-accounts omits avatars; posts expose display_avatar — merge them in. */
+async function enrichChannelsWithAvatars(
+  client: TryPostClient,
+  accounts: TryPostSocialAccount[]
+): Promise<TryPostSocialAccount[]> {
+  if (!accounts.length) return accounts
+  try {
+    const posts = await client.listAllPosts(undefined, 5)
+    const avatarByAccount = new Map<string, string>()
+    for (const post of posts) {
+      const accountId =
+        (typeof post.social_account === 'object' &&
+        post.social_account &&
+        'id' in post.social_account
+          ? String((post.social_account as { id?: string }).id ?? '')
+          : '') || String(post.social_account_id ?? '')
+      const avatar =
+        typeof post.display_avatar === 'string' ? post.display_avatar.trim() : ''
+      if (accountId && avatar && !avatarByAccount.has(accountId)) {
+        avatarByAccount.set(accountId, avatar)
+      }
+    }
+    if (!avatarByAccount.size) return accounts
+    return accounts.map((account) => ({
+      ...account,
+      avatar_url: avatarByAccount.get(account.id) ?? account.avatar_url ?? null,
+    }))
+  } catch {
+    return accounts
+  }
+}
 
 function normalizeChannels(value: unknown): TryPostSocialAccount[] {
   if (Array.isArray(value)) return value as TryPostSocialAccount[]
@@ -85,8 +118,11 @@ export async function connectTryPostWorkspace(input: {
 
   const client = createTryPostClient({ apiKey })
   const workspace = await client.getWorkspace()
-  const accounts = await client.listAllSocialAccounts()
-  const channels = filterSupportedChannels(accounts)
+  const accounts = await enrichChannelsWithAvatars(
+    client,
+    filterSupportedChannels(await client.listAllSocialAccounts())
+  )
+  const channels = accounts
 
   const admin = createServiceRoleClient()
   const payload = {
@@ -116,8 +152,10 @@ export async function connectTryPostWorkspace(input: {
 
 export async function syncTryPostChannels(userId: string): Promise<TryPostWorkspacePublic> {
   const { client, workspace } = await getTryPostClientForUser(userId)
-  const accounts = await client.listAllSocialAccounts()
-  const channels = filterSupportedChannels(accounts)
+  const channels = await enrichChannelsWithAvatars(
+    client,
+    filterSupportedChannels(await client.listAllSocialAccounts())
+  )
 
   const admin = createServiceRoleClient()
   const { data, error } = await admin

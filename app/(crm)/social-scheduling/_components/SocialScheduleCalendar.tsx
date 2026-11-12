@@ -42,6 +42,13 @@ type Props = {
     scheduledAt: string | null
     mediaUrls: string[]
     createAnother: boolean
+    destinations: Array<{
+      socialAccountId: string
+      content?: string | null
+      contentType?: string | null
+      mediaUrls?: string[]
+      meta?: Record<string, unknown>
+    }>
   }) => Promise<void>
 }
 
@@ -150,7 +157,21 @@ export function SocialScheduleCalendar({
   onCreatePost,
 }: Props) {
   const events = Array.isArray(eventsProp) ? eventsProp : []
-  const channels = Array.isArray(channelsProp) ? channelsProp : []
+  const channels = useMemo(() => {
+    const base = Array.isArray(channelsProp) ? channelsProp : []
+    const avatarById = new Map<string, string>()
+    for (const event of events) {
+      if (event.channelId && event.channelAvatarUrl && !avatarById.has(event.channelId)) {
+        avatarById.set(event.channelId, event.channelAvatarUrl)
+      }
+    }
+    if (!avatarById.size) return base
+    return base.map((ch) =>
+      ch.avatar_url
+        ? ch
+        : { ...ch, avatar_url: avatarById.get(ch.id) ?? ch.avatar_url ?? null }
+    )
+  }, [channelsProp, events])
 
   const [viewMode, setViewMode] = useState<ViewMode>('calendar')
   const [rangeMode, setRangeMode] = useState<RangeMode>('week')

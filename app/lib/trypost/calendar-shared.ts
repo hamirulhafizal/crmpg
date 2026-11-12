@@ -1,4 +1,9 @@
-export { platformLabel, platformShort, platformVisual } from '@/app/lib/trypost/platforms'
+export {
+  platformIconSrc,
+  platformLabel,
+  platformShort,
+  platformVisual,
+} from '@/app/lib/trypost/platforms'
 
 /** Local calendar day key YYYY-MM-DD in the given IANA timezone (defaults to Asia/Kuala_Lumpur). */
 export function localDateKey(iso: string, timeZone = 'Asia/Kuala_Lumpur'): string {

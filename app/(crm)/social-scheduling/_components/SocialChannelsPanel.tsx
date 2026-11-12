@@ -3,8 +3,9 @@
 import { useMemo, useState } from 'react'
 
 import type { SocialCalendarEvent, TryPostSocialAccount } from '@/app/lib/trypost/types'
-import { platformLabel, platformShort, platformVisual } from '@/app/lib/trypost/calendar-shared'
+import { platformLabel } from '@/app/lib/trypost/calendar-shared'
 import { SocialConnectChannelModal } from '@/app/(crm)/social-scheduling/_components/SocialConnectChannelModal'
+import { SocialAccountAvatar } from '@/app/(crm)/social-scheduling/_components/SocialAccountAvatar'
 
 type Props = {
   channels: TryPostSocialAccount[]
@@ -19,30 +20,6 @@ type Props = {
 
 function channelTitle(ch: TryPostSocialAccount): string {
   return ch.display_name || (ch.username ? `@${ch.username}` : 'Channel')
-}
-
-function channelInitials(ch: TryPostSocialAccount): string {
-  const raw = (ch.display_name || ch.username || '?').trim()
-  const parts = raw.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase()
-  return raw.slice(0, 2).toUpperCase()
-}
-
-function ChannelAvatar({ channel }: { channel: TryPostSocialAccount }) {
-  const visual = platformVisual(channel.platform)
-  return (
-    <span className="relative inline-block shrink-0">
-      <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-amber-300 to-yellow-500 text-[10px] font-bold text-slate-900">
-        {channelInitials(channel)}
-      </span>
-      <span
-        className={`absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[7px] font-bold text-white ring-2 ring-[#141416] ${visual.badgeClassName}`}
-        title={visual.label}
-      >
-        {platformShort(channel.platform)}
-      </span>
-    </span>
-  )
 }
 
 export function SocialChannelsPanel({
@@ -231,7 +208,7 @@ export function SocialChannelsPanel({
                 }`}
                 title={`${channelTitle(ch)} · ${platformLabel(ch.platform)}`}
               >
-                <ChannelAvatar channel={ch} />
+                <SocialAccountAvatar channel={ch} size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-white">
                     {channelTitle(ch)}

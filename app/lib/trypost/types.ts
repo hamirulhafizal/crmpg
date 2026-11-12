@@ -27,6 +27,8 @@ export type TryPostSocialAccount = {
   posting_goal: number | null
   max_content_length: number
   long_posts?: boolean
+  /** Profile image from TryPost CDN (enriched from posts.display_avatar). */
+  avatar_url?: string | null
 }
 
 export type TryPostWorkspaceInfo = {
