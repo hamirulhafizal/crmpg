@@ -20,6 +20,7 @@ import {
   SocialMediaLibraryPicker,
   type LibraryMediaAsset,
 } from '@/app/(crm)/social-scheduling/_components/SocialMediaLibraryPicker'
+import { SocialTelegramMediaPicker } from '@/app/(crm)/social-scheduling/_components/SocialTelegramMediaPicker'
 import {
   PlatformLogoMark,
   SocialAccountAvatar,
@@ -214,12 +215,14 @@ function MediaSourceMenu({
   onClose,
   onUploadDevice,
   onChooseLibrary,
+  onChooseTelegram,
   anchorRef,
 }: {
   open: boolean
   onClose: () => void
   onUploadDevice: () => void
   onChooseLibrary: () => void
+  onChooseTelegram: () => void
   anchorRef: RefObject<HTMLDivElement | null>
 }) {
   useEffect(() => {
@@ -274,6 +277,23 @@ function MediaSourceMenu({
               />
             </svg>
             Choose from media library
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onChooseTelegram()
+              onClose()
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-white/85 hover:bg-white/5"
+          >
+            <svg className="h-4 w-4 shrink-0 text-white/50" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+              />
+            </svg>
+            Choose from Telegram
           </button>
         </motion.div>
       )}
@@ -377,6 +397,7 @@ export function SocialCreatePostModal({
   const [mediaMenuOpen, setMediaMenuOpen] = useState(false)
   const [mediaTarget, setMediaTarget] = useState<'shared' | string>('shared')
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [telegramOpen, setTelegramOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -413,6 +434,7 @@ export function SocialCreatePostModal({
     setExpanded(false)
     setMediaMenuOpen(false)
     setLibraryOpen(false)
+    setTelegramOpen(false)
     setMediaTarget('shared')
   }, [open, connected, initialDateKey])
 
@@ -1187,6 +1209,7 @@ export function SocialCreatePostModal({
                             onClose={() => setMediaMenuOpen(false)}
                             onUploadDevice={() => openDevicePicker('shared')}
                             onChooseLibrary={() => setLibraryOpen(true)}
+                            onChooseTelegram={() => setTelegramOpen(true)}
                             anchorRef={sharedMediaMenuRef}
                           />
                           <div className="flex items-center justify-center gap-1 text-white/45">
@@ -1387,6 +1410,7 @@ export function SocialCreatePostModal({
                                   onClose={() => setMediaMenuOpen(false)}
                                   onUploadDevice={() => openDevicePicker(ch.id)}
                                   onChooseLibrary={() => setLibraryOpen(true)}
+                                  onChooseTelegram={() => setTelegramOpen(true)}
                                   anchorRef={customizeMediaMenuRef}
                                 />
                               </div>
@@ -1801,6 +1825,12 @@ export function SocialCreatePostModal({
               onSelect={attachLibraryAssets}
               selectedUrls={librarySelectedUrls}
               multiple
+            />
+
+            <SocialTelegramMediaPicker
+              open={telegramOpen}
+              onClose={() => setTelegramOpen(false)}
+              onImported={attachLibraryAssets}
             />
           </motion.div>
         </motion.div>

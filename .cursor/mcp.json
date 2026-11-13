@@ -2,6 +2,9 @@
   "mcpServers": {
     "TryPost": {
       "url": "https://app.trypost.it/mcp/trypost"
+    },
+    "telegram": {
+      "url": "https://mcptelegram.publicgolds.com/mcp"
     }
   }
 }
