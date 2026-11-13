@@ -58,7 +58,7 @@ export async function createSocialPosts(input: CreateSocialPostsInput) {
     .filter(Boolean)
     .map((url) => ({ url }))
 
-  const destinationInputs =
+  const destinationInputs: CreateSocialPostDestination[] =
     input.destinations?.length
       ? input.destinations
       : input.socialAccountIds.map((socialAccountId) => ({
