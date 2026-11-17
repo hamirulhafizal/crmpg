@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { adminFetch } from '@/app/lib/admin-api-client'
 import type { SocialCalendarEvent, TryPostSocialAccount } from '@/app/lib/trypost/types'
 import {
   addDays,
@@ -16,6 +17,7 @@ import {
 } from '@/app/lib/trypost/calendar-shared'
 import { SocialChannelsPanel } from '@/app/(crm)/social-scheduling/_components/SocialChannelsPanel'
 import { SocialCreatePostModal } from '@/app/(crm)/social-scheduling/_components/SocialCreatePostModal'
+import { SocialGenerateWeekModal } from '@/app/(crm)/social-scheduling/_components/SocialGenerateWeekModal'
 import { SocialPostDetailsModal } from '@/app/(crm)/social-scheduling/_components/SocialPostDetailsModal'
 import type { TryPostPublishMode } from '@/app/lib/trypost/types'
 
@@ -181,6 +183,43 @@ export function SocialScheduleCalendar({
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerDateKey, setComposerDateKey] = useState<string | null>(null)
   const [detailsEvent, setDetailsEvent] = useState<SocialCalendarEvent | null>(null)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateRunning, setGenerateRunning] = useState(false)
+  const [generateProgressLabel, setGenerateProgressLabel] = useState<string | null>(null)
+
+  // Keep background generation status alive even when the modal is closed.
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await adminFetch('/api/social-scheduling/generate')
+        const data = await res.json().catch(() => ({}))
+        if (cancelled || !res.ok) return
+        const batch = data.batch as
+          | {
+              status?: string
+              progress?: { label?: string; current?: number; total?: number }
+            }
+          | null
+        const running = batch?.status === 'generating'
+        setGenerateRunning(Boolean(running))
+        setGenerateProgressLabel(
+          running
+            ? batch?.progress?.label ||
+                `${batch?.progress?.current ?? 0}/${batch?.progress?.total ?? 7}`
+            : null
+        )
+      } catch {
+        // ignore
+      }
+    }
+    void tick()
+    const id = setInterval(() => void tick(), generateRunning || generateOpen ? 2500 : 15000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [generateRunning, generateOpen])
   const [channelsCollapsed, setChannelsCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -322,6 +361,26 @@ export function SocialScheduleCalendar({
               Calendar
             </button>
           </div>
+          {generateRunning && (
+            <button
+              type="button"
+              onClick={() => setGenerateOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-sm font-semibold text-amber-200 hover:bg-amber-400/15"
+            >
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-300 opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-amber-300" />
+              </span>
+              {generateProgressLabel || 'Generating…'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setGenerateOpen(true)}
+            className="rounded-lg border border-[#7c5cff]/40 bg-[#7c5cff]/15 px-3 py-1.5 text-sm font-semibold text-[#d4c8ff] hover:bg-[#7c5cff]/25"
+          >
+            Generate 7 days
+          </button>
           <button
             type="button"
             onClick={() => openComposer()}
@@ -616,6 +675,24 @@ export function SocialScheduleCalendar({
         event={detailsEvent}
         timeZone={timeZone}
         onClose={() => setDetailsEvent(null)}
+      />
+
+      <SocialGenerateWeekModal
+        open={generateOpen}
+        onClose={() => setGenerateOpen(false)}
+        onApproved={() => {
+          void onRefresh?.()
+        }}
+        onStatusChange={(batch) => {
+          const running = batch?.status === 'generating'
+          setGenerateRunning(Boolean(running))
+          setGenerateProgressLabel(
+            running
+              ? batch?.progress?.label ||
+                  `${batch?.progress?.current ?? 0}/${batch?.progress?.total ?? 7}`
+              : null
+          )
+        }}
       />
       </div>
     </div>

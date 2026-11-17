@@ -12,6 +12,7 @@ import {
   platformShort,
   platformVisual,
 } from '@/app/lib/trypost/calendar-shared'
+import { SocialMediaPreviewLightbox } from '@/app/(crm)/social-scheduling/_components/SocialMediaPreviewLightbox'
 
 type DetailPayload = {
   post: {
@@ -120,24 +121,31 @@ export function SocialPostDetailsModal({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailPayload | null>(null)
+  const [mediaOpen, setMediaOpen] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setMediaOpen(false)
+      return
+    }
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (mediaOpen) setMediaOpen(false)
+        else onClose()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => {
       document.body.style.overflow = prev
       window.removeEventListener('keydown', onKey)
     }
-  }, [open, onClose])
+  }, [open, onClose, mediaOpen])
 
   useEffect(() => {
     if (!open || !event) {
@@ -236,25 +244,30 @@ export function SocialPostDetailsModal({
     <AnimatePresence>
       {open && event && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 sm:p-6"
+          className="fixed inset-0 z-[300] flex items-end justify-center bg-black/75 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) onClose()
-          }}
         >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close"
+            onClick={onClose}
+          />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby="post-details-title"
-            className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1a1a1e] text-white shadow-2xl"
-            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            className="relative z-10 flex h-[min(92dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#1a1a1e] text-white shadow-2xl sm:rounded-2xl"
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             transition={{ type: 'tween', duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
           >
-            <header className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
               <h2 id="post-details-title" className="text-base font-semibold">
                 Post Details
               </h2>
@@ -270,14 +283,17 @@ export function SocialPostDetailsModal({
               </button>
             </header>
 
-            <div className="space-y-4 px-4 pb-4">
+            <div
+              className="min-h-0 flex-1 space-y-4 overflow-y-scroll overscroll-contain px-4 py-4"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill status={status} />
                 <p className="text-xs text-white/45">{whenLabel}</p>
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="relative">
+                <div className="relative shrink-0">
                   {post?.displayAvatar || event.channelAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -305,17 +321,23 @@ export function SocialPostDetailsModal({
               </div>
 
               <div>
-                <p className="whitespace-pre-wrap text-sm text-white/80">
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-white/80">
                   {post?.content?.trim() || event.content?.trim() || (
                     <span className="text-white/40">No content</span>
                   )}
                 </p>
 
                 {mediaUrl && (
-                  <div className="relative mt-3 aspect-square w-full max-w-[220px] overflow-hidden rounded-xl bg-black/40">
+                  <button
+                    type="button"
+                    onClick={() => setMediaOpen(true)}
+                    className="relative mt-3 block aspect-square w-full max-w-[220px] overflow-hidden rounded-xl bg-black/40 ring-offset-2 ring-offset-[#1a1a1e] transition hover:ring-2 hover:ring-[#7c5cff]/50"
+                    aria-label={isVideo ? 'Play media' : 'Open media'}
+                  >
                     {isVideo ? (
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
                       <video
-                        src={mediaUrl.includes('#') ? mediaUrl : `${mediaUrl}#t=0.1`}
+                        src={mediaUrl}
                         className="h-full w-full object-cover"
                         playsInline
                         muted
@@ -334,22 +356,23 @@ export function SocialPostDetailsModal({
                         </span>
                       </span>
                     )}
-                  </div>
+                  </button>
                 )}
               </div>
 
-              {loading && (
-                <p className="text-xs text-white/40">Loading analytics…</p>
-              )}
-              {error && !loading && (
-                <p className="text-xs text-amber-300/90">{error}</p>
-              )}
+              {loading && <p className="text-xs text-white/40">Loading analytics…</p>}
+              {error && !loading && <p className="text-xs text-amber-300/90">{error}</p>}
 
               <div className="flex flex-wrap items-center gap-4 border-t border-white/10 pt-3 text-xs text-white/70">
                 <span className="inline-flex items-center gap-1.5" title="Views">
                   <svg className="h-4 w-4 text-white/45" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
                   </svg>
                   {formatMetric(detail?.metrics?.views ?? null)}
                 </span>
@@ -369,19 +392,28 @@ export function SocialPostDetailsModal({
               </div>
             </div>
 
-            <footer className="flex items-center justify-between gap-3 border-t border-white/10 bg-[#141418] px-4 py-3">
-              <p className="inline-flex items-center gap-2 text-xs text-white/45">
+            <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-[#141418] px-4 py-3">
+              <p className="inline-flex min-w-0 items-center gap-2 text-xs text-white/45">
                 {platform && (
                   <span
-                    className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white ${platformVisual(platform).badgeClassName}`}
+                    className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ${platformVisual(platform).badgeClassName}`}
                     title={platformLabel(platform)}
                   >
                     {platformShort(platform)}
                   </span>
                 )}
-                <span>Published via {platform ? platformLabel(platform) : 'network'}</span>
+                <span className="truncate">
+                  Published via {platform ? platformLabel(platform) : 'network'}
+                </span>
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/60 hover:bg-white/5 hover:text-white"
+                >
+                  Close
+                </button>
                 {post?.platformUrl ? (
                   <a
                     href={String(post.platformUrl)}
@@ -391,17 +423,27 @@ export function SocialPostDetailsModal({
                   >
                     View post
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
                     </svg>
                   </a>
-                ) : (
-                  <span className="rounded-lg border border-white/5 px-3 py-1.5 text-xs text-white/30">
-                    View post
-                  </span>
-                )}
+                ) : null}
               </div>
             </footer>
           </motion.div>
+
+          <SocialMediaPreviewLightbox
+            open={mediaOpen && Boolean(mediaUrl)}
+            url={mediaUrl || null}
+            mediaType={mediaKind}
+            title={post?.displayName || event.channelDisplayName || 'Media'}
+            caption={post?.content || event.content}
+            onClose={() => setMediaOpen(false)}
+          />
         </motion.div>
       )}
     </AnimatePresence>,

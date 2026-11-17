@@ -285,7 +285,7 @@ export default function SocialSchedulingPage() {
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col gap-2 overflow-hidden px-3 py-3 sm:px-6">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+      <header className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl bg-white/95 px-3 py-2 shadow-sm ring-1 ring-slate-200/80 backdrop-blur">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[#7c5cff]">TryPost</p>
           <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
@@ -295,7 +295,7 @@ export default function SocialSchedulingPage() {
         <button
           type="button"
           onClick={() => setSetupOpen((v) => !v)}
-          className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
         >
           {workspace ? 'Workspace settings' : 'Connect workspace'}
         </button>
