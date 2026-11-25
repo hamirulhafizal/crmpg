@@ -14,17 +14,65 @@ import { requireSocialSchedulingApi } from '@/app/lib/trypost/access'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
+export const dynamic = 'force-dynamic'
 
 const SOCIAL_FOLDER = 'social-scheduling'
+
 const ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
+  'image/heic',
+  'image/heif',
   'video/mp4',
   'video/quicktime',
+  'video/webm',
+  'video/3gpp',
+  'video/3gpp2',
+  'video/x-m4v',
   'application/pdf',
 ])
+
+function inferMimeFromFilename(name: string): string | null {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'gif':
+      return 'image/gif'
+    case 'webp':
+      return 'image/webp'
+    case 'heic':
+      return 'image/heic'
+    case 'heif':
+      return 'image/heif'
+    case 'mp4':
+    case 'm4v':
+      return 'video/mp4'
+    case 'mov':
+      return 'video/quicktime'
+    case 'webm':
+      return 'video/webm'
+    case '3gp':
+    case '3gpp':
+      return 'video/3gpp'
+    case 'pdf':
+      return 'application/pdf'
+    default:
+      return null
+  }
+}
+
+function resolveMimeType(file: File): string {
+  const raw = (file.type || '').toLowerCase().split(';')[0]!.trim()
+  if (raw && raw !== 'application/octet-stream') return raw
+  return inferMimeFromFilename(file.name || '') || raw || 'application/octet-stream'
+}
 
 export async function POST(request: Request) {
   const auth = await requireSocialSchedulingApi(request)
@@ -39,16 +87,33 @@ export async function POST(request: Request) {
       )
     }
 
-    const form = await request.formData()
+    let form: FormData
+    try {
+      form = await request.formData()
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Invalid upload body'
+      // Common when body exceeds middlewareClientMaxBodySize / proxy limits.
+      return NextResponse.json(
+        {
+          error:
+            'Upload body too large or interrupted. Use a video under 100MB, or compress it on your phone first.',
+          details: message,
+        },
+        { status: 413 }
+      )
+    }
+
     const file = form.get('file')
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Missing file upload.' }, { status: 400 })
     }
 
-    const mimeType = (file.type || 'application/octet-stream').toLowerCase()
+    const mimeType = resolveMimeType(file)
     if (!ALLOWED_TYPES.has(mimeType)) {
       return NextResponse.json(
-        { error: 'Unsupported file. Use JPEG, PNG, GIF, WebP, MP4, MOV, or PDF.' },
+        {
+          error: `Unsupported file type (${mimeType || 'unknown'}). Use JPEG, PNG, GIF, WebP, MP4, MOV, or PDF.`,
+        },
         { status: 400 }
       )
     }
@@ -59,6 +124,9 @@ export async function POST(request: Request) {
     }
 
     const maxBytes = sizeLimitBytes(settings, mediaType)
+    if (!file.size) {
+      return NextResponse.json({ error: 'File is empty.' }, { status: 400 })
+    }
     if (file.size > maxBytes) {
       return NextResponse.json(
         {
@@ -68,7 +136,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const originalFilename = file.name || 'upload'
+    const originalFilename = file.name || `upload.${mediaType === 'video' ? 'mp4' : mediaType === 'pdf' ? 'pdf' : 'jpg'}`
     const title = originalFilename.replace(/\.[^.]+$/, '') || originalFilename
     const buffer = Buffer.from(await file.arrayBuffer())
     const r2Key = buildR2ObjectKey(mediaType, originalFilename, SOCIAL_FOLDER)

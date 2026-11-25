@@ -16,6 +16,8 @@ import {
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
+export const dynamic = 'force-dynamic'
 
 type AssetRow = {
   id: string
@@ -110,7 +112,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing file upload.' }, { status: 400 })
     }
 
-    const mimeType = (file.type || 'application/octet-stream').toLowerCase()
+    // Mobile browsers often send empty / octet-stream MIME — infer from filename.
+    let mimeType = (file.type || '').toLowerCase().split(';')[0]!.trim()
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      const ext = (file.name || '').split('.').pop()?.toLowerCase() || ''
+      const inferred: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        heic: 'image/heic',
+        heif: 'image/heif',
+        mp4: 'video/mp4',
+        m4v: 'video/mp4',
+        mov: 'video/quicktime',
+        webm: 'video/webm',
+        '3gp': 'video/3gpp',
+        pdf: 'application/pdf',
+        mp3: 'audio/mpeg',
+        m4a: 'audio/mp4',
+        wav: 'audio/wav',
+      }
+      mimeType = inferred[ext] || mimeType || 'application/octet-stream'
+    }
     const mediaType = mediaTypeFromMime(mimeType)
     if (!mediaType) {
       return NextResponse.json(

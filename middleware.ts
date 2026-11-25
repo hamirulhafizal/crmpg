@@ -4,13 +4,16 @@ import { updateSession } from './app/lib/supabase/middleware'
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   // Trusted server paths — no cookie Auth (handlers use secrets / service role).
+  // Large media uploads skip session middleware so the body is not buffered/capped.
   if (
     pathname.startsWith('/api/automation/gold-poster') ||
     pathname.startsWith('/api/automation/cron') ||
     pathname.startsWith('/api/automation/send') ||
     pathname.startsWith('/api/cron/') ||
     pathname.startsWith('/api/pg-sync/webhook') ||
-    pathname.startsWith('/api/admin/campaign-workflow-defaults')
+    pathname.startsWith('/api/admin/campaign-workflow-defaults') ||
+    pathname === '/api/social-scheduling/media/upload' ||
+    pathname === '/api/admin/media'
   ) {
     return NextResponse.next()
   }

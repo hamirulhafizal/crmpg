@@ -27,7 +27,8 @@ const nextConfig: NextConfig = {
   // Optimize bundle size
   experimental: {
     optimizePackageImports: ['react', 'react-dom'],
-    middlewareClientMaxBodySize: '15mb',
+    // Must cover social video uploads (R2 video limit defaults to 100MB).
+    middlewareClientMaxBodySize: '110mb',
   },
 
   // Compression

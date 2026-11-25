@@ -95,6 +95,60 @@ function mediaKind(item: UploadedMedia): 'image' | 'video' | 'document' | 'other
   return 'other'
 }
 
+/** Client-side limits (match default Media R2 settings). */
+const CLIENT_SIZE_LIMITS_MB = {
+  image: 10,
+  video: 100,
+  pdf: 20,
+} as const
+
+function inferClientMimeFromFilename(name: string): string | null {
+  const ext = name.split('.').pop()?.toLowerCase() || ''
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'gif':
+      return 'image/gif'
+    case 'webp':
+      return 'image/webp'
+    case 'heic':
+      return 'image/heic'
+    case 'heif':
+      return 'image/heif'
+    case 'mp4':
+    case 'm4v':
+      return 'video/mp4'
+    case 'mov':
+      return 'video/quicktime'
+    case 'webm':
+      return 'video/webm'
+    case '3gp':
+    case '3gpp':
+      return 'video/3gpp'
+    case 'pdf':
+      return 'application/pdf'
+    default:
+      return null
+  }
+}
+
+function resolveClientMime(file: File): string {
+  const raw = (file.type || '').toLowerCase().split(';')[0]!.trim()
+  if (raw && raw !== 'application/octet-stream') return raw
+  return inferClientMimeFromFilename(file.name || '') || raw || ''
+}
+
+function clientMediaKind(file: File): 'image' | 'video' | 'pdf' | null {
+  const mime = resolveClientMime(file)
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime === 'application/pdf') return 'pdf'
+  return null
+}
+
 function emptyDraft(platform: string, sharedContent: string, sharedMedia: UploadedMedia[]): DestinationDraft {
   const kinds = sharedMedia.map(mediaKind)
   return {
@@ -151,12 +205,14 @@ function MediaThumb({
 
 function Dropzone({
   uploading,
+  uploadLabel,
   dragOver,
   onBrowse,
   onDragState,
   onDropFiles,
 }: {
   uploading: boolean
+  uploadLabel?: string | null
   dragOver: boolean
   onBrowse: () => void
   onDragState: (v: boolean) => void
@@ -191,7 +247,12 @@ function Dropzone({
       } disabled:opacity-50`}
     >
       {uploading ? (
-        <span className="text-[11px] font-medium">Uploading…</span>
+        <>
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-[#7c5cff]" />
+          <span className="px-1 text-[10px] font-medium leading-snug text-white/80">
+            {uploadLabel || 'Uploading…'}
+          </span>
+        </>
       ) : (
         <>
           <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -391,6 +452,7 @@ export function SocialCreatePostModal({
   const [channelQuery, setChannelQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadLabel, setUploadLabel] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -598,21 +660,81 @@ export function SocialCreatePostModal({
     setError(null)
     setUploading(true)
     try {
-      for (const file of list) {
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i]!
+        const kind = clientMediaKind(file)
+        if (!kind) {
+          throw new Error(
+            `"${file.name || 'File'}" is not supported. Use JPEG, PNG, GIF, WebP, MP4, MOV, or PDF.`
+          )
+        }
+        const maxMb = CLIENT_SIZE_LIMITS_MB[kind]
+        const sizeMb = file.size / (1024 * 1024)
+        if (file.size > maxMb * 1024 * 1024) {
+          throw new Error(
+            `"${file.name || 'File'}" is ${sizeMb.toFixed(1)} MB. Max for ${kind} is ${maxMb} MB.`
+          )
+        }
+
+        const labelBase =
+          list.length > 1
+            ? `Uploading ${i + 1}/${list.length}`
+            : kind === 'video'
+              ? 'Uploading video'
+              : 'Uploading'
+        setUploadLabel(`${labelBase} (${sizeMb < 1 ? `${Math.round(file.size / 1024)} KB` : `${sizeMb.toFixed(1)} MB`})…`)
+
+        const mime = resolveClientMime(file)
+        const uploadFile =
+          mime && mime !== file.type
+            ? new File([file], file.name || `upload.${kind === 'video' ? 'mp4' : kind === 'pdf' ? 'pdf' : 'jpg'}`, {
+                type: mime,
+                lastModified: file.lastModified,
+              })
+            : file
+
         const localPreview =
-          file.type.startsWith('image/') || file.type.startsWith('video/')
-            ? URL.createObjectURL(file)
-            : undefined
+          kind === 'image' || kind === 'video' ? URL.createObjectURL(uploadFile) : undefined
         const fd = new FormData()
-        fd.append('file', file)
-        const res = await adminFetch('/api/social-scheduling/media/upload', {
-          method: 'POST',
-          body: fd,
-        })
-        const json = await res.json().catch(() => ({}))
+        fd.append('file', uploadFile)
+
+        const controller = new AbortController()
+        const timeoutMs = kind === 'video' ? 5 * 60 * 1000 : 2 * 60 * 1000
+        const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
+        let res: Response
+        try {
+          res = await adminFetch('/api/social-scheduling/media/upload', {
+            method: 'POST',
+            body: fd,
+            signal: controller.signal,
+          })
+        } catch (err) {
+          if (localPreview) URL.revokeObjectURL(localPreview)
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            throw new Error(
+              'Upload timed out. Try a shorter / compressed video (under 100 MB), then upload again.'
+            )
+          }
+          throw new Error(
+            err instanceof Error
+              ? err.message
+              : 'Network error while uploading. Check your connection and try again.'
+          )
+        } finally {
+          window.clearTimeout(timeoutId)
+        }
+
+        const json = await res.json().catch(() => ({} as { error?: string }))
         if (!res.ok) {
           if (localPreview) URL.revokeObjectURL(localPreview)
-          throw new Error(json.error || 'Upload failed')
+          throw new Error(
+            typeof json.error === 'string' && json.error
+              ? json.error
+              : res.status === 413
+                ? 'File too large for the server. Use a video under 100 MB.'
+                : `Upload failed (${res.status})`
+          )
         }
         const asset = { ...(json.asset as UploadedMedia), previewUrl: localPreview }
         if (target === 'shared') {
@@ -638,6 +760,7 @@ export function SocialCreatePostModal({
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
+      setUploadLabel(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -1199,6 +1322,7 @@ export function SocialCreatePostModal({
                         <div className="relative flex flex-col gap-2" ref={sharedMediaMenuRef}>
                           <Dropzone
                             uploading={uploading}
+                            uploadLabel={uploadLabel}
                             dragOver={dragOver}
                             onBrowse={() => openMediaMenu('shared')}
                             onDragState={setDragOver}
@@ -1400,6 +1524,7 @@ export function SocialCreatePostModal({
                                 ))}
                                 <Dropzone
                                   uploading={uploading}
+                                  uploadLabel={uploadLabel}
                                   dragOver={dragOver}
                                   onBrowse={() => openMediaMenu(ch.id)}
                                   onDragState={setDragOver}
@@ -1808,7 +1933,7 @@ export function SocialCreatePostModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,application/pdf"
+              accept="image/*,video/*,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.mp4,.m4v,.mov,.webm,.3gp,.pdf,application/pdf"
               multiple
               className="hidden"
               onChange={(e) => {
