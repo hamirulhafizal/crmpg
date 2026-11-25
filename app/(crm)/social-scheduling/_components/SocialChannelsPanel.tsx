@@ -58,7 +58,7 @@ export function SocialChannelsPanel({
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r border-white/10 bg-[#121214] py-3">
+      <aside className="hidden h-full w-12 shrink-0 flex-col items-center border-r border-white/10 bg-[#121214] py-3 md:flex">
         <button
           type="button"
           onClick={onToggleCollapsed}
@@ -89,7 +89,7 @@ export function SocialChannelsPanel({
   }
 
   return (
-    <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-white/10 bg-[#121214]">
+    <aside className="absolute inset-y-0 left-0 z-30 flex h-full w-[min(280px,85vw)] shrink-0 flex-col border-r border-white/10 bg-[#121214] shadow-2xl md:static md:w-[240px] md:shadow-none">
       <div className="flex shrink-0 items-center gap-1 border-b border-white/10 px-3 py-2.5">
         <p className="min-w-0 flex-1 truncate text-xs font-medium text-white/55">
           Channels · {channels.filter((c) => c.status === 'connected').length}

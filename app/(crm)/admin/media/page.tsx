@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { adminFetch } from '@/app/lib/admin-api-client'
+import { SocialMediaThumb } from '@/app/(crm)/social-scheduling/_components/SocialMediaThumb'
+import { SocialMediaPreviewLightbox } from '@/app/(crm)/social-scheduling/_components/SocialMediaPreviewLightbox'
 
 type MediaType = 'all' | 'image' | 'audio' | 'video' | 'pdf'
 
@@ -91,6 +93,38 @@ export default function AdminMediaPage() {
   const [editSaving, setEditSaving] = useState(false)
 
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  const downloadAsset = async (asset: MediaAsset) => {
+    setDownloadingId(asset.id)
+    try {
+      const filename =
+        asset.originalFilename ||
+        `${asset.title.replace(/[^\w.\-]+/g, '_').slice(0, 40)}.${
+          asset.mediaType === 'video' ? 'mp4' : asset.mediaType === 'pdf' ? 'pdf' : 'bin'
+        }`
+      const proxy = `/api/social-scheduling/media/download?url=${encodeURIComponent(
+        asset.publicUrl
+      )}&filename=${encodeURIComponent(filename)}`
+      const res = await adminFetch(proxy)
+      if (!res.ok) {
+        window.open(asset.publicUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500)
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   const loadAssets = useCallback(async () => {
     setLoading(true)
@@ -413,12 +447,30 @@ export default function AdminMediaPage() {
                 key={asset.id}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
               >
-                <div className="flex aspect-video items-center justify-center bg-slate-100">
+                <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-slate-100">
                   {asset.mediaType === 'image' ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={asset.publicUrl} alt={asset.title} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setPreviewAsset(asset)}
+                      className="h-full w-full"
+                      aria-label={`Preview ${asset.title}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={asset.publicUrl}
+                        alt={asset.title}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
                   ) : asset.mediaType === 'video' ? (
-                    <video src={asset.publicUrl} className="h-full w-full object-cover" controls preload="metadata" />
+                    <SocialMediaThumb
+                      url={asset.publicUrl}
+                      mediaType={asset.mimeType || 'video/mp4'}
+                      alt={asset.title}
+                      sizeClassName="h-full w-full rounded-none"
+                      className="!ring-offset-0"
+                      onOpen={() => setPreviewAsset(asset)}
+                    />
                   ) : asset.mediaType === 'audio' ? (
                     <div className="w-full p-4">
                       <audio src={asset.publicUrl} controls className="w-full" preload="metadata" />
@@ -445,12 +497,29 @@ export default function AdminMediaPage() {
                     {asset.folder ? ` · ${asset.folder}` : ''}
                   </p>
                   <div className="flex flex-wrap gap-2 pt-1">
+                    {(asset.mediaType === 'video' || asset.mediaType === 'image') && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewAsset(asset)}
+                        className="rounded-lg bg-[#7c5cff]/10 px-2.5 py-1.5 text-xs font-semibold text-[#5b3fd6] ring-1 ring-[#7c5cff]/25 hover:bg-[#7c5cff]/15"
+                      >
+                        {asset.mediaType === 'video' ? 'Play' : 'Preview'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void copyUrl(asset)}
                       className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
                     >
                       {copiedId === asset.id ? 'Copied!' : 'Copy URL'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingId === asset.id}
+                      onClick={() => void downloadAsset(asset)}
+                      className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                    >
+                      {downloadingId === asset.id ? '…' : 'Download'}
                     </button>
                     <a
                       href={asset.publicUrl}
@@ -584,6 +653,15 @@ export default function AdminMediaPage() {
           </div>
         </div>
       )}
+
+      <SocialMediaPreviewLightbox
+        open={Boolean(previewAsset)}
+        url={previewAsset?.publicUrl ?? null}
+        mediaType={previewAsset?.mimeType || previewAsset?.mediaType || null}
+        title={previewAsset?.title || null}
+        caption={previewAsset?.originalFilename || null}
+        onClose={() => setPreviewAsset(null)}
+      />
     </div>
   )
 }

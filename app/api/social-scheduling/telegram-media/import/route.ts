@@ -10,6 +10,10 @@ import {
   mediaTypeFromMime,
   uploadToR2,
 } from '@/app/lib/media-r2-storage'
+import {
+  normalizeVideoForStorage,
+  withMp4Filename,
+} from '@/app/lib/social-content/chrome-safe-video'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 import { requireSocialSchedulingApi } from '@/app/lib/trypost/access'
 import {
@@ -24,6 +28,7 @@ import {
 } from '@/app/lib/telegram-mcp/config'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 type ImportItem = {
   messageId: number
@@ -134,12 +139,29 @@ export async function POST(request: Request) {
       }
 
       const ext = extensionFor(mimeType, item.mediaType)
-      const originalFilename =
+      let originalFilename =
         item.fileName?.trim() ||
         `telegram_${chatId.replace(/^-/, '')}_${messageId}.${ext}`
       const title =
         (item.caption || '').trim().slice(0, 80) ||
         `Telegram ${messageId}`
+
+      let body = fetched.buffer
+      let storedMime = mimeType
+      if (mediaType === 'video') {
+        try {
+          const normalized = await normalizeVideoForStorage(body)
+          body = normalized.buffer
+          storedMime = normalized.mimeType
+          originalFilename = withMp4Filename(originalFilename)
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : 'Video normalize failed'
+          throw new TelegramMcpError(
+            `Could not convert Telegram video ${messageId} to browser-safe MP4: ${message}`,
+            422
+          )
+        }
+      }
 
       const r2Key = buildR2ObjectKey(mediaType, originalFilename, TELEGRAM_IMPORT_FOLDER)
       let uploaded: { key: string; publicUrl: string }
@@ -147,8 +169,8 @@ export async function POST(request: Request) {
         uploaded = await uploadToR2({
           settings,
           key: r2Key,
-          body: fetched.buffer,
-          mimeType,
+          body,
+          mimeType: storedMime,
         })
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'R2 upload failed'
@@ -162,8 +184,8 @@ export async function POST(request: Request) {
           title,
           original_filename: originalFilename,
           media_type: mediaType,
-          mime_type: mimeType,
-          size_bytes: fetched.buffer.length,
+          mime_type: storedMime,
+          size_bytes: body.length,
           r2_key: uploaded.key,
           public_url: uploaded.publicUrl,
           folder: TELEGRAM_IMPORT_FOLDER,

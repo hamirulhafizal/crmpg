@@ -21,6 +21,7 @@ import {
   type LibraryMediaAsset,
 } from '@/app/(crm)/social-scheduling/_components/SocialMediaLibraryPicker'
 import { SocialTelegramMediaPicker } from '@/app/(crm)/social-scheduling/_components/SocialTelegramMediaPicker'
+import { SocialLinkImportModal } from '@/app/(crm)/social-scheduling/_components/SocialLinkImportModal'
 import {
   PlatformLogoMark,
   SocialAccountAvatar,
@@ -277,6 +278,7 @@ function MediaSourceMenu({
   onUploadDevice,
   onChooseLibrary,
   onChooseTelegram,
+  onPasteLink,
   anchorRef,
 }: {
   open: boolean
@@ -284,6 +286,7 @@ function MediaSourceMenu({
   onUploadDevice: () => void
   onChooseLibrary: () => void
   onChooseTelegram: () => void
+  onPasteLink: () => void
   anchorRef: RefObject<HTMLDivElement | null>
 }) {
   useEffect(() => {
@@ -356,6 +359,23 @@ function MediaSourceMenu({
             </svg>
             Choose from Telegram
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              onPasteLink()
+              onClose()
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-white/85 hover:bg-white/5"
+          >
+            <svg className="h-4 w-4 shrink-0 text-white/50" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+              />
+            </svg>
+            Paste video link
+          </button>
         </motion.div>
       )}
     </AnimatePresence>
@@ -402,9 +422,15 @@ function PreviewCard({
           <video
             src={first.previewUrl || first.publicUrl}
             className="mb-2 aspect-square w-full rounded-lg object-cover bg-black/40"
-            muted
             playsInline
             controls
+            preload="metadata"
+            onPlay={(e) => {
+              const el = e.currentTarget
+              el.defaultMuted = false
+              el.muted = false
+              el.volume = 1
+            }}
           />
         ) : mediaKind(first) === 'image' ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -460,6 +486,7 @@ export function SocialCreatePostModal({
   const [mediaTarget, setMediaTarget] = useState<'shared' | string>('shared')
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [telegramOpen, setTelegramOpen] = useState(false)
+  const [linkImportOpen, setLinkImportOpen] = useState(false) // paste social URL import
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -497,6 +524,8 @@ export function SocialCreatePostModal({
     setMediaMenuOpen(false)
     setLibraryOpen(false)
     setTelegramOpen(false)
+    setLinkImportOpen(false)
+    setUploadLabel(null)
     setMediaTarget('shared')
   }, [open, connected, initialDateKey])
 
@@ -796,6 +825,65 @@ export function SocialCreatePostModal({
       fileInputRef.current?.removeAttribute('data-target')
     }
     fileInputRef.current?.click()
+  }
+
+  const attachLinkImport = (payload: { asset: LibraryMediaAsset; caption: string }) => {
+    const a = payload.asset
+    const mapped: UploadedMedia = {
+      id: a.id,
+      publicUrl: a.publicUrl,
+      mediaType: a.mediaType || 'video',
+      mimeType: a.mimeType || 'video/mp4',
+      originalFilename: a.originalFilename || a.title || 'imported-video.mp4',
+    }
+
+    if (payload.caption.trim()) {
+      if (mediaTarget === 'shared') {
+        setSharedContent(payload.caption)
+      } else {
+        patchDraft(mediaTarget, {
+          useSharedContent: false,
+          content: payload.caption,
+        })
+      }
+    }
+
+    if (mediaTarget === 'shared') {
+      setSharedMedia((prev) => {
+        if (prev.some((m) => m.publicUrl === mapped.publicUrl)) return prev
+        return [...prev, mapped]
+      })
+      return
+    }
+
+    setDrafts((prev) => {
+      const ch = connected.find((c) => c.id === mediaTarget)
+      if (!ch) return prev
+      const base = prev[mediaTarget] ?? emptyDraft(ch.platform, sharedContent, sharedMedia)
+      const current = base.useSharedMedia ? sharedMedia : base.mediaItems
+      if (current.some((m) => m.publicUrl === mapped.publicUrl)) {
+        return {
+          ...prev,
+          [mediaTarget]: {
+            ...base,
+            useSharedMedia: false,
+            useSharedContent: payload.caption.trim() ? false : base.useSharedContent,
+            content: payload.caption.trim() || base.content,
+            mediaItems: current,
+          },
+        }
+      }
+      return {
+        ...prev,
+        [mediaTarget]: {
+          ...base,
+          useSharedMedia: false,
+          useSharedContent: payload.caption.trim() ? false : base.useSharedContent,
+          content: payload.caption.trim() || base.content,
+          mediaItems: [...current, mapped],
+        },
+      }
+    })
   }
 
   const attachLibraryAssets = (assets: LibraryMediaAsset[]) => {
@@ -1100,9 +1188,19 @@ export function SocialCreatePostModal({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setShowPreview((v) => !v)}
+                    aria-pressed={viewMode === 'preview' || showPreview}
+                    onClick={() => {
+                      // Desktop: side-by-side toggle. Mobile: swap edit ↔ preview pane.
+                      if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+                        setShowPreview((v) => !v)
+                      } else {
+                        setViewMode((v) => (v === 'preview' ? 'edit' : 'preview'))
+                      }
+                    }}
                     className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium ${
-                      showPreview ? 'bg-[#7c5cff] text-white' : 'border border-white/15 text-white/70'
+                      viewMode === 'preview' || showPreview
+                        ? 'bg-[#7c5cff] text-white'
+                        : 'border border-white/15 text-white/70'
                     }`}
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1142,48 +1240,52 @@ export function SocialCreatePostModal({
               </div>
             </header>
 
-            {/* Edit / Preview switch (customize step, mobile-friendly) */}
-            {step === 'customize' && (
-              <div className="shrink-0 border-b border-white/10 px-4 py-2 sm:px-8 lg:hidden">
-                <div className="mx-auto flex h-9 w-full max-w-[744px] items-center gap-1 rounded-lg border border-white/15 bg-[#1c1c1f] p-[3px]">
-                  <button
-                    type="button"
-                    aria-pressed={viewMode === 'edit'}
-                    onClick={() => setViewMode('edit')}
-                    className={`inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium ${
-                      viewMode === 'edit' ? 'bg-[#7c5cff]/25 text-[#c4b5fd]' : 'text-white/70 hover:bg-white/5'
-                    }`}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={viewMode === 'preview'}
-                    onClick={() => setViewMode('preview')}
-                    className={`inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium ${
-                      viewMode === 'preview' ? 'bg-[#7c5cff]/25 text-[#c4b5fd]' : 'text-white/70 hover:bg-white/5'
-                    }`}
-                  >
-                    Preview
-                  </button>
-                </div>
+            {/* Edit / Preview switch (mobile) */}
+            <div className="shrink-0 border-b border-white/10 px-4 py-2 sm:px-8 lg:hidden">
+              <div className="mx-auto flex h-9 w-full max-w-[744px] items-center gap-1 rounded-lg border border-white/15 bg-[#1c1c1f] p-[3px]">
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'edit'}
+                  onClick={() => setViewMode('edit')}
+                  className={`inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium ${
+                    viewMode === 'edit' ? 'bg-[#7c5cff]/25 text-[#c4b5fd]' : 'text-white/70 hover:bg-white/5'
+                  }`}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'preview'}
+                  onClick={() => setViewMode('preview')}
+                  className={`inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium ${
+                    viewMode === 'preview' ? 'bg-[#7c5cff]/25 text-[#c4b5fd]' : 'text-white/70 hover:bg-white/5'
+                  }`}
+                >
+                  Preview
+                </button>
               </div>
-            )}
+            </div>
 
             <div
               className={`flex min-h-0 flex-1 flex-col ${
-                showPreview || step === 'customize' ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_400px]' : ''
+                showPreview || step === 'customize' || viewMode === 'preview'
+                  ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_400px]'
+                  : ''
               }`}
             >
               {/* Editor column */}
               <div
                 className={`flex min-h-0 flex-1 flex-col ${
-                  step === 'customize' && viewMode === 'preview' ? 'max-lg:hidden' : ''
+                  viewMode === 'preview' ? 'max-lg:hidden' : ''
                 }`}
               >
-                <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 pt-4 pb-5 sm:px-8">
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-5 sm:px-8 [-webkit-overflow-scrolling:touch]"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  <div className="mx-auto flex w-full max-w-[744px] flex-col gap-5">
                   {/* Accounts */}
-                  <div className="relative mx-auto flex h-12 w-full max-w-[744px] shrink-0 items-center gap-2" ref={pickerRef}>
+                  <div className="relative flex h-12 w-full shrink-0 items-center gap-2" ref={pickerRef}>
                     <div className="-my-3 flex min-w-0 gap-3 overflow-x-auto py-3 pe-2">
                       {selectedChannels.map((ch) => (
                         <div key={ch.id} className="group relative shrink-0">
@@ -1306,13 +1408,13 @@ export function SocialCreatePostModal({
 
                   {/* SHARED STEP */}
                   {step === 'shared' && (
-                    <div className="mx-auto flex w-full max-w-[744px] flex-1 flex-col gap-3">
+                    <div className="flex w-full flex-col gap-3">
                       <textarea
                         value={sharedContent}
                         onChange={(e) => setSharedContent(e.target.value)}
-                        rows={7}
+                        rows={8}
                         placeholder="Start writing or get inspired with Templates."
-                        className="min-h-40 w-full flex-1 resize-none rounded-xl border border-white/10 bg-[#1c1c1f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#7c5cff]/60"
+                        className="min-h-[10rem] w-full resize-y rounded-xl border border-white/10 bg-[#1c1c1f] px-4 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#7c5cff]/60"
                       />
 
                       <div className="flex flex-wrap items-end gap-3">
@@ -1334,6 +1436,7 @@ export function SocialCreatePostModal({
                             onUploadDevice={() => openDevicePicker('shared')}
                             onChooseLibrary={() => setLibraryOpen(true)}
                             onChooseTelegram={() => setTelegramOpen(true)}
+                            onPasteLink={() => setLinkImportOpen(true)}
                             anchorRef={sharedMediaMenuRef}
                           />
                           <div className="flex items-center justify-center gap-1 text-white/45">
@@ -1379,7 +1482,7 @@ export function SocialCreatePostModal({
 
                   {/* CUSTOMIZE STEP — accordion */}
                   {step === 'customize' && (
-                    <div className="mx-auto flex w-full max-w-[744px] flex-1 flex-col gap-3">
+                    <div className="flex w-full flex-col gap-3">
                       {selectedChannels.map((ch) => {
                         const isActive = ch.id === (activeAccountId ?? selectedChannels[0]?.id)
                         const issues = issuesByAccount[ch.id] ?? []
@@ -1503,7 +1606,7 @@ export function SocialCreatePostModal({
                                         content: e.target.value,
                                       })
                                     }
-                                    className="min-h-40 w-full flex-1 resize-none bg-transparent px-[9px] pt-0.5 pb-1 text-sm text-white outline-none"
+                                    className="min-h-[10rem] w-full resize-y bg-transparent px-[9px] pt-0.5 pb-1 text-sm text-white outline-none"
                                   />
                                   {!content && (
                                     <p className="pointer-events-none absolute start-0 top-0 px-[9px] pt-0.5 text-sm text-white/35">
@@ -1536,6 +1639,7 @@ export function SocialCreatePostModal({
                                   onUploadDevice={() => openDevicePicker(ch.id)}
                                   onChooseLibrary={() => setLibraryOpen(true)}
                                   onChooseTelegram={() => setTelegramOpen(true)}
+                                  onPasteLink={() => setLinkImportOpen(true)}
                                   anchorRef={customizeMediaMenuRef}
                                 />
                               </div>
@@ -1781,15 +1885,16 @@ export function SocialCreatePostModal({
                       )}
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
 
               {/* Preview panel */}
-              {(showPreview || (step === 'customize' && viewMode === 'preview')) && (
+              {(showPreview || viewMode === 'preview') && (
                 <aside
                   className={`min-h-0 flex-col bg-[#101012] ${
-                    step === 'customize' && viewMode === 'preview'
-                      ? 'flex'
+                    viewMode === 'preview'
+                      ? 'flex min-h-0 flex-1'
                       : 'hidden lg:flex'
                   }`}
                 >
@@ -1798,7 +1903,10 @@ export function SocialCreatePostModal({
                       ? `${platformLabel(activeChannel.platform)} preview`
                       : 'Post previews'}
                   </h3>
-                  <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-8 sm:px-8">
+                  <div
+                    className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pb-8 sm:px-8 [-webkit-overflow-scrolling:touch]"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  >
                     {step === 'shared' ? (
                       !sharedContent.trim() && !sharedMedia.length ? (
                         <PreviewEmpty />
@@ -1956,6 +2064,12 @@ export function SocialCreatePostModal({
               open={telegramOpen}
               onClose={() => setTelegramOpen(false)}
               onImported={attachLibraryAssets}
+            />
+
+            <SocialLinkImportModal
+              open={linkImportOpen}
+              onClose={() => setLinkImportOpen(false)}
+              onImported={attachLinkImport}
             />
           </motion.div>
         </motion.div>

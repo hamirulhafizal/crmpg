@@ -6,12 +6,29 @@ const nextConfig: NextConfig = {
     "@sparticuz/chromium",
     "playwright-core",
     "playwright",
+    "ffmpeg-static",
   ],
 
   // Include extension sources in serverless bundles (version API + zip download).
   outputFileTracingIncludes: {
     '/api/extension/download': ['./extension/**/*'],
     '/api/extension/version': ['./extension/ikfaidmmhokhgocfhhddhlahmbikjaed/manifest.json'],
+    '/api/social-scheduling/media/import-link': [
+      './node_modules/ffmpeg-static/**/*',
+      './.bin/**/*',
+    ],
+    '/api/social-scheduling/media/preview': [
+      './node_modules/ffmpeg-static/**/*',
+    ],
+    '/api/social-scheduling/media/upload': [
+      './node_modules/ffmpeg-static/**/*',
+    ],
+    '/api/social-scheduling/telegram-media/import': [
+      './node_modules/ffmpeg-static/**/*',
+    ],
+    '/api/admin/media': [
+      './node_modules/ffmpeg-static/**/*',
+    ],
   },
 
   // Enable Incremental Static Regeneration (ISR)

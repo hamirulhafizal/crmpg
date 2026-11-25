@@ -10,6 +10,10 @@ import {
   mediaTypeFromMime,
   uploadToR2,
 } from '@/app/lib/media-r2-storage'
+import {
+  normalizeVideoForStorage,
+  withMp4Filename,
+} from '@/app/lib/social-content/chrome-safe-video'
 import { requireSocialSchedulingApi } from '@/app/lib/trypost/access'
 import { createServiceRoleClient } from '@/app/lib/supabase/service-role'
 
@@ -136,9 +140,34 @@ export async function POST(request: Request) {
       )
     }
 
-    const originalFilename = file.name || `upload.${mediaType === 'video' ? 'mp4' : mediaType === 'pdf' ? 'pdf' : 'jpg'}`
+    let originalFilename =
+      file.name || `upload.${mediaType === 'video' ? 'mp4' : mediaType === 'pdf' ? 'pdf' : 'jpg'}`
     const title = originalFilename.replace(/\.[^.]+$/, '') || originalFilename
-    const buffer = Buffer.from(await file.arrayBuffer())
+    let buffer = Buffer.from(await file.arrayBuffer())
+    let storedMime = mimeType
+
+    // Re-encode every video at ingest so Chrome / Safari / social apps all play it.
+    if (mediaType === 'video') {
+      try {
+        const normalized = await normalizeVideoForStorage(buffer)
+        buffer = normalized.buffer
+        storedMime = normalized.mimeType
+        originalFilename = withMp4Filename(originalFilename)
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Video normalize failed'
+        console.error('Social scheduling video normalize error:', e)
+        return NextResponse.json(
+          {
+            error:
+              'Could not convert this video to a browser-safe MP4. Try a shorter clip or re-export as H.264.',
+            details: message,
+            source: 'ffmpeg',
+          },
+          { status: 422 }
+        )
+      }
+    }
+
     const r2Key = buildR2ObjectKey(mediaType, originalFilename, SOCIAL_FOLDER)
 
     let uploaded: { key: string; publicUrl: string }
@@ -147,7 +176,7 @@ export async function POST(request: Request) {
         settings,
         key: r2Key,
         body: buffer,
-        mimeType,
+        mimeType: storedMime,
       })
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'R2 upload failed'
@@ -163,8 +192,8 @@ export async function POST(request: Request) {
         title,
         original_filename: originalFilename,
         media_type: mediaType,
-        mime_type: mimeType,
-        size_bytes: file.size,
+        mime_type: storedMime,
+        size_bytes: buffer.length,
         r2_key: uploaded.key,
         public_url: uploaded.publicUrl,
         folder: SOCIAL_FOLDER,
