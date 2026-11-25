@@ -160,13 +160,13 @@ export async function POST(request: Request) {
 
     let originalFilename = file.name || 'upload'
     const title = titleRaw || originalFilename.replace(/\.[^.]+$/, '') || originalFilename
-    let buffer = Buffer.from(await file.arrayBuffer())
+    let buffer: Buffer = Buffer.from(await file.arrayBuffer())
     let storedMime = mimeType
 
     if (mediaType === 'video') {
       try {
         const normalized = await normalizeVideoForStorage(buffer)
-        buffer = normalized.buffer
+        buffer = Buffer.from(normalized.buffer)
         storedMime = normalized.mimeType
         originalFilename = withMp4Filename(originalFilename)
       } catch (e: unknown) {

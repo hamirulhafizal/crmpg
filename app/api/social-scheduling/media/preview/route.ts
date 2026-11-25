@@ -54,11 +54,12 @@ export async function GET(request: Request) {
 
   try {
     const encoded = await toChromeSafePreview(input)
-    return new NextResponse(encoded.buffer, {
+    const body = new Uint8Array(encoded.buffer)
+    return new NextResponse(body, {
       status: 200,
       headers: {
         'Content-Type': encoded.mimeType,
-        'Content-Length': String(encoded.buffer.length),
+        'Content-Length': String(body.byteLength),
         'Content-Disposition': `inline; filename="preview.${encoded.extension}"`,
         'Cache-Control': 'private, max-age=600',
         'X-Preview-Transcode': 'ok',

@@ -146,12 +146,12 @@ export async function POST(request: Request) {
         (item.caption || '').trim().slice(0, 80) ||
         `Telegram ${messageId}`
 
-      let body = fetched.buffer
+      let body: Buffer = Buffer.from(fetched.buffer)
       let storedMime = mimeType
       if (mediaType === 'video') {
         try {
           const normalized = await normalizeVideoForStorage(body)
-          body = normalized.buffer
+          body = Buffer.from(normalized.buffer)
           storedMime = normalized.mimeType
           originalFilename = withMp4Filename(originalFilename)
         } catch (e: unknown) {
