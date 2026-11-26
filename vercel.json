@@ -14,6 +14,12 @@
     },
     "app/api/cron/saas/route.ts": {
       "maxDuration": 120
+    },
+    "app/api/cron/social-link-import/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/social-scheduling/media/import-link/route.ts": {
+      "maxDuration": 300
     }
   }
 }

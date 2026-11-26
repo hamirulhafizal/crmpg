@@ -21,7 +21,7 @@ import {
   type LibraryMediaAsset,
 } from '@/app/(crm)/social-scheduling/_components/SocialMediaLibraryPicker'
 import { SocialTelegramMediaPicker } from '@/app/(crm)/social-scheduling/_components/SocialTelegramMediaPicker'
-import { SocialLinkImportModal } from '@/app/(crm)/social-scheduling/_components/SocialLinkImportModal'
+import { SocialPasteLinkBar } from '@/app/(crm)/social-scheduling/_components/SocialPasteLinkBar'
 import {
   PlatformLogoMark,
   SocialAccountAvatar,
@@ -537,11 +537,12 @@ export function SocialCreatePostModal({
   const [mediaTarget, setMediaTarget] = useState<'shared' | string>('shared')
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [telegramOpen, setTelegramOpen] = useState(false)
-  const [linkImportOpen, setLinkImportOpen] = useState(false) // paste social URL import
   const [trimNotes, setTrimNotes] = useState<string[]>([])
   const [trimming, setTrimming] = useState(false)
+  const [linkImportLocked, setLinkImportLocked] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pasteLinkInputRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
   const scheduleRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -579,13 +580,23 @@ export function SocialCreatePostModal({
     setMediaMenuOpen(false)
     setLibraryOpen(false)
     setTelegramOpen(false)
-    setLinkImportOpen(false)
     setUploadLabel(null)
     setMediaTarget('shared')
     setTrimNotes([])
     setTrimming(false)
+    setLinkImportLocked(false)
     trimCacheRef.current = new Map()
   }, [open, connected, initialDateKey])
+
+  const focusPasteLinkBar = () => {
+    setMediaTarget('shared')
+    setMediaMenuOpen(false)
+    if (step !== 'shared') setStep('shared')
+    queueMicrotask(() => {
+      pasteLinkInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      pasteLinkInputRef.current?.focus()
+    })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -994,7 +1005,10 @@ export function SocialCreatePostModal({
     fileInputRef.current?.click()
   }
 
-  const attachLinkImport = (payload: { asset: LibraryMediaAsset; caption: string }) => {
+  const attachLinkImport = (
+    payload: { asset: LibraryMediaAsset; caption: string },
+    target: 'shared' | string = 'shared'
+  ) => {
     const a = payload.asset
     const mapped: UploadedMedia = {
       id: a.id,
@@ -1005,17 +1019,17 @@ export function SocialCreatePostModal({
     }
 
     if (payload.caption.trim()) {
-      if (mediaTarget === 'shared') {
+      if (target === 'shared') {
         setSharedContent(payload.caption)
       } else {
-        patchDraft(mediaTarget, {
+        patchDraft(target, {
           useSharedContent: false,
           content: payload.caption,
         })
       }
     }
 
-    if (mediaTarget === 'shared') {
+    if (target === 'shared') {
       setSharedMedia((prev) => {
         if (prev.some((m) => m.publicUrl === mapped.publicUrl)) return prev
         return [...prev, mapped]
@@ -1024,14 +1038,14 @@ export function SocialCreatePostModal({
     }
 
     setDrafts((prev) => {
-      const ch = connected.find((c) => c.id === mediaTarget)
+      const ch = connected.find((c) => c.id === target)
       if (!ch) return prev
-      const base = prev[mediaTarget] ?? emptyDraft(ch.platform, sharedContent, sharedMedia)
+      const base = prev[target] ?? emptyDraft(ch.platform, sharedContent, sharedMedia)
       const current = base.useSharedMedia ? sharedMedia : base.mediaItems
       if (current.some((m) => m.publicUrl === mapped.publicUrl)) {
         return {
           ...prev,
-          [mediaTarget]: {
+          [target]: {
             ...base,
             useSharedMedia: false,
             useSharedContent: payload.caption.trim() ? false : base.useSharedContent,
@@ -1042,7 +1056,7 @@ export function SocialCreatePostModal({
       }
       return {
         ...prev,
-        [mediaTarget]: {
+        [target]: {
           ...base,
           useSharedMedia: false,
           useSharedContent: payload.caption.trim() ? false : base.useSharedContent,
@@ -1157,8 +1171,12 @@ export function SocialCreatePostModal({
       setError('Pick a schedule time.')
       return
     }
-    if (uploading || trimming) {
-      setError('Wait for media processing to finish.')
+    if (uploading || trimming || linkImportLocked) {
+      setError(
+        linkImportLocked
+          ? 'Wait for paste-link import to finish (it keeps running if you close the app).'
+          : 'Wait for media processing to finish.'
+      )
       return
     }
 
@@ -1235,6 +1253,7 @@ export function SocialCreatePostModal({
   }
 
   const primaryLabel = (() => {
+    if (linkImportLocked) return 'Importing video…'
     if (trimming) return 'Auto-trimming…'
     if (step === 'shared' && selectedChannels.length > 1) return 'Customize for each network →'
     if (saving) return 'Working…'
@@ -1592,6 +1611,15 @@ export function SocialCreatePostModal({
                     </AnimatePresence>
                   </div>
 
+                  {/* Always mounted while dialog is open so reopen can resume the locked progress UI. */}
+                  <SocialPasteLinkBar
+                    active={open}
+                    inputRef={pasteLinkInputRef}
+                    disabled={uploading || trimming || saving}
+                    onLockedChange={setLinkImportLocked}
+                    onImported={(payload) => attachLinkImport(payload, 'shared')}
+                  />
+
                   {/* SHARED STEP */}
                   {step === 'shared' && (
                     <div className="flex w-full flex-col gap-3">
@@ -1622,7 +1650,7 @@ export function SocialCreatePostModal({
                             onUploadDevice={() => openDevicePicker('shared')}
                             onChooseLibrary={() => setLibraryOpen(true)}
                             onChooseTelegram={() => setTelegramOpen(true)}
-                            onPasteLink={() => setLinkImportOpen(true)}
+                            onPasteLink={focusPasteLinkBar}
                             anchorRef={sharedMediaMenuRef}
                           />
                           <div className="flex items-center justify-center gap-1 text-white/45">
@@ -1889,7 +1917,7 @@ export function SocialCreatePostModal({
                                   onUploadDevice={() => openDevicePicker(ch.id)}
                                   onChooseLibrary={() => setLibraryOpen(true)}
                                   onChooseTelegram={() => setTelegramOpen(true)}
-                                  onPasteLink={() => setLinkImportOpen(true)}
+                                  onPasteLink={focusPasteLinkBar}
                                   anchorRef={customizeMediaMenuRef}
                                 />
                               </div>
@@ -2234,6 +2262,7 @@ export function SocialCreatePostModal({
                     saving ||
                     uploading ||
                     trimming ||
+                    linkImportLocked ||
                     (step === 'customize' || selectedChannels.length === 1
                       ? publishMode !== 'draft' && !canSubmitPublish
                       : false)
@@ -2317,11 +2346,6 @@ export function SocialCreatePostModal({
               onImported={attachLibraryAssets}
             />
 
-            <SocialLinkImportModal
-              open={linkImportOpen}
-              onClose={() => setLinkImportOpen(false)}
-              onImported={attachLinkImport}
-            />
           </motion.div>
         </motion.div>
       )}

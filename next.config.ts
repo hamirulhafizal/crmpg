@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
       './node_modules/ffmpeg-static/**/*',
       './.bin/**/*',
     ],
+    '/api/cron/social-link-import': [
+      './node_modules/ffmpeg-static/**/*',
+      './.bin/**/*',
+    ],
     '/api/social-scheduling/media/preview': [
       './node_modules/ffmpeg-static/**/*',
     ],
