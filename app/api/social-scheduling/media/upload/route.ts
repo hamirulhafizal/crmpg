@@ -145,6 +145,7 @@ export async function POST(request: Request) {
     const title = originalFilename.replace(/\.[^.]+$/, '') || originalFilename
     let buffer: Buffer = Buffer.from(await file.arrayBuffer())
     let storedMime = mimeType
+    let durationSec: number | null = null
 
     // Re-encode every video at ingest so Chrome / Safari / social apps all play it.
     if (mediaType === 'video') {
@@ -153,6 +154,7 @@ export async function POST(request: Request) {
         buffer = Buffer.from(normalized.buffer)
         storedMime = normalized.mimeType
         originalFilename = withMp4Filename(originalFilename)
+        durationSec = normalized.durationSec
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Video normalize failed'
         console.error('Social scheduling video normalize error:', e)
@@ -219,6 +221,7 @@ export async function POST(request: Request) {
         originalFilename: data.original_filename,
         sizeBytes: data.size_bytes,
         r2Key: data.r2_key,
+        durationSec,
       },
     })
   } catch (e: unknown) {

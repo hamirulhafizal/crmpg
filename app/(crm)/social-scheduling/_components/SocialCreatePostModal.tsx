@@ -43,6 +43,12 @@ type UploadedMedia = {
   mimeType: string
   originalFilename: string
   previewUrl?: string
+  /** Seconds, when known (upload/trim/probe). */
+  durationSec?: number | null
+  /** Source asset id if this item is an auto-trim. */
+  sourceAssetId?: string | null
+  /** Platform limit this copy was trimmed to. */
+  trimmedToSec?: number | null
 }
 
 export type CreatePostDestinationPayload = {
@@ -163,6 +169,42 @@ function emptyDraft(platform: string, sharedContent: string, sharedMedia: Upload
   }
 }
 
+function formatDurationShort(sec: number): string {
+  if (sec < 60) return `${Math.round(sec)}s`
+  const m = Math.floor(sec / 60)
+  const s = Math.round(sec % 60)
+  return s ? `${m}m ${s}s` : `${m}m`
+}
+
+/** Client metadata probe when the server did not return durationSec. */
+function probeClientDurationSec(url: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+    const done = (value: number | null) => {
+      video.removeAttribute('src')
+      video.load()
+      resolve(value)
+    }
+    video.onloadedmetadata = () => {
+      const d = video.duration
+      done(Number.isFinite(d) && d > 0 ? d : null)
+    }
+    video.onerror = () => done(null)
+    window.setTimeout(() => done(null), 8000)
+    video.src = url
+  })
+}
+
+async function ensureMediaDuration(item: UploadedMedia): Promise<UploadedMedia> {
+  if (mediaKind(item) !== 'video') return item
+  if (typeof item.durationSec === 'number' && item.durationSec > 0) return item
+  const durationSec = await probeClientDurationSec(item.previewUrl || item.publicUrl)
+  return durationSec ? { ...item, durationSec } : item
+}
+
 function MediaThumb({
   item,
   onRemove,
@@ -193,6 +235,15 @@ function MediaThumb({
           {item.originalFilename}
         </div>
       )}
+      {kind === 'video' && typeof item.trimmedToSec === 'number' && item.trimmedToSec > 0 ? (
+        <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-medium text-[#c4b5fd]">
+          ≤{formatDurationShort(item.trimmedToSec)}
+        </span>
+      ) : kind === 'video' && typeof item.durationSec === 'number' && item.durationSec > 0 ? (
+        <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-medium text-white/80">
+          {formatDurationShort(item.durationSec)}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={onRemove}
@@ -487,6 +538,8 @@ export function SocialCreatePostModal({
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [telegramOpen, setTelegramOpen] = useState(false)
   const [linkImportOpen, setLinkImportOpen] = useState(false) // paste social URL import
+  const [trimNotes, setTrimNotes] = useState<string[]>([])
+  const [trimming, setTrimming] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -495,6 +548,8 @@ export function SocialCreatePostModal({
   const captionRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const sharedMediaMenuRef = useRef<HTMLDivElement>(null)
   const customizeMediaMenuRef = useRef<HTMLDivElement>(null)
+  /** Cache trimmed copies: `${sourceId}:${maxSeconds}` → asset */
+  const trimCacheRef = useRef<Map<string, UploadedMedia>>(new Map())
 
   useEffect(() => {
     setMounted(true)
@@ -527,6 +582,9 @@ export function SocialCreatePostModal({
     setLinkImportOpen(false)
     setUploadLabel(null)
     setMediaTarget('shared')
+    setTrimNotes([])
+    setTrimming(false)
+    trimCacheRef.current = new Map()
   }, [open, connected, initialDateKey])
 
   useEffect(() => {
@@ -653,7 +711,104 @@ export function SocialCreatePostModal({
     })
   }
 
-  const enterCustomize = () => {
+  const requestTrimmedAsset = async (
+    source: UploadedMedia,
+    maxSeconds: number
+  ): Promise<UploadedMedia> => {
+    const cacheKey = `${source.id}:${maxSeconds}`
+    const cached = trimCacheRef.current.get(cacheKey)
+    if (cached) return cached
+
+    const res = await adminFetch('/api/social-scheduling/media/trim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: source.publicUrl,
+        maxSeconds,
+        sourceAssetId: source.id,
+        filename: source.originalFilename,
+      }),
+    })
+    const json = await res.json().catch(() => ({} as { error?: string; asset?: UploadedMedia }))
+    if (!res.ok || !json.asset) {
+      throw new Error(
+        typeof json.error === 'string' && json.error
+          ? json.error
+          : `Could not auto-trim video to ${formatDurationShort(maxSeconds)}`
+      )
+    }
+    const asset: UploadedMedia = {
+      ...json.asset,
+      sourceAssetId: source.id,
+      trimmedToSec: maxSeconds,
+      durationSec: json.asset.durationSec ?? maxSeconds,
+    }
+    trimCacheRef.current.set(cacheKey, asset)
+    return asset
+  }
+
+  /**
+   * Keep shared media full-length. For each channel whose content-type max
+   * duration is shorter than a video, create a 0→limit copy on that draft only.
+   */
+  const applyAutoTrimsToDrafts = async (
+    sourceDrafts: Record<string, DestinationDraft>
+  ): Promise<{ drafts: Record<string, DestinationDraft>; notes: string[] }> => {
+    const next: Record<string, DestinationDraft> = { ...sourceDrafts }
+    const notes: string[] = []
+
+    for (const ch of selectedChannels) {
+      const draft = next[ch.id] ?? emptyDraft(ch.platform, sharedContent, sharedMedia)
+      const typeRule = getContentTypeRule(ch.platform, draft.contentType)
+      const maxSec = typeRule?.max_video_duration_sec ?? null
+      if (!maxSec || maxSec <= 0) {
+        next[ch.id] = draft
+        continue
+      }
+
+      const media = draft.useSharedMedia ? [...sharedMedia] : [...draft.mediaItems]
+      let changed = false
+      const updated: UploadedMedia[] = []
+
+      for (const item of media) {
+        if (mediaKind(item) !== 'video') {
+          updated.push(item)
+          continue
+        }
+        // Already trimmed for this (or tighter) limit — keep.
+        if (
+          typeof item.trimmedToSec === 'number' &&
+          item.trimmedToSec > 0 &&
+          item.trimmedToSec <= maxSec + 0.05
+        ) {
+          updated.push(item)
+          continue
+        }
+
+        const withDuration = await ensureMediaDuration(item)
+        const duration = withDuration.durationSec
+        if (!(typeof duration === 'number') || duration <= maxSec + 0.45) {
+          updated.push(withDuration)
+          continue
+        }
+
+        const trimmed = await requestTrimmedAsset(withDuration, maxSec)
+        updated.push(trimmed)
+        changed = true
+        notes.push(
+          `${platformLabel(ch.platform)}: auto-trimmed ${formatDurationShort(duration)} → ${formatDurationShort(maxSec)} (kept full video in shared)`
+        )
+      }
+
+      next[ch.id] = changed
+        ? { ...draft, useSharedMedia: false, mediaItems: updated }
+        : { ...draft, mediaItems: draft.useSharedMedia ? draft.mediaItems : updated }
+    }
+
+    return { drafts: next, notes }
+  }
+
+  const enterCustomize = async () => {
     if (!selectedIds.length) {
       setError('Select at least one channel.')
       return
@@ -673,11 +828,23 @@ export function SocialCreatePostModal({
         next[ch.id]!.meta = { ...next[ch.id]!.meta, privacy_level: 'PUBLIC_TO_EVERYONE' }
       }
     }
-    setDrafts(next)
-    setActiveAccountId(selectedChannels[0]?.id ?? null)
-    setStep('customize')
-    setViewMode('edit')
+
+    setTrimming(true)
+    setUploadLabel('Auto-trimming videos for channel limits…')
     setError(null)
+    try {
+      const { drafts: trimmedDrafts, notes } = await applyAutoTrimsToDrafts(next)
+      setDrafts(trimmedDrafts)
+      setTrimNotes(notes)
+      setActiveAccountId(selectedChannels[0]?.id ?? null)
+      setStep('customize')
+      setViewMode('edit')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-trim failed')
+    } finally {
+      setTrimming(false)
+      setUploadLabel(null)
+    }
   }
 
   const uploadFiles = async (
@@ -990,13 +1157,29 @@ export function SocialCreatePostModal({
       setError('Pick a schedule time.')
       return
     }
-    if (uploading) {
-      setError('Wait for media upload to finish.')
+    if (uploading || trimming) {
+      setError('Wait for media processing to finish.')
       return
     }
 
-    const resolvedDrafts = resolveDraftsForSubmit()
-    setDrafts(resolvedDrafts)
+    let resolvedDrafts = resolveDraftsForSubmit()
+    setTrimming(true)
+    setUploadLabel('Auto-trimming videos for channel limits…')
+    try {
+      const trimmed = await applyAutoTrimsToDrafts(resolvedDrafts)
+      resolvedDrafts = trimmed.drafts
+      setDrafts(resolvedDrafts)
+      if (trimmed.notes.length) setTrimNotes(trimmed.notes)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-trim failed')
+      setTrimming(false)
+      setUploadLabel(null)
+      return
+    } finally {
+      setTrimming(false)
+      setUploadLabel(null)
+    }
+
     const destinations = buildDestinationsFrom(resolvedDrafts)
     const publishCheck = mode !== 'draft' && mode !== 'pending_approval'
     if (publishCheck) {
@@ -1017,7 +1200,7 @@ export function SocialCreatePostModal({
         if (realIssues.some((i) => i.severity === 'error' || i.severity === 'warning')) {
           setError(realIssues[0]?.message ?? 'Fix channel issues before publishing.')
           if (step === 'shared' && selectedChannels.length > 1) {
-            enterCustomize()
+            void enterCustomize()
           } else {
             setStep('customize')
             setActiveAccountId(ch.id)
@@ -1033,6 +1216,7 @@ export function SocialCreatePostModal({
         socialAccountIds: selectedIds,
         publishMode: mode,
         scheduledAt: mode === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
+        // Shared always keeps the full-length originals.
         mediaUrls: sharedMedia.map((m) => m.publicUrl),
         createAnother,
         destinations,
@@ -1042,6 +1226,7 @@ export function SocialCreatePostModal({
         setSharedContent('')
         setSharedMedia([])
         setDrafts({})
+        setTrimNotes([])
         setStep('shared')
       }
     } catch (err) {
@@ -1050,6 +1235,7 @@ export function SocialCreatePostModal({
   }
 
   const primaryLabel = (() => {
+    if (trimming) return 'Auto-trimming…'
     if (step === 'shared' && selectedChannels.length > 1) return 'Customize for each network →'
     if (saving) return 'Working…'
     const n = selectedChannels.length
@@ -1423,7 +1609,7 @@ export function SocialCreatePostModal({
                         ))}
                         <div className="relative flex flex-col gap-2" ref={sharedMediaMenuRef}>
                           <Dropzone
-                            uploading={uploading}
+                            uploading={uploading || trimming}
                             uploadLabel={uploadLabel}
                             dragOver={dragOver}
                             onBrowse={() => openMediaMenu('shared')}
@@ -1477,12 +1663,41 @@ export function SocialCreatePostModal({
                           {error || aggregatedError}
                         </p>
                       )}
+                      {trimNotes.length > 0 && (
+                        <div
+                          role="status"
+                          className="rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2 text-xs text-violet-100"
+                        >
+                          <p className="font-medium text-violet-50">Auto-trimmed for channel limits</p>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-violet-100/85">
+                            {trimNotes.slice(0, 4).map((note) => (
+                              <li key={note}>{note}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-1 text-[11px] text-violet-100/55">
+                            Shared media keeps the full video; each network gets a 0→limit cut.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* CUSTOMIZE STEP — accordion */}
                   {step === 'customize' && (
                     <div className="flex w-full flex-col gap-3">
+                      {trimNotes.length > 0 && (
+                        <div
+                          role="status"
+                          className="rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2 text-xs text-violet-100"
+                        >
+                          <p className="font-medium text-violet-50">Auto-trimmed for channel limits</p>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-violet-100/85">
+                            {trimNotes.slice(0, 4).map((note) => (
+                              <li key={note}>{note}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {selectedChannels.map((ch) => {
                         const isActive = ch.id === (activeAccountId ?? selectedChannels[0]?.id)
                         const issues = issuesByAccount[ch.id] ?? []
@@ -1554,9 +1769,44 @@ export function SocialCreatePostModal({
                                         type="button"
                                         role="radio"
                                         aria-checked={draft.contentType === ct.value}
-                                        onClick={() =>
+                                        onClick={() => {
                                           patchDraft(ch.id, { contentType: ct.value })
-                                        }
+                                          // Re-run auto-trim if the new type has a tighter limit.
+                                          void (async () => {
+                                            const base = {
+                                              ...drafts,
+                                              [ch.id]: {
+                                                ...(drafts[ch.id] ?? draft),
+                                                contentType: ct.value,
+                                              },
+                                            }
+                                            setTrimming(true)
+                                            setUploadLabel('Auto-trimming for content type…')
+                                            try {
+                                              const { drafts: next, notes } =
+                                                await applyAutoTrimsToDrafts(base)
+                                              setDrafts(next)
+                                              if (notes.length) {
+                                                setTrimNotes((prev) => {
+                                                  const merged = [...notes]
+                                                  for (const n of prev) {
+                                                    if (!merged.includes(n)) merged.push(n)
+                                                  }
+                                                  return merged
+                                                })
+                                              }
+                                            } catch (err) {
+                                              setError(
+                                                err instanceof Error
+                                                  ? err.message
+                                                  : 'Auto-trim failed'
+                                              )
+                                            } finally {
+                                              setTrimming(false)
+                                              setUploadLabel(null)
+                                            }
+                                          })()
+                                        }}
                                         className={`aspect-square size-4 rounded-full border shadow-xs ${
                                           draft.contentType === ct.value
                                             ? 'border-[#a78bfa] bg-[radial-gradient(circle,#a78bfa_3.5px,transparent_4px)]'
@@ -1626,7 +1876,7 @@ export function SocialCreatePostModal({
                                   />
                                 ))}
                                 <Dropzone
-                                  uploading={uploading}
+                                  uploading={uploading || trimming}
                                   uploadLabel={uploadLabel}
                                   dragOver={dragOver}
                                   onBrowse={() => openMediaMenu(ch.id)}
@@ -1983,13 +2233,14 @@ export function SocialCreatePostModal({
                   disabled={
                     saving ||
                     uploading ||
+                    trimming ||
                     (step === 'customize' || selectedChannels.length === 1
                       ? publishMode !== 'draft' && !canSubmitPublish
                       : false)
                   }
                   onClick={() => {
                     if (step === 'shared' && selectedChannels.length > 1) {
-                      enterCustomize()
+                      void enterCustomize()
                       return
                     }
                     void submit()

@@ -32,19 +32,54 @@ function run(bin: string, args: string[]): Promise<{ stderr: string }> {
   })
 }
 
-/** Probe via `ffmpeg -i` stderr (no ffprobe dependency). */
-async function inputHasAudio(ffmpeg: string, inPath: string): Promise<boolean> {
+function probeInputStderr(ffmpeg: string, inPath: string): Promise<string> {
   return new Promise((resolve) => {
     const child = spawn(ffmpeg, ['-hide_banner', '-i', inPath], { env: process.env })
     let stderr = ''
     child.stderr.on('data', (d) => {
       stderr += String(d)
     })
-    child.on('error', () => resolve(false))
-    child.on('close', () => {
-      resolve(/^\s*Stream #\d+:\d+.*Audio:/m.test(stderr))
-    })
+    child.on('error', () => resolve(stderr))
+    child.on('close', () => resolve(stderr))
   })
+}
+
+/** Probe via `ffmpeg -i` stderr (no ffprobe dependency). */
+async function inputHasAudio(ffmpeg: string, inPath: string): Promise<boolean> {
+  const stderr = await probeInputStderr(ffmpeg, inPath)
+  return /^\s*Stream #\d+:\d+.*Audio:/m.test(stderr)
+}
+
+function parseDurationSec(stderr: string): number | null {
+  const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+  if (![hours, minutes, seconds].every((n) => Number.isFinite(n))) return null
+  const total = hours * 3600 + minutes * 60 + seconds
+  return total > 0 ? total : null
+}
+
+/** Probe video duration in seconds from raw bytes. */
+export async function probeVideoDurationSec(input: Buffer): Promise<number | null> {
+  const ffmpeg = resolveFfmpegPath()
+  if (!ffmpeg || !input.length) return null
+  const dir = await mkdtemp(path.join(tmpdir(), 'crmpg-probe-'))
+  const inPath = path.join(dir, 'in.bin')
+  try {
+    await writeFile(inPath, input)
+    const stderr = await probeInputStderr(ffmpeg, inPath)
+    return parseDurationSec(stderr)
+  } finally {
+    await unlink(inPath).catch(() => {})
+    await rmdir(dir).catch(() => {})
+  }
+}
+
+export type NormalizeVideoOptions = {
+  /** Keep only the first N seconds (0 → limit). */
+  maxSeconds?: number
 }
 
 export type NormalizedVideo = {
@@ -54,6 +89,8 @@ export type NormalizedVideo = {
   /** True when bytes were re-encoded (vs passed through). */
   transcoded: boolean
   hasAudio: boolean
+  /** Output duration after encode/trim, when known. */
+  durationSec: number | null
 }
 
 const VIDEO_FILTER =
@@ -67,8 +104,8 @@ const VIDEO_FILTER =
 const AUDIO_FILTER =
   'aformat=sample_fmts=fltp:channel_layouts=stereo,aresample=44100:async=1:first_pts=0'
 
-function baseVideoArgs(inPath: string): string[] {
-  return [
+function baseVideoArgs(inPath: string, maxSeconds?: number): string[] {
+  const args = [
     '-y',
     '-hide_banner',
     '-loglevel',
@@ -78,6 +115,12 @@ function baseVideoArgs(inPath: string): string[] {
     '0',
     '-i',
     inPath,
+  ]
+  // Output-side trim keeps 0 → limit (more accurate than input -ss for short clips).
+  if (typeof maxSeconds === 'number' && Number.isFinite(maxSeconds) && maxSeconds > 0) {
+    args.push('-t', String(maxSeconds))
+  }
+  args.push(
     '-map',
     '0:v:0',
     '-vf',
@@ -95,8 +138,9 @@ function baseVideoArgs(inPath: string): string[] {
     '-crf',
     '23',
     '-x264-params',
-    'bframes=0:aud=1',
-  ]
+    'bframes=0:aud=1'
+  )
+  return args
 }
 
 function audioEncodeArgs(): string[] {
@@ -125,7 +169,10 @@ function audioEncodeArgs(): string[] {
  * MP4 edit lists (elst), odd dimensions, B-frames, or non-H.264 codecs.
  * Always re-encode to H.264 Baseline + AAC with reset video timestamps and faststart.
  */
-export async function normalizeVideoForStorage(input: Buffer): Promise<NormalizedVideo> {
+export async function normalizeVideoForStorage(
+  input: Buffer,
+  options: NormalizeVideoOptions = {}
+): Promise<NormalizedVideo> {
   if (!input.length) throw new Error('Video file is empty')
 
   const ffmpeg = resolveFfmpegPath()
@@ -133,16 +180,23 @@ export async function normalizeVideoForStorage(input: Buffer): Promise<Normalize
     throw new Error('ffmpeg-static is not available — cannot normalize video for browser playback')
   }
 
+  const maxSeconds =
+    typeof options.maxSeconds === 'number' && Number.isFinite(options.maxSeconds) && options.maxSeconds > 0
+      ? options.maxSeconds
+      : undefined
+
   const dir = await mkdtemp(path.join(tmpdir(), 'crmpg-store-'))
   const inPath = path.join(dir, 'in.bin')
   const outPath = path.join(dir, 'out.mp4')
 
   try {
     await writeFile(inPath, input)
-    const hasAudio = await inputHasAudio(ffmpeg, inPath)
+    const probeStderr = await probeInputStderr(ffmpeg, inPath)
+    const hasAudio = /^\s*Stream #\d+:\d+.*Audio:/m.test(probeStderr)
+    const sourceDuration = parseDurationSec(probeStderr)
 
     const args = [
-      ...baseVideoArgs(inPath),
+      ...baseVideoArgs(inPath, maxSeconds),
       ...(hasAudio ? audioEncodeArgs() : ['-an']),
       // isom brand (avoid iso4 from negative_cts_offsets — some Chrome builds drop audio)
       '-movflags',
@@ -155,18 +209,33 @@ export async function normalizeVideoForStorage(input: Buffer): Promise<Normalize
     const buffer = await readFile(outPath)
     if (!buffer.length) throw new Error('Normalized video is empty')
 
+    const outDuration =
+      maxSeconds && sourceDuration
+        ? Math.min(maxSeconds, sourceDuration)
+        : maxSeconds ?? sourceDuration
+
     return {
       buffer,
       mimeType: 'video/mp4',
       extension: 'mp4',
       transcoded: true,
       hasAudio,
+      durationSec: outDuration ?? null,
     }
   } finally {
     await unlink(inPath).catch(() => {})
     await unlink(outPath).catch(() => {})
     await rmdir(dir).catch(() => {})
   }
+}
+
+/** Trim to the first `maxSeconds` and re-encode to browser-safe MP4. */
+export async function trimVideoToMaxSeconds(
+  input: Buffer,
+  maxSeconds: number
+): Promise<NormalizedVideo> {
+  if (!(maxSeconds > 0)) throw new Error('maxSeconds must be > 0')
+  return normalizeVideoForStorage(input, { maxSeconds })
 }
 
 /**

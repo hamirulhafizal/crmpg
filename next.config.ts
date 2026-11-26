@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
     '/api/social-scheduling/media/upload': [
       './node_modules/ffmpeg-static/**/*',
     ],
+    '/api/social-scheduling/media/trim': [
+      './node_modules/ffmpeg-static/**/*',
+    ],
     '/api/social-scheduling/telegram-media/import': [
       './node_modules/ffmpeg-static/**/*',
     ],
